@@ -1,6 +1,6 @@
-# Travel Route Planner API
+# Travel Route Planner
 
-A simple "Hello World" REST API skeleton written in Go, serving as the foundation for a travel route planning application.
+A comprehensive travel route planning platform with Go API backend and support for web and mobile frontends.
 
 ## Features
 
@@ -23,6 +23,25 @@ A simple "Hello World" REST API skeleton written in Go, serving as the foundatio
 - Docker Compose (optional, for easier development)
 
 ## Installation & Running
+
+### Quick Start with Makefile (Recommended)
+
+```bash
+# Setup the project (downloads dependencies)
+make setup
+
+# Start development environment with Docker
+make dev
+
+# Or run API locally
+make dev-api
+
+# Run tests
+make test
+
+# See all available commands
+make help
+```
 
 ### Option 1: Docker (Recommended)
 
@@ -52,9 +71,9 @@ docker run -d -p 8080:8080 --name travel-api travel-route-planner
 
 ### Option 2: Local Development
 
-1. Clone or navigate to the project directory:
+1. Navigate to the API directory:
 ```bash
-cd travel-route-planner
+cd src/packages/api
 ```
 
 2. Download dependencies:
@@ -64,7 +83,7 @@ go mod tidy
 
 3. Start the server:
 ```bash
-go run main.go
+go run main.go route_optimizer.go country_optimizer.go
 ```
 
 ### Verification
@@ -487,8 +506,11 @@ docker push your-registry.com/travel-route-planner:latest
 
 ### Local Binary Build
 ```bash
+# Navigate to API directory
+cd src/packages/api
+
 # Build the binary
-go build -o travel-route-planner main.go
+go build -o travel-route-planner .
 
 # Run the binary
 ./travel-route-planner
@@ -498,16 +520,23 @@ go build -o travel-route-planner main.go
 
 ```
 travel-route-planner/
-├── main.go              # Main application file with HTTP server
-├── route_optimizer.go   # Route optimization algorithms (2-Opt)
-├── go.mod               # Go module definition
-├── go.sum               # Go module checksums
-├── Dockerfile           # Docker build configuration
-├── .dockerignore        # Docker ignore patterns
-├── docker-compose.yml   # Docker Compose configuration
-├── test_data.json       # Sample test data for API testing
-├── test_examples.sh     # Automated test script
-└── README.md            # This file
+├── src/
+│   └── packages/
+│       ├── api/                    # Go API backend
+│       │   ├── main.go             # Main application file with HTTP server
+│       │   ├── route_optimizer.go  # Location route optimization algorithms (2-Opt)
+│       │   ├── country_optimizer.go # Country route optimization with seasonal planning
+│       │   ├── go.mod              # Go module definition
+│       │   ├── go.sum              # Go module checksums
+│       │   ├── Dockerfile          # Docker build configuration
+│       │   ├── test_data.json      # Sample test data for location routing
+│       │   ├── test_countries.json # Sample test data for country routing
+│       │   └── test_examples.sh    # Automated test script
+│       └── flutter-app/            # Flutter mobile app (future)
+├── docker-compose.yml              # Docker Compose configuration
+├── .dockerignore                   # Docker ignore patterns
+├── .gitignore                      # Git ignore patterns
+└── README.md                       # This file
 ```
 
 ## Middleware
@@ -554,13 +583,15 @@ The application includes two middleware components:
 # Start the server
 docker-compose up --build
 
-# Run automated tests
+# Run automated tests (navigate to API directory first)
+cd src/packages/api
 ./test_examples.sh
 ```
 
 ### Manual Testing
 ```bash
-# Simple 3-location test
+# Simple 3-location test (from API directory)
+cd src/packages/api
 curl -X POST http://localhost:8081/api/v1/optimize-route \
   -H "Content-Type: application/json" \
   -d @test_data.json
