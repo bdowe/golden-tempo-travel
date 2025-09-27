@@ -1,0 +1,166 @@
+{
+  "small_example": {
+    "locations": [
+      {
+        "id": "starbucks_times_square",
+        "name": "Starbucks Times Square",
+        "latitude": 40.7589,
+        "longitude": -73.9851,
+        "address": "1585 Broadway, New York, NY 10036",
+        "category": "coffee_shop"
+      },
+      {
+        "id": "central_park",
+        "name": "Central Park",
+        "latitude": 40.7829,
+        "longitude": -73.9654,
+        "address": "Central Park, New York, NY",
+        "category": "park"
+      },
+      {
+        "id": "empire_state_building",
+        "name": "Empire State Building",
+        "latitude": 40.7484,
+        "longitude": -73.9857,
+        "address": "350 5th Ave, New York, NY 10118",
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "brooklyn_bridge",
+        "name": "Brooklyn Bridge",
+        "latitude": 40.7061,
+        "longitude": -73.9969,
+        "address": "Brooklyn Bridge, New York, NY 10038",
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "statue_of_liberty",
+        "name": "Statue of Liberty",
+        "latitude": 40.6892,
+        "longitude": -74.0445,
+        "address": "Liberty Island, New York, NY 10004",
+        "category": "tourist_attraction"
+      }
+    ],
+    "start_index": 0,
+    "return_to_start": true
+  },
+  "coffee_shop_tour": {
+    "locations": [
+      {
+        "id": "blue_bottle_tribeca",
+        "name": "Blue Bottle Coffee - Tribeca",
+        "latitude": 40.7195,
+        "longitude": -74.0089,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "intelligentsia_high_line",
+        "name": "Intelligentsia Coffee - High Line",
+        "latitude": 40.7420,
+        "longitude": -74.0048,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "joe_coffee_waverly",
+        "name": "Joe Coffee - Waverly Place",
+        "latitude": 40.7323,
+        "longitude": -74.0027,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "stumptown_ace_hotel",
+        "name": "Stumptown Coffee - Ace Hotel",
+        "latitude": 40.7451,
+        "longitude": -73.9890,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "birch_coffee_flatiron",
+        "name": "Birch Coffee - Flatiron",
+        "latitude": 40.7414,
+        "longitude": -73.9896,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "la_colombe_soho",
+        "name": "La Colombe - SoHo",
+        "latitude": 40.7230,
+        "longitude": -74.0030,
+        "category": "coffee_shop"
+      },
+      {
+        "id": "bluestone_lane_greenwich",
+        "name": "Bluestone Lane - Greenwich Village",
+        "latitude": 40.7336,
+        "longitude": -74.0027,
+        "category": "coffee_shop"
+      }
+    ],
+    "start_index": 0,
+    "return_to_start": false
+  },
+  "san_francisco_attractions": {
+    "locations": [
+      {
+        "id": "golden_gate_bridge",
+        "name": "Golden Gate Bridge",
+        "latitude": 37.8199,
+        "longitude": -122.4783,
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "alcatraz_island",
+        "name": "Alcatraz Island",
+        "latitude": 37.8267,
+        "longitude": -122.4230,
+        "category": "museum",
+        "visit_duration_minutes": 180
+      },
+      {
+        "id": "fishermans_wharf",
+        "name": "Fisherman's Wharf",
+        "latitude": 37.8080,
+        "longitude": -122.4177,
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "lombard_street",
+        "name": "Lombard Street",
+        "latitude": 37.8021,
+        "longitude": -122.4187,
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "chinatown",
+        "name": "San Francisco Chinatown",
+        "latitude": 37.7941,
+        "longitude": -122.4078,
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "union_square",
+        "name": "Union Square",
+        "latitude": 37.7880,
+        "longitude": -122.4075,
+        "category": "store"
+      },
+      {
+        "id": "coit_tower",
+        "name": "Coit Tower",
+        "latitude": 37.8024,
+        "longitude": -122.4058,
+        "category": "tourist_attraction"
+      },
+      {
+        "id": "painted_ladies",
+        "name": "Painted Ladies",
+        "latitude": 37.7762,
+        "longitude": -122.4328,
+        "category": "tourist_attraction"
+      }
+    ],
+    "start_index": 5,
+    "return_to_start": true
+  }
+}
