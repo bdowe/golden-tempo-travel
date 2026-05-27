@@ -537,6 +537,10 @@ func main() {
 	api.HandleFunc("/plan", planHandler).Methods("POST")
 	api.HandleFunc("/airbnb/parse", airbnbParseHandler).Methods("POST")
 	api.HandleFunc("/airbnb/debug", airbnbDebugHandler).Methods("POST")
+	api.HandleFunc("/auth/register", registerHandler).Methods("POST")
+	api.HandleFunc("/auth/login", loginHandler).Methods("POST")
+	api.Handle("/auth/logout", authMiddleware(http.HandlerFunc(logoutHandler))).Methods("POST")
+	api.Handle("/auth/me", authMiddleware(http.HandlerFunc(meHandler))).Methods("GET")
 
 	// Server configuration
 	port := "8080"
@@ -560,6 +564,10 @@ func main() {
 	log.Printf("  GET  /api/v1/places/search      - Search Places")
 	log.Printf("  GET  /api/v1/places/autocomplete - Place Autocomplete")
 	log.Printf("  GET  /api/v1/places/details     - Place Details")
+	log.Printf("  POST /api/v1/auth/register      - Register")
+	log.Printf("  POST /api/v1/auth/login         - Login")
+	log.Printf("  POST /api/v1/auth/logout        - Logout (auth)")
+	log.Printf("  GET  /api/v1/auth/me            - Current user (auth)")
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal("Server failed to start:", err)
