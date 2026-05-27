@@ -14,9 +14,13 @@ class ApiClient {
   late final String _baseUrl;
   final http.Client _client;
 
+  /// The current session token, attached as a bearer credential by services
+  /// that need authentication (e.g. trips). Set by the auth provider.
+  String? authToken;
+
   ApiClient({String? baseUrl, http.Client? client}) : _client = client ?? http.Client() {
     // Use provided baseUrl, or environment variable, or default
-    _baseUrl = baseUrl ?? 
+    _baseUrl = baseUrl ??
         const String.fromEnvironment('API_BASE_URL', defaultValue: _defaultBaseUrl);
   }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'providers/auth_provider.dart';
+import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 
 void main() {
@@ -28,7 +30,7 @@ class TravelRoutePlannerApp extends StatelessWidget {
           centerTitle: true,
           elevation: 2,
         ),
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(12)),
@@ -55,7 +57,24 @@ class TravelRoutePlannerApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: const AuthGate(),
     );
+  }
+}
+
+/// Shows a loading splash until the stored session is checked, then routes to
+/// the login screen (signed out) or the home screen (signed in).
+class AuthGate extends ConsumerWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (!auth.initialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return auth.isSignedIn ? const HomeScreen() : const AuthScreen();
   }
 }
