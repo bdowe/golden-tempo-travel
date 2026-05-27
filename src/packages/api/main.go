@@ -390,6 +390,7 @@ func main() {
 	api.HandleFunc("/places/search", placesSearchHandler).Methods("GET")
 	api.HandleFunc("/places/autocomplete", placesAutocompleteHandler).Methods("GET")
 	api.HandleFunc("/places/details", placesDetailsHandler).Methods("GET")
+	api.HandleFunc("/plan", planHandler).Methods("POST")
 
 	// Server configuration
 	port := "8080"
@@ -397,7 +398,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 
