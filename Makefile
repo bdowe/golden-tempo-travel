@@ -74,8 +74,8 @@ api-vet: ## Run go vet
 api-migrate: ## Apply database migrations (needs DATABASE_URL; runs on boot too)
 	cd $(API_DIR) && go run . migrate
 
-api-sqlc: ## Generate type-safe DB code from SQL (needs sqlc: https://sqlc.dev)
-	cd $(API_DIR) && sqlc generate
+api-sqlc: ## Generate type-safe DB code from SQL (install: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest)
+	cd $(API_DIR) && PATH="$$PATH:$$(go env GOPATH)/bin" sqlc generate
 
 # Flutter commands
 flutter-deps: ## Install Flutter dependencies
