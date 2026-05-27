@@ -24,14 +24,38 @@ A comprehensive travel route planning platform with Go API backend and beautiful
 ### Go API Development
 - Go 1.21 or higher
 - Git (for cloning and dependency management)
+- **Google Places API Key** (for location search and geocoding)
 
 ### Flutter App Development  
 - Flutter SDK (latest stable version)
 - iOS Simulator / Android Emulator or physical device
 
+### Google Places API Setup
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Places API
+4. Create credentials (API Key)
+5. Set the `GOOGLE_PLACES_API_KEY` environment variable (see Configuration section below)
+
 ### Docker Development
 - Docker
 - Docker Compose (optional, for easier development)
+
+## Configuration
+
+### Environment Variables
+Set the following environment variable before running the API:
+
+```bash
+export GOOGLE_PLACES_API_KEY="your_google_places_api_key_here"
+```
+
+Or create a `.env` file in the `src/packages/api/` directory:
+```
+GOOGLE_PLACES_API_KEY=your_google_places_api_key_here
+```
+
+**Note:** The API will work without this key, but location search features will be disabled.
 
 ## Installation & Running
 
@@ -41,13 +65,16 @@ A comprehensive travel route planning platform with Go API backend and beautiful
 # Setup the entire project (API + Flutter dependencies)
 make setup
 
-# Option 1: Run both API and web app with Docker (Recommended)
-make docker-run
+# Development: Flutter hot reload + API behind one gateway
+make docker-dev
 
-# Option 2: Run just the API server with Docker
-make dev
+# Deployment: static Flutter build + API behind one gateway
+make docker-deploy
 
-# Option 3: Run Flutter app locally (for development)
+# Local API only (port 8080)
+make api-run
+
+# Local Flutter (points at local API on :8080)
 make flutter-run
 
 # Run API tests
@@ -59,33 +86,25 @@ make help
 
 ### Option 1: Docker (Recommended)
 
-#### Using Docker Compose (Easiest)
+Docker orchestration lives in [`dockerize/`](dockerize/README.md). A single nginx **gateway** on port **3000** serves the Flutter app and proxies `/api/` to the Go API (same origin — no CORS issues).
+
 ```bash
-# Build and start both API and web app
-docker-compose up --build
+# Development: hot reload
+make docker-dev
 
-# Run in background
-docker-compose up -d --build
+# Deployment: static production-like build
+make docker-deploy
 
-# Stop all services
-docker-compose down
+# Stop stacks
+make docker-stop
 ```
 
-The application will be available at:
-- **Web App**: http://localhost:3001
-- **API**: http://localhost:8081/api/v1
+| Stack | App URL | API (via gateway) |
+|-------|---------|-------------------|
+| Development | http://localhost:3000 | http://localhost:3000/api/v1 |
+| Deployment | http://localhost:3000/app/ | http://localhost:3000/api/v1 |
 
-#### Using Docker directly
-```bash
-# Build the Docker image
-docker build -t travel-route-planner .
-
-# Run the container
-docker run -p 8080:8080 travel-route-planner
-
-# Run in background
-docker run -d -p 8080:8080 --name travel-api travel-route-planner
-```
+Set `GOOGLE_PLACES_API_KEY` in `src/packages/api/.env` for place search.
 
 ### Option 2: Local Development
 

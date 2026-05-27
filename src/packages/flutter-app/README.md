@@ -59,7 +59,7 @@ A beautiful Flutter mobile app that consumes the Travel Route Planner Go API to 
 
 ### API Configuration
 
-The app is configured to connect to the Go API running on `http://localhost:8081`. If you need to change this:
+With Docker (`make docker-dev` or `make docker-deploy`), the app uses `/api/v1` via the gateway at `http://localhost:3000`. For local `flutter run` without Docker, the default is `http://localhost:8080/api/v1`. To change this:
 
 1. Edit `lib/services/api_client.dart`
 2. Update the `_baseUrl` constant to your API server address
