@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Accommodation struct {
+	ID        uuid.UUID   `json:"id"`
+	TripID    uuid.UUID   `json:"trip_id"`
+	Name      string      `json:"name"`
+	Provider  *string     `json:"provider"`
+	Url       *string     `json:"url"`
+	Address   *string     `json:"address"`
+	Latitude  *float64    `json:"latitude"`
+	Longitude *float64    `json:"longitude"`
+	CheckIn   pgtype.Date `json:"check_in"`
+	CheckOut  pgtype.Date `json:"check_out"`
+	PriceNote *string     `json:"price_note"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
 type ItineraryItem struct {
 	ID        uuid.UUID `json:"id"`
 	TripID    uuid.UUID `json:"trip_id"`

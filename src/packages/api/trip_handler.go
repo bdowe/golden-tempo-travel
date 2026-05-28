@@ -31,14 +31,15 @@ type ItineraryItemResponse struct {
 }
 
 type TripResponse struct {
-	ID        string                  `json:"id"`
-	Title     string                  `json:"title"`
-	StartDate *string                 `json:"start_date,omitempty"`
-	EndDate   *string                 `json:"end_date,omitempty"`
-	Status    string                  `json:"status"`
-	CreatedAt time.Time               `json:"created_at"`
-	UpdatedAt time.Time               `json:"updated_at"`
-	Items     []ItineraryItemResponse `json:"items,omitempty"`
+	ID             string                  `json:"id"`
+	Title          string                  `json:"title"`
+	StartDate      *string                 `json:"start_date,omitempty"`
+	EndDate        *string                 `json:"end_date,omitempty"`
+	Status         string                  `json:"status"`
+	CreatedAt      time.Time               `json:"created_at"`
+	UpdatedAt      time.Time               `json:"updated_at"`
+	Items          []ItineraryItemResponse `json:"items,omitempty"`
+	Accommodations []AccommodationResponse `json:"accommodations,omitempty"`
 }
 
 type PatchTripRequest struct {
@@ -60,7 +61,7 @@ func dateToPtr(d pgtype.Date) *string {
 	return &s
 }
 
-func toTripResponse(t store.Trip, items []store.ItineraryItem) TripResponse {
+func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation) TripResponse {
 	resp := TripResponse{
 		ID:        t.ID.String(),
 		Title:     t.Title,
@@ -80,6 +81,9 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem) TripResponse {
 			Latitude:  it.Latitude,
 			Longitude: it.Longitude,
 		})
+	}
+	for _, a := range accommodations {
+		resp.Accommodations = append(resp.Accommodations, toAccommodationResponse(a))
 	}
 	return resp
 }
@@ -160,7 +164,7 @@ func listTripsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]TripResponse, 0, len(trips))
 	for _, t := range trips {
-		out = append(out, toTripResponse(t, nil))
+		out = append(out, toTripResponse(t, nil, nil))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -183,7 +187,12 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
 		return
 	}
-	writeJSON(w, http.StatusOK, toTripResponse(trip, items))
+	accommodations, err := q.ListAccommodationsByTrip(r.Context(), trip.ID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not load accommodations")
+		return
+	}
+	writeJSON(w, http.StatusOK, toTripResponse(trip, items, accommodations))
 }
 
 func patchTripHandler(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +250,7 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
 		return
 	}
-	writeJSON(w, http.StatusOK, toTripResponse(trip, items))
+	writeJSON(w, http.StatusOK, toTripResponse(trip, items, nil))
 }
 
 func deleteTripHandler(w http.ResponseWriter, r *http.Request) {

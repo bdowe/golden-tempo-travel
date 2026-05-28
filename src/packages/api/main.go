@@ -547,6 +547,9 @@ func main() {
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(deleteTripHandler))).Methods("DELETE")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(putPreferencesHandler))).Methods("PUT")
+	api.HandleFunc("/accommodation-links", accommodationLinksHandler).Methods("GET")
+	api.Handle("/trips/{id}/accommodations", authMiddleware(http.HandlerFunc(addAccommodationHandler))).Methods("POST")
+	api.Handle("/trips/{id}/accommodations/{accId}", authMiddleware(http.HandlerFunc(deleteAccommodationHandler))).Methods("DELETE")
 
 	// Server configuration
 	port := "8080"
@@ -577,6 +580,8 @@ func main() {
 	log.Printf("  GET  /api/v1/trips              - List trips (auth)")
 	log.Printf("  GET/PATCH/DELETE /api/v1/trips/{id} - Trip detail (auth)")
 	log.Printf("  GET/PUT /api/v1/preferences      - Traveler preferences (auth)")
+	log.Printf("  GET  /api/v1/accommodation-links - Airbnb/Booking browse links")
+	log.Printf("  POST/DELETE /api/v1/trips/{id}/accommodations - Trip stays (auth)")
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal("Server failed to start:", err)

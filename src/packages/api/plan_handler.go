@@ -122,9 +122,24 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	suggestStaysTool := anthropic.ToolParam{
+		Name:        "suggest_stays",
+		Description: anthropic.String("Give the traveler links to browse accommodations on Airbnb and Booking.com for a destination. Call this when they want lodging suggestions."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"destination": map[string]any{"type": "string", "description": "City or area, e.g. 'Paris'"},
+				"check_in":    map[string]any{"type": "string", "description": "Optional YYYY-MM-DD"},
+				"check_out":   map[string]any{"type": "string", "description": "Optional YYYY-MM-DD"},
+				"guests":      map[string]any{"type": "integer", "description": "Optional number of guests"},
+			},
+			Required: []string{"destination"},
+		},
+	}
+
 	tools := []anthropic.ToolUnionParam{
 		{OfTool: &searchTool},
 		{OfTool: &createTool},
+		{OfTool: &suggestStaysTool},
 	}
 	if authed {
 		tools = append(tools, anthropic.ToolUnionParam{OfTool: &savePrefsTool})
@@ -259,6 +274,22 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				sendSSE(w, "tool_result", map[string]string{"name": "save_preferences"})
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, msg, err != nil))
+
+			case "suggest_stays":
+				var in struct {
+					Destination string `json:"destination"`
+					CheckIn     string `json:"check_in"`
+					CheckOut    string `json:"check_out"`
+					Guests      int    `json:"guests"`
+				}
+				json.Unmarshal(variant.Input, &in)
+				links := providerLinks(AccommodationQuery{
+					Destination: in.Destination, CheckIn: in.CheckIn, CheckOut: in.CheckOut, Guests: in.Guests,
+				})
+				sendSSE(w, "stays", map[string]any{"destination": in.Destination, "links": links})
+				sendSSE(w, "tool_result", map[string]string{"name": "suggest_stays"})
+				b, _ := json.Marshal(links)
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, "Provided browse links: "+string(b), false))
 			}
 		}
 
