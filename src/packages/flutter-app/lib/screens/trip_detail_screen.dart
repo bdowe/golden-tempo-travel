@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/trip.dart';
+import '../models/airbnb_listing.dart';
 import '../providers/trips_provider.dart';
+import '../providers/accommodations_provider.dart';
+import '../services/accommodations_api_service.dart';
+import '../services/airbnb_api_service.dart';
 
 class TripDetailScreen extends ConsumerStatefulWidget {
   final String tripId;
@@ -211,8 +216,309 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               title: Text(item.name),
                               subtitle: item.address != null ? Text(item.address!) : null,
                             ),
+                        const Divider(height: 32),
+                        Row(
+                          children: [
+                            Expanded(child: Text('Stays', style: theme.textTheme.titleMedium)),
+                            TextButton.icon(
+                              onPressed: () => _findStays(trip),
+                              icon: const Icon(Icons.search, size: 18),
+                              label: const Text('Find stays'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if ((trip.accommodations ?? []).isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text('No stays added yet.'),
+                          )
+                        else
+                          for (final acc in trip.accommodations!)
+                            ListTile(
+                              leading: const Icon(Icons.hotel),
+                              title: Text(acc.name),
+                              subtitle: Text([
+                                if (acc.provider != null) acc.provider!,
+                                if (acc.checkIn != null && acc.checkOut != null)
+                                  '${acc.checkIn} → ${acc.checkOut}',
+                                if (acc.priceNote != null) acc.priceNote!,
+                              ].join(' · ')),
+                              onTap: acc.url != null ? () => _launch(acc.url!) : null,
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _deleteAccommodation(acc.id),
+                              ),
+                            ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _addStay,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add a stay'),
+                          ),
+                        ),
                       ],
                     ),
+    );
+  }
+
+  Future<void> _launch(String url) async {
+    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok) _showSnack('Could not open link');
+  }
+
+  Future<void> _deleteAccommodation(String accId) async {
+    try {
+      await ref.read(accommodationsApiServiceProvider).delete(widget.tripId, accId);
+      await _load();
+    } catch (e) {
+      _showSnack('Delete failed: $e');
+    }
+  }
+
+  Future<void> _findStays(Trip trip) async {
+    final initial = (trip.items != null && trip.items!.isNotEmpty)
+        ? trip.items!.first.name
+        : trip.title;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _FindStaysDialog(
+        initialDestination: initial,
+        checkIn: trip.startDate,
+        checkOut: trip.endDate,
+      ),
+    );
+  }
+
+  Future<void> _addStay() async {
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AddStayDialog(tripId: widget.tripId),
+    );
+    if (added == true) await _load();
+  }
+}
+
+/// Lets the user browse Airbnb + Booking.com for a destination via deep links.
+class _FindStaysDialog extends ConsumerStatefulWidget {
+  final String initialDestination;
+  final String? checkIn;
+  final String? checkOut;
+
+  const _FindStaysDialog({required this.initialDestination, this.checkIn, this.checkOut});
+
+  @override
+  ConsumerState<_FindStaysDialog> createState() => _FindStaysDialogState();
+}
+
+class _FindStaysDialogState extends ConsumerState<_FindStaysDialog> {
+  late final TextEditingController _destination =
+      TextEditingController(text: widget.initialDestination);
+  List<ProviderLink> _links = [];
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _destination.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getLinks() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final links = await ref.read(accommodationsApiServiceProvider).links(
+            destination: _destination.text.trim(),
+            checkIn: widget.checkIn,
+            checkOut: widget.checkOut,
+          );
+      setState(() => _links = links);
+    } catch (e) {
+      setState(() => _error = '$e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  String _label(String provider) => provider == 'airbnb'
+      ? 'Browse on Airbnb'
+      : provider == 'booking'
+          ? 'Browse on Booking.com'
+          : provider;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Find stays'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _destination,
+            decoration: const InputDecoration(labelText: 'Destination'),
+          ),
+          const SizedBox(height: 12),
+          if (_error != null)
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          for (final link in _links)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication),
+                  child: Text(_label(link.provider)),
+                ),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        FilledButton(
+          onPressed: _loading ? null : _getLinks,
+          child: _loading
+              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Get links'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Add a stay manually, optionally pre-filled by parsing a pasted Airbnb URL.
+class _AddStayDialog extends ConsumerStatefulWidget {
+  final String tripId;
+  const _AddStayDialog({required this.tripId});
+
+  @override
+  ConsumerState<_AddStayDialog> createState() => _AddStayDialogState();
+}
+
+class _AddStayDialogState extends ConsumerState<_AddStayDialog> {
+  final _airbnbUrl = TextEditingController();
+  final _name = TextEditingController();
+  final _priceNote = TextEditingController();
+  String? _resolvedUrl;
+  String? _provider;
+  String? _address;
+  double? _lat;
+  double? _lng;
+  bool _fetching = false;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _airbnbUrl.dispose();
+    _name.dispose();
+    _priceNote.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchAirbnb() async {
+    final url = _airbnbUrl.text.trim();
+    if (url.isEmpty) return;
+    setState(() {
+      _fetching = true;
+      _error = null;
+    });
+    try {
+      final apiClient = ref.read(accommodationsApiServiceProvider).apiClient;
+      final svc = AirbnbApiService(baseUrl: apiClient.baseUrl, httpClient: apiClient.httpClient);
+      final AirbnbListing listing = await svc.parseListing(url);
+      setState(() {
+        _name.text = listing.title;
+        _resolvedUrl = listing.url.isNotEmpty ? listing.url : url;
+        _provider = 'airbnb';
+        _address = '${listing.location.city}, ${listing.location.country}';
+        _lat = listing.location.latitude;
+        _lng = listing.location.longitude;
+        _priceNote.text =
+            '${listing.pricing.currency} ${listing.pricing.nightlyRate.toStringAsFixed(0)}/night';
+      });
+    } catch (e) {
+      setState(() => _error = 'Could not parse that Airbnb link');
+    } finally {
+      setState(() => _fetching = false);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Name is required');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref.read(accommodationsApiServiceProvider).add(widget.tripId, {
+        'name': _name.text.trim(),
+        if (_provider != null) 'provider': _provider,
+        if (_resolvedUrl != null) 'url': _resolvedUrl,
+        if (_address != null) 'address': _address,
+        if (_lat != null) 'latitude': _lat,
+        if (_lng != null) 'longitude': _lng,
+        if (_priceNote.text.trim().isNotEmpty) 'price_note': _priceNote.text.trim(),
+      });
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() {
+        _saving = false;
+        _error = 'Save failed: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add a stay'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _airbnbUrl,
+                    decoration: const InputDecoration(labelText: 'Airbnb link (optional)'),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _fetching ? null : _fetchAirbnb,
+                  child: _fetching
+                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Fetch'),
+                ),
+              ],
+            ),
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(controller: _priceNote, decoration: const InputDecoration(labelText: 'Price note (optional)')),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Save'),
+        ),
+      ],
     );
   }
 }
