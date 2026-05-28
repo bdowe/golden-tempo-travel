@@ -6,9 +6,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"travel-route-planner/store"
 )
 
 type PlanRequest struct {
@@ -49,6 +52,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+
+	// Resolve the caller once: anonymous sessions get no personalization and no
+	// preference-writing tool; signed-in sessions get both.
+	uid, authed := userIDFromRequest(r)
 
 	searchTool := anthropic.ToolParam{
 		Name:        "search_places",
@@ -91,9 +98,36 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			Required: []string{"locations"},
 		},
 	}
+	savePrefsTool := anthropic.ToolParam{
+		Name:        "save_preferences",
+		Description: anthropic.String("Save what you learn about the traveler's preferences so future trips are personalized. Call this when the user reveals a budget level, trip pace, or interests. Only include fields you actually learned."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"budget": map[string]any{
+					"type":        "string",
+					"enum":        []string{"budget", "mid", "luxury"},
+					"description": "Overall spending level",
+				},
+				"pace": map[string]any{
+					"type":        "string",
+					"enum":        []string{"relaxed", "balanced", "packed"},
+					"description": "How packed the days should be",
+				},
+				"interests": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Theme tags, e.g. museums, food, nightlife, nature",
+				},
+			},
+		},
+	}
+
 	tools := []anthropic.ToolUnionParam{
 		{OfTool: &searchTool},
 		{OfTool: &createTool},
+	}
+	if authed {
+		tools = append(tools, anthropic.ToolUnionParam{OfTool: &savePrefsTool})
 	}
 
 	var messages []anthropic.MessageParam
@@ -105,10 +139,18 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	systemPrompt := "You are an expert travel agent. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan. Be conversational and helpful — ask clarifying questions if needed before searching."
+	basePrompt := "You are an expert travel agent. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan. Be conversational and helpful — ask clarifying questions if needed before searching."
 
 	placesService := NewGooglePlacesService()
 	ctx := r.Context()
+
+	// Fold the signed-in traveler's saved preferences into the system prompt.
+	systemPrompt := basePrompt
+	if authed {
+		if prefs, err := store.New(dbPool).GetPreferences(ctx, uid); err == nil {
+			systemPrompt = personalizedSystemPrompt(basePrompt, &prefs)
+		}
+	}
 
 	for {
 		params := anthropic.MessageNewParams{
@@ -184,8 +226,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				donePayload := map[string]any{"locations": in.Locations, "summary": in.Summary}
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).
-				if uid, ok := userIDFromRequest(r); ok {
-					if tripID, err := persistTrip(r.Context(), uid, in.Summary, in.Locations); err != nil {
+				if authed {
+					if tripID, err := persistTrip(ctx, uid, in.Summary, in.Locations); err != nil {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID
@@ -193,6 +235,30 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				sendSSE(w, "done", donePayload)
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, "Itinerary created successfully.", false))
+
+			case "save_preferences":
+				var in struct {
+					Budget    *string  `json:"budget"`
+					Pace      *string  `json:"pace"`
+					Interests []string `json:"interests"`
+				}
+				json.Unmarshal(variant.Input, &in)
+
+				budget, _ := normalizeChoice(in.Budget, allowedBudgets, "budget")
+				pace, _ := normalizeChoice(in.Pace, allowedPaces, "pace")
+				var interestsArg interface{}
+				if in.Interests != nil {
+					interestsArg = normalizeInterests(in.Interests)
+				}
+				_, err := store.New(dbPool).UpsertPreferences(ctx, store.UpsertPreferencesParams{
+					UserID: uid, Budget: budget, Pace: pace, Interests: interestsArg,
+				})
+				msg := "Preferences saved."
+				if err != nil {
+					msg = fmt.Sprintf("Could not save preferences: %v", err)
+				}
+				sendSSE(w, "tool_result", map[string]string{"name": "save_preferences"})
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, msg, err != nil))
 			}
 		}
 
@@ -204,4 +270,28 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	}
+}
+
+// personalizedSystemPrompt appends the traveler's saved preferences to the base
+// prompt, omitting any fields that are unset. Returns base unchanged when there
+// are no preferences to add.
+func personalizedSystemPrompt(base string, p *store.TravelerPreference) string {
+	if p == nil {
+		return base
+	}
+	var parts []string
+	if p.Budget != nil && *p.Budget != "" {
+		parts = append(parts, "budget: "+*p.Budget)
+	}
+	if p.Pace != nil && *p.Pace != "" {
+		parts = append(parts, "pace: "+*p.Pace)
+	}
+	if len(p.Interests) > 0 {
+		parts = append(parts, "interests: "+strings.Join(p.Interests, ", "))
+	}
+	if len(parts) == 0 {
+		return base
+	}
+	return base + "\n\nTraveler preferences — " + strings.Join(parts, "; ") +
+		". Tailor your suggestions accordingly."
 }

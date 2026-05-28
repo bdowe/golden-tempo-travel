@@ -30,6 +30,15 @@ type Session struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type TravelerPreference struct {
+	UserID    uuid.UUID `json:"user_id"`
+	Budget    *string   `json:"budget"`
+	Pace      *string   `json:"pace"`
+	Interests []string  `json:"interests"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Trip struct {
 	ID        uuid.UUID   `json:"id"`
 	UserID    uuid.UUID   `json:"user_id"`

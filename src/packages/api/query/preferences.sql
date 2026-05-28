@@ -1,0 +1,16 @@
+-- name: GetPreferences :one
+SELECT * FROM traveler_preferences WHERE user_id = $1;
+
+-- name: UpsertPreferences :one
+INSERT INTO traveler_preferences (user_id, budget, pace, interests)
+VALUES (
+    sqlc.arg('user_id'),
+    sqlc.narg('budget'),
+    sqlc.narg('pace'),
+    COALESCE(sqlc.narg('interests'), '{}'::text[])
+)
+ON CONFLICT (user_id) DO UPDATE SET
+    budget    = COALESCE(sqlc.narg('budget'), traveler_preferences.budget),
+    pace      = COALESCE(sqlc.narg('pace'), traveler_preferences.pace),
+    interests = COALESCE(sqlc.narg('interests'), traveler_preferences.interests)
+RETURNING *;

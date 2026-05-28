@@ -1,0 +1,133 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+
+	"travel-route-planner/store"
+)
+
+var allowedBudgets = map[string]bool{"budget": true, "mid": true, "luxury": true}
+var allowedPaces = map[string]bool{"relaxed": true, "balanced": true, "packed": true}
+
+type PreferencesResponse struct {
+	Budget    *string  `json:"budget"`
+	Pace      *string  `json:"pace"`
+	Interests []string `json:"interests"`
+}
+
+type PutPreferencesRequest struct {
+	Budget *string `json:"budget"`
+	Pace   *string `json:"pace"`
+	// Pointer distinguishes omitted (nil -> keep) from cleared ([] -> clear).
+	Interests *[]string `json:"interests"`
+}
+
+func toPreferencesResponse(p store.TravelerPreference) PreferencesResponse {
+	interests := p.Interests
+	if interests == nil {
+		interests = []string{}
+	}
+	return PreferencesResponse{Budget: p.Budget, Pace: p.Pace, Interests: interests}
+}
+
+func getPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	if dbPool == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	p, err := store.New(dbPool).GetPreferences(r.Context(), user.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusOK, PreferencesResponse{Interests: []string{}})
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not load preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, toPreferencesResponse(p))
+}
+
+func putPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	if dbPool == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+
+	var req PutPreferencesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	budget, err := normalizeChoice(req.Budget, allowedBudgets, "budget")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	pace, err := normalizeChoice(req.Pace, allowedPaces, "pace")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// nil interests -> leave unchanged; provided (incl. empty) -> set/clear.
+	var interestsArg interface{}
+	if req.Interests != nil {
+		interestsArg = normalizeInterests(*req.Interests)
+	}
+
+	p, err := store.New(dbPool).UpsertPreferences(r.Context(), store.UpsertPreferencesParams{
+		UserID:    user.ID,
+		Budget:    budget,
+		Pace:      pace,
+		Interests: interestsArg,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not save preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, toPreferencesResponse(p))
+}
+
+// normalizeChoice lowercases/trims a choice field. Empty -> nil (omit, keep
+// existing); an unrecognized value -> error.
+func normalizeChoice(v *string, allowed map[string]bool, field string) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	s := strings.ToLower(strings.TrimSpace(*v))
+	if s == "" {
+		return nil, nil
+	}
+	if !allowed[s] {
+		return nil, errors.New(field + " is not a recognized value")
+	}
+	return &s, nil
+}
+
+// normalizeInterests trims, drops blanks, and de-duplicates (case-insensitive,
+// order-preserving). Always returns a non-nil slice so an empty input clears.
+func normalizeInterests(in []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, s := range in {
+		t := strings.TrimSpace(s)
+		if t == "" {
+			continue
+		}
+		key := strings.ToLower(t)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, t)
+	}
+	return out
+}
