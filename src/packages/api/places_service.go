@@ -18,36 +18,36 @@ type GooglePlacesService struct {
 
 // PlaceSearchResult represents a place from Google Places API
 type PlaceSearchResult struct {
-	PlaceID     string  `json:"place_id"`
-	Name        string  `json:"name"`
-	Address     string  `json:"formatted_address"`
-	Latitude    float64 `json:"lat"`
-	Longitude   float64 `json:"lng"`
-	Types       []string `json:"types"`
-	Rating      *float64 `json:"rating,omitempty"`
-	PriceLevel  *int     `json:"price_level,omitempty"`
+	PlaceID    string   `json:"place_id"`
+	Name       string   `json:"name"`
+	Address    string   `json:"formatted_address"`
+	Latitude   float64  `json:"lat"`
+	Longitude  float64  `json:"lng"`
+	Types      []string `json:"types"`
+	Rating     *float64 `json:"rating,omitempty"`
+	PriceLevel *int     `json:"price_level,omitempty"`
 }
 
 // PlaceAutocompleteResult represents autocomplete suggestions
 type PlaceAutocompleteResult struct {
-	PlaceID     string `json:"place_id"`
-	Description string `json:"description"`
+	PlaceID     string   `json:"place_id"`
+	Description string   `json:"description"`
 	Types       []string `json:"types"`
 }
 
 // PlaceDetailsResult represents detailed place information
 type PlaceDetailsResult struct {
-	PlaceID         string                 `json:"place_id"`
-	Name            string                 `json:"name"`
-	Address         string                 `json:"formatted_address"`
-	Latitude        float64                `json:"lat"`
-	Longitude       float64                `json:"lng"`
-	Types           []string               `json:"types"`
-	Rating          *float64               `json:"rating,omitempty"`
-	PriceLevel      *int                   `json:"price_level,omitempty"`
-	OpeningHours    *GoogleOpeningHours    `json:"opening_hours,omitempty"`
-	Website         *string                `json:"website,omitempty"`
-	PhoneNumber     *string                `json:"formatted_phone_number,omitempty"`
+	PlaceID      string              `json:"place_id"`
+	Name         string              `json:"name"`
+	Address      string              `json:"formatted_address"`
+	Latitude     float64             `json:"lat"`
+	Longitude    float64             `json:"lng"`
+	Types        []string            `json:"types"`
+	Rating       *float64            `json:"rating,omitempty"`
+	PriceLevel   *int                `json:"price_level,omitempty"`
+	OpeningHours *GoogleOpeningHours `json:"opening_hours,omitempty"`
+	Website      *string             `json:"website,omitempty"`
+	PhoneNumber  *string             `json:"formatted_phone_number,omitempty"`
 }
 
 // GoogleOpeningHours represents Google's opening hours format
@@ -62,7 +62,7 @@ func NewGooglePlacesService() *GooglePlacesService {
 	if apiKey == "" {
 		fmt.Println("Warning: GOOGLE_PLACES_API_KEY environment variable not set")
 	}
-	
+
 	return &GooglePlacesService{
 		APIKey: apiKey,
 		Client: &http.Client{},
@@ -94,9 +94,9 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 
 	var result struct {
 		Results []struct {
-			PlaceID          string  `json:"place_id"`
-			Name             string  `json:"name"`
-			FormattedAddress string  `json:"formatted_address"`
+			PlaceID          string `json:"place_id"`
+			Name             string `json:"name"`
+			FormattedAddress string `json:"formatted_address"`
 			Geometry         struct {
 				Location struct {
 					Lat float64 `json:"lat"`
@@ -211,21 +211,21 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 
 	var result struct {
 		Result struct {
-			PlaceID          string  `json:"place_id"`
-			Name             string  `json:"name"`
-			FormattedAddress string  `json:"formatted_address"`
+			PlaceID          string `json:"place_id"`
+			Name             string `json:"name"`
+			FormattedAddress string `json:"formatted_address"`
 			Geometry         struct {
 				Location struct {
 					Lat float64 `json:"lat"`
 					Lng float64 `json:"lng"`
 				} `json:"location"`
 			} `json:"geometry"`
-			Types            []string               `json:"types"`
-			Rating           *float64               `json:"rating"`
-			PriceLevel       *int                   `json:"price_level"`
-			OpeningHours     *GoogleOpeningHours    `json:"opening_hours"`
-			Website          *string                `json:"website"`
-			FormattedPhoneNumber *string            `json:"formatted_phone_number"`
+			Types                []string            `json:"types"`
+			Rating               *float64            `json:"rating"`
+			PriceLevel           *int                `json:"price_level"`
+			OpeningHours         *GoogleOpeningHours `json:"opening_hours"`
+			Website              *string             `json:"website"`
+			FormattedPhoneNumber *string             `json:"formatted_phone_number"`
 		} `json:"result"`
 		Status string `json:"status"`
 	}
@@ -262,20 +262,20 @@ func ConvertGoogleHoursToOperatingHours(googleHours *GoogleOpeningHours) *Operat
 	}
 
 	hours := &OperatingHours{}
-	
+
 	// Google returns weekday_text as ["Monday: 9:00 AM – 5:00 PM", ...]
 	for _, dayText := range googleHours.WeekdayText {
 		parts := strings.SplitN(dayText, ": ", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		
+
 		day := strings.ToLower(parts[0])
 		timeRange := parts[1]
-		
+
 		// Convert "9:00 AM – 5:00 PM" to "09:00-17:00"
 		hoursStr := convertGoogleTimeRange(timeRange)
-		
+
 		switch day {
 		case "monday":
 			hours.Monday = hoursStr
@@ -293,7 +293,7 @@ func ConvertGoogleHoursToOperatingHours(googleHours *GoogleOpeningHours) *Operat
 			hours.Sunday = hoursStr
 		}
 	}
-	
+
 	return hours
 }
 
@@ -302,12 +302,12 @@ func convertGoogleTimeRange(timeRange string) string {
 	if strings.Contains(strings.ToLower(timeRange), "closed") {
 		return "closed"
 	}
-	
+
 	// Simple conversion - this could be more robust
 	timeRange = strings.ReplaceAll(timeRange, "–", "-")
 	timeRange = strings.ReplaceAll(timeRange, " AM", "")
 	timeRange = strings.ReplaceAll(timeRange, " PM", "")
-	
+
 	// This is a simplified conversion - for production, you'd want more robust time parsing
 	return timeRange
 }
@@ -317,39 +317,39 @@ func MapGoogleTypeToCategory(types []string) string {
 	if len(types) == 0 {
 		return ""
 	}
-	
+
 	// Priority mapping - check most specific types first
 	typeMap := map[string]string{
 		"restaurant":         "restaurant",
-		"food":              "restaurant", 
-		"meal_takeaway":     "restaurant",
-		"cafe":              "coffee_shop",
-		"coffee_shop":       "coffee_shop",
-		"museum":            "museum",
+		"food":               "restaurant",
+		"meal_takeaway":      "restaurant",
+		"cafe":               "coffee_shop",
+		"coffee_shop":        "coffee_shop",
+		"museum":             "museum",
 		"tourist_attraction": "attraction",
-		"amusement_park":    "attraction",
-		"zoo":               "attraction",
-		"park":              "park",
-		"shopping_mall":     "shopping",
-		"store":             "shopping",
-		"hospital":          "medical",
-		"pharmacy":          "medical",
-		"gas_station":       "gas_station",
-		"lodging":           "hotel",
-		"movie_theater":     "entertainment",
-		"night_club":        "entertainment",
-		"gym":               "fitness",
-		"church":            "religious",
-		"school":            "education",
-		"university":        "education",
+		"amusement_park":     "attraction",
+		"zoo":                "attraction",
+		"park":               "park",
+		"shopping_mall":      "shopping",
+		"store":              "shopping",
+		"hospital":           "medical",
+		"pharmacy":           "medical",
+		"gas_station":        "gas_station",
+		"lodging":            "hotel",
+		"movie_theater":      "entertainment",
+		"night_club":         "entertainment",
+		"gym":                "fitness",
+		"church":             "religious",
+		"school":             "education",
+		"university":         "education",
 	}
-	
+
 	for _, gType := range types {
 		if category, exists := typeMap[gType]; exists {
 			return category
 		}
 	}
-	
+
 	// Default to the first type if no mapping found
 	return types[0]
 }

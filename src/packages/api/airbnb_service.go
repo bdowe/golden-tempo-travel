@@ -420,6 +420,7 @@ const domExtractionJS = `(() => {
 // FetchRawData loads the page with two strategies:
 //  1. fetch() interceptor → captures API responses (pricing, booking data)
 //  2. DOM extraction JS  → scrapes SSR'd listing content (title, photos, overview)
+//
 // Returns a map of URL → []response plus a special "__dom__" key.
 func (s *AirbnbService) FetchRawData(rawURL string) (map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)

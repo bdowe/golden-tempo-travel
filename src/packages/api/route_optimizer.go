@@ -10,7 +10,7 @@ import (
 
 // OperatingHours represents the operating hours for a location
 type OperatingHours struct {
-	Monday    string `json:"monday,omitempty"`    // e.g., "09:00-17:00" or "closed"
+	Monday    string `json:"monday,omitempty"` // e.g., "09:00-17:00" or "closed"
 	Tuesday   string `json:"tuesday,omitempty"`
 	Wednesday string `json:"wednesday,omitempty"`
 	Thursday  string `json:"thursday,omitempty"`
@@ -21,15 +21,15 @@ type OperatingHours struct {
 
 // Location represents a geographic location
 type Location struct {
-	ID                 string           `json:"id"`
-	Name               string           `json:"name"`
-	PlaceID            string           `json:"place_id,omitempty"`          // Google Places ID for lookups
-	Latitude           *float64         `json:"latitude,omitempty"`          // Optional - can be resolved from place_id
-	Longitude          *float64         `json:"longitude,omitempty"`         // Optional - can be resolved from place_id
-	Address            string           `json:"address,omitempty"`
-	Category           string           `json:"category,omitempty"`           // e.g., "coffee_shop", "museum", "restaurant"
-	VisitDurationMin   *int             `json:"visit_duration_minutes,omitempty"` // Optional override for visit time
-	Hours              *OperatingHours  `json:"hours,omitempty"`             // Operating hours by day of week
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	PlaceID          string          `json:"place_id,omitempty"`  // Google Places ID for lookups
+	Latitude         *float64        `json:"latitude,omitempty"`  // Optional - can be resolved from place_id
+	Longitude        *float64        `json:"longitude,omitempty"` // Optional - can be resolved from place_id
+	Address          string          `json:"address,omitempty"`
+	Category         string          `json:"category,omitempty"`               // e.g., "coffee_shop", "museum", "restaurant"
+	VisitDurationMin *int            `json:"visit_duration_minutes,omitempty"` // Optional override for visit time
+	Hours            *OperatingHours `json:"hours,omitempty"`                  // Operating hours by day of week
 }
 
 // RouteRequest represents the input for route optimization
@@ -43,26 +43,26 @@ type RouteRequest struct {
 
 // LocationTiming represents timing information for a specific location
 type LocationTiming struct {
-	Location           Location `json:"location"`
-	ArrivalTime        string   `json:"arrival_time,omitempty"`
-	VisitDurationMin   int      `json:"visit_duration_minutes"`
-	DepartureTime      string   `json:"departure_time,omitempty"`
-	TravelToNextMin    int      `json:"travel_to_next_minutes"`
+	Location         Location `json:"location"`
+	ArrivalTime      string   `json:"arrival_time,omitempty"`
+	VisitDurationMin int      `json:"visit_duration_minutes"`
+	DepartureTime    string   `json:"departure_time,omitempty"`
+	TravelToNextMin  int      `json:"travel_to_next_minutes"`
 }
 
 // RouteResponse represents the optimized route result
 type RouteResponse struct {
-	OptimizedRoute       []Location        `json:"optimized_route"`
-	TotalDistanceKm      float64           `json:"total_distance_km"`
-	TotalTravelTimeMin   int               `json:"total_travel_time_minutes"`
-	TotalVisitTimeMin    int               `json:"total_visit_time_minutes"`
-	TotalTripTimeMin     int               `json:"total_trip_time_minutes"`
-	LocationTimings      []LocationTiming  `json:"location_timings"`
-	Algorithm            string            `json:"algorithm_used"`
-	OriginalDistance     float64           `json:"original_distance_km,omitempty"`
-	ImprovementPct       float64           `json:"improvement_percentage,omitempty"`
-	LocationCount        int               `json:"location_count"`
-	Status               string            `json:"status"`
+	OptimizedRoute     []Location       `json:"optimized_route"`
+	TotalDistanceKm    float64          `json:"total_distance_km"`
+	TotalTravelTimeMin int              `json:"total_travel_time_minutes"`
+	TotalVisitTimeMin  int              `json:"total_visit_time_minutes"`
+	TotalTripTimeMin   int              `json:"total_trip_time_minutes"`
+	LocationTimings    []LocationTiming `json:"location_timings"`
+	Algorithm          string           `json:"algorithm_used"`
+	OriginalDistance   float64          `json:"original_distance_km,omitempty"`
+	ImprovementPct     float64          `json:"improvement_percentage,omitempty"`
+	LocationCount      int              `json:"location_count"`
+	Status             string           `json:"status"`
 }
 
 // VisitTimeEstimator handles estimation of visit durations based on location categories
@@ -109,12 +109,12 @@ func (vte *VisitTimeEstimator) EstimateVisitTime(location Location) int {
 	if location.VisitDurationMin != nil {
 		return *location.VisitDurationMin
 	}
-	
+
 	// Use category-based estimate
 	if duration, exists := vte.defaultVisitTimes[location.Category]; exists {
 		return duration
 	}
-	
+
 	// Fallback to unknown category default
 	return vte.defaultVisitTimes["unknown"]
 }
@@ -128,21 +128,21 @@ func (th *TimeHelper) parseTimeString(timeStr string) (int, int, error) {
 	if len(parts) != 2 {
 		return 0, 0, fmt.Errorf("invalid time format: %s", timeStr)
 	}
-	
+
 	hour, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid hour: %s", parts[0])
 	}
-	
+
 	minute, err := strconv.Atoi(parts[1])
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid minute: %s", parts[1])
 	}
-	
+
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
 		return 0, 0, fmt.Errorf("invalid time: %02d:%02d", hour, minute)
 	}
-	
+
 	return hour, minute, nil
 }
 
@@ -151,22 +151,22 @@ func (th *TimeHelper) parseOperatingHours(hoursStr string) (openHour, openMin, c
 	if strings.ToLower(strings.TrimSpace(hoursStr)) == "closed" || hoursStr == "" {
 		return 0, 0, 0, 0, true, nil
 	}
-	
+
 	parts := strings.Split(hoursStr, "-")
 	if len(parts) != 2 {
 		return 0, 0, 0, 0, false, fmt.Errorf("invalid hours format: %s", hoursStr)
 	}
-	
+
 	openHour, openMin, err = th.parseTimeString(strings.TrimSpace(parts[0]))
 	if err != nil {
 		return 0, 0, 0, 0, false, fmt.Errorf("invalid open time: %v", err)
 	}
-	
+
 	closeHour, closeMin, err = th.parseTimeString(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return 0, 0, 0, 0, false, fmt.Errorf("invalid close time: %v", err)
 	}
-	
+
 	return openHour, openMin, closeHour, closeMin, false, nil
 }
 
@@ -175,7 +175,7 @@ func (th *TimeHelper) getHoursForDay(hours *OperatingHours, weekday time.Weekday
 	if hours == nil {
 		return "" // Assume 24/7 if no hours specified
 	}
-	
+
 	switch weekday {
 	case time.Monday:
 		return hours.Monday
@@ -201,28 +201,28 @@ func (th *TimeHelper) isLocationOpen(location Location, checkTime time.Time) boo
 	if location.Hours == nil {
 		return true // Assume always open if no hours specified
 	}
-	
+
 	hoursStr := th.getHoursForDay(location.Hours, checkTime.Weekday())
 	if hoursStr == "" {
 		return true // Assume open if no hours specified for this day
 	}
-	
+
 	openHour, openMin, closeHour, closeMin, isClosed, err := th.parseOperatingHours(hoursStr)
 	if err != nil || isClosed {
 		return false
 	}
-	
+
 	// Convert times to minutes since midnight for easier comparison
 	checkMinutes := checkTime.Hour()*60 + checkTime.Minute()
 	openMinutes := openHour*60 + openMin
 	closeMinutes := closeHour*60 + closeMin
-	
+
 	// Handle cases where closing time is past midnight (e.g., 09:00-02:00 for late-night venues)
 	if closeMinutes < openMinutes {
 		// Location is open past midnight
 		return checkMinutes >= openMinutes || checkMinutes <= closeMinutes
 	}
-	
+
 	// Normal case: same-day hours
 	return checkMinutes >= openMinutes && checkMinutes <= closeMinutes
 }
@@ -232,7 +232,7 @@ func (th *TimeHelper) getNextOpenTime(location Location, fromTime time.Time) tim
 	if location.Hours == nil {
 		return fromTime // Always open
 	}
-	
+
 	// Check up to 7 days ahead
 	checkTime := fromTime
 	for i := 0; i < 7; i++ {
@@ -241,9 +241,9 @@ func (th *TimeHelper) getNextOpenTime(location Location, fromTime time.Time) tim
 			openHour, openMin, _, _, isClosed, err := th.parseOperatingHours(hoursStr)
 			if err == nil && !isClosed {
 				// Create opening time for this day
-				openTime := time.Date(checkTime.Year(), checkTime.Month(), checkTime.Day(), 
+				openTime := time.Date(checkTime.Year(), checkTime.Month(), checkTime.Day(),
 					openHour, openMin, 0, 0, checkTime.Location())
-				
+
 				// If this is today and the open time hasn't passed yet, return it
 				if i == 0 && openTime.After(fromTime) {
 					return openTime
@@ -258,7 +258,7 @@ func (th *TimeHelper) getNextOpenTime(location Location, fromTime time.Time) tim
 		checkTime = checkTime.AddDate(0, 0, 1)
 		checkTime = time.Date(checkTime.Year(), checkTime.Month(), checkTime.Day(), 0, 0, 0, 0, checkTime.Location())
 	}
-	
+
 	// If we can't find an opening time in the next 7 days, just return the original time
 	return fromTime
 }
@@ -305,7 +305,7 @@ func (ro *RouteOptimizer) getDistance(i, j int) float64 {
 	if i == j {
 		return 0
 	}
-	
+
 	// Ensure consistent cache key regardless of order
 	key := ""
 	if i < j {
@@ -357,7 +357,7 @@ func (ro *RouteOptimizer) nearestNeighborRoute(startIndex int, returnToStart boo
 
 	route := make([]int, 0, n)
 	visited := make([]bool, n)
-	
+
 	current := startIndex
 	route = append(route, current)
 	visited[current] = true
@@ -392,18 +392,18 @@ func (ro *RouteOptimizer) nearestNeighborRoute(startIndex int, returnToStart boo
 // twoOptSwap performs a 2-opt swap on the route
 func (ro *RouteOptimizer) twoOptSwap(route []int, i, k int) []int {
 	newRoute := make([]int, len(route))
-	
+
 	// Copy the first part
 	copy(newRoute[0:i], route[0:i])
-	
+
 	// Reverse the middle part
 	for j := 0; j <= k-i; j++ {
 		newRoute[i+j] = route[k-j]
 	}
-	
+
 	// Copy the last part
 	copy(newRoute[k+1:], route[k+1:])
-	
+
 	return newRoute
 }
 
@@ -416,14 +416,14 @@ func (ro *RouteOptimizer) optimizeWith2Opt(initialRoute []int, returnToStart boo
 	currentRoute := make([]int, len(initialRoute))
 	copy(currentRoute, initialRoute)
 	bestDistance := ro.calculateRouteDistance(currentRoute, returnToStart)
-	
+
 	improved := true
 	iteration := 0
-	
+
 	for improved && iteration < maxIterations {
 		improved = false
 		iteration++
-		
+
 		// Try all possible 2-opt swaps
 		for i := 1; i < len(currentRoute)-2; i++ {
 			for k := i + 1; k < len(currentRoute); k++ {
@@ -431,11 +431,11 @@ func (ro *RouteOptimizer) optimizeWith2Opt(initialRoute []int, returnToStart boo
 				if returnToStart && k == len(currentRoute)-1 {
 					continue
 				}
-				
+
 				// Create new route with 2-opt swap
 				newRoute := ro.twoOptSwap(currentRoute, i, k)
 				newDistance := ro.calculateRouteDistance(newRoute, returnToStart)
-				
+
 				// If improvement found, accept it
 				if newDistance < bestDistance {
 					currentRoute = newRoute
@@ -445,7 +445,7 @@ func (ro *RouteOptimizer) optimizeWith2Opt(initialRoute []int, returnToStart boo
 			}
 		}
 	}
-	
+
 	return currentRoute
 }
 
@@ -466,10 +466,10 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 	if location.Latitude != nil && location.Longitude != nil {
 		return nil
 	}
-	
+
 	var placeDetails *PlaceDetailsResult
 	var err error
-	
+
 	// Try to get details by Place ID first
 	if location.PlaceID != "" {
 		placeDetails, err = placesService.GetPlaceDetails(location.PlaceID)
@@ -485,7 +485,7 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 		if len(searchResults) == 0 {
 			return fmt.Errorf("no places found for '%s'", location.Name)
 		}
-		
+
 		// Use the first result and get detailed info
 		firstResult := searchResults[0]
 		placeDetails, err = placesService.GetPlaceDetails(firstResult.PlaceID)
@@ -495,27 +495,27 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 	} else {
 		return fmt.Errorf("location must have either place_id or name for resolution")
 	}
-	
+
 	// Update location with resolved data
 	location.PlaceID = placeDetails.PlaceID
 	location.Latitude = &placeDetails.Latitude
 	location.Longitude = &placeDetails.Longitude
-	
+
 	// Update address if not provided
 	if location.Address == "" {
 		location.Address = placeDetails.Address
 	}
-	
+
 	// Update category if not provided
 	if location.Category == "" {
 		location.Category = MapGoogleTypeToCategory(placeDetails.Types)
 	}
-	
+
 	// Update operating hours if not provided
 	if location.Hours == nil {
 		location.Hours = ConvertGoogleHoursToOperatingHours(placeDetails.OpeningHours)
 	}
-	
+
 	return nil
 }
 
@@ -528,7 +528,7 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 
 	// Initialize Google Places service
 	placesService := NewGooglePlacesService()
-	
+
 	// Resolve locations that don't have coordinates
 	for i := range request.Locations {
 		if err := ro.resolveLocation(&request.Locations[i], placesService); err != nil {
@@ -540,7 +540,7 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 
 	if len(request.Locations) == 1 {
 		visitDuration := ro.visitTimeEstimator.EstimateVisitTime(request.Locations[0])
-		
+
 		// Create single location timing
 		locationTiming := LocationTiming{
 			Location:         request.Locations[0],
@@ -549,23 +549,23 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 			DepartureTime:    "00:00",
 			TravelToNextMin:  0,
 		}
-		
+
 		// If start time is specified, use it
 		if request.StartTime != nil && *request.StartTime != "" {
 			if hour, min, err := ro.timeHelper.parseTimeString(*request.StartTime); err == nil {
 				now := time.Now()
 				startDateTime := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
-				
+
 				// Check if location is open at start time
 				if !ro.timeHelper.isLocationOpen(request.Locations[0], startDateTime) {
 					startDateTime = ro.timeHelper.getNextOpenTime(request.Locations[0], startDateTime)
 				}
-				
+
 				locationTiming.ArrivalTime = startDateTime.Format("15:04")
 				locationTiming.DepartureTime = startDateTime.Add(time.Duration(visitDuration) * time.Minute).Format("15:04")
 			}
 		}
-		
+
 		return RouteResponse{
 			OptimizedRoute:     request.Locations,
 			TotalDistanceKm:    0,
@@ -595,7 +595,7 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 	if len(request.Locations) > 20 {
 		maxIterations = 50 // Reduce iterations for larger problems
 	}
-	
+
 	optimizedRoute := ro.optimizeWith2Opt(initialRoute, request.ReturnToStart, maxIterations)
 	optimizedDistance := ro.calculateRouteDistance(optimizedRoute, request.ReturnToStart)
 
@@ -641,22 +641,22 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 	locationTimings := make([]LocationTiming, len(result))
 	totalVisitTime := 0
 	currentTime := startDateTime
-	
+
 	for i, location := range result {
 		visitDuration := ro.visitTimeEstimator.EstimateVisitTime(location)
-		
+
 		// Check if location is open at arrival time, adjust if necessary
 		if !ro.timeHelper.isLocationOpen(location, currentTime) {
 			// Find next open time and update current time
 			nextOpenTime := ro.timeHelper.getNextOpenTime(location, currentTime)
 			currentTime = nextOpenTime
 		}
-		
+
 		arrivalTime := currentTime.Format("15:04")
 		departureTime := currentTime.Add(time.Duration(visitDuration) * time.Minute).Format("15:04")
-		
+
 		totalVisitTime += visitDuration
-		
+
 		// Calculate travel time to next location
 		travelToNext := 0
 		if i < len(result)-1 {
@@ -676,7 +676,7 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 				travelToNext = int(math.Ceil(travelDistance / 40.0 * 60))
 			}
 		}
-		
+
 		locationTimings[i] = LocationTiming{
 			Location:         location,
 			ArrivalTime:      arrivalTime,
@@ -684,9 +684,9 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 			DepartureTime:    departureTime,
 			TravelToNextMin:  travelToNext,
 		}
-		
+
 		// Update current time for next location (departure time + travel time)
-		currentTime = currentTime.Add(time.Duration(visitDuration + travelToNext) * time.Minute)
+		currentTime = currentTime.Add(time.Duration(visitDuration+travelToNext) * time.Minute)
 	}
 
 	totalTripTime := travelTimeMin + totalVisitTime
