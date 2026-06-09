@@ -20,6 +20,7 @@ class Trip {
   final String? chatId;
   @JsonKey(name: 'version_count')
   final int? versionCount;
+  final List<String>? cities;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
@@ -39,6 +40,7 @@ class Trip {
     required this.status,
     this.chatId,
     this.versionCount,
+    this.cities,
     required this.createdAt,
     required this.updatedAt,
     this.items,

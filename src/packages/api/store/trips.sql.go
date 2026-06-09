@@ -197,13 +197,29 @@ func (q *Queries) GetTripByIDAndOwner(ctx context.Context, arg GetTripByIDAndOwn
 }
 
 const listLatestTripsByOwner = `-- name: ListLatestTripsByOwner :many
-SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, version_count FROM (
+SELECT latest.id, latest.user_id, latest.created_at, latest.updated_at,
+       latest.title, latest.start_date, latest.end_date, latest.status,
+       latest.chat_id, latest.version_count,
+       COALESCE(c.cities, ARRAY[]::text[])::text[] AS cities
+FROM (
   SELECT DISTINCT ON (COALESCE(chat_id, id::text))
          id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id,
          count(*) OVER (PARTITION BY COALESCE(chat_id, id::text)) AS version_count
   FROM trips WHERE user_id = $1
   ORDER BY COALESCE(chat_id, id::text), created_at DESC
-) latest ORDER BY created_at DESC
+) latest
+LEFT JOIN LATERAL (
+  SELECT array_agg(hub.city ORDER BY hub.first_pos) AS cities
+  FROM (
+    SELECT COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, '')) AS city,
+           MIN(ii.position) AS first_pos
+    FROM itinerary_items ii
+    WHERE ii.trip_id = latest.id
+      AND COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, '')) IS NOT NULL
+    GROUP BY COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, ''))
+  ) hub
+) c ON true
+ORDER BY latest.created_at DESC
 `
 
 type ListLatestTripsByOwnerRow struct {
@@ -217,10 +233,12 @@ type ListLatestTripsByOwnerRow struct {
 	Status       string      `json:"status"`
 	ChatID       *string     `json:"chat_id"`
 	VersionCount int64       `json:"version_count"`
+	Cities       []string    `json:"cities"`
 }
 
-// One row per chat group (latest version), with how many versions exist.
-// Legacy trips with NULL chat_id stand alone (grouped by their own id).
+// One row per chat group (latest version), with how many versions exist and the
+// trip's distinct hub cities (day_trip_from ?? city) in first-appearance order
+// for a location summary. Legacy trips with NULL chat_id stand alone.
 func (q *Queries) ListLatestTripsByOwner(ctx context.Context, userID uuid.UUID) ([]ListLatestTripsByOwnerRow, error) {
 	rows, err := q.db.Query(ctx, listLatestTripsByOwner, userID)
 	if err != nil {
@@ -241,6 +259,7 @@ func (q *Queries) ListLatestTripsByOwner(ctx context.Context, userID uuid.UUID) 
 			&i.Status,
 			&i.ChatID,
 			&i.VersionCount,
+			&i.Cities,
 		); err != nil {
 			return nil, err
 		}

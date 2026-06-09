@@ -47,6 +47,7 @@ type TripResponse struct {
 	Status         string                  `json:"status"`
 	ChatID         *string                 `json:"chat_id,omitempty"`
 	VersionCount   int                     `json:"version_count"`
+	Cities         []string                `json:"cities,omitempty"`
 	CreatedAt      time.Time               `json:"created_at"`
 	UpdatedAt      time.Time               `json:"updated_at"`
 	Items          []ItineraryItemResponse `json:"items,omitempty"`
@@ -246,6 +247,7 @@ func listTripsHandler(w http.ResponseWriter, r *http.Request) {
 			ChatID:    t.ChatID,
 		}, nil, nil, nil, nil)
 		resp.VersionCount = int(t.VersionCount)
+		resp.Cities = t.Cities
 		out = append(out, resp)
 	}
 	writeJSON(w, http.StatusOK, out)

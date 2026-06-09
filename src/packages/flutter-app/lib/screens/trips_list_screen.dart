@@ -93,6 +93,34 @@ String _shortDate(String iso) {
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
+const _mon = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+String _fmtDt(DateTime d) => '${_mon[d.month - 1]} ${d.day}';
+
+/// "Mon d – Mon d" from the trip's start/end (same day collapses to one);
+/// null when either date is missing/unparseable.
+String? _dateRange(Trip t) {
+  final a = DateTime.tryParse(t.startDate ?? '');
+  final b = DateTime.tryParse(t.endDate ?? '');
+  if (a == null || b == null) return null;
+  final sameDay = a.year == b.year && a.month == b.month && a.day == b.day;
+  return sameDay ? _fmtDt(a) : '${_fmtDt(a)} – ${_fmtDt(b)}';
+}
+
+/// A short destination summary from the trip's hub cities: "Paris",
+/// "Mexico City & Puerto Vallarta", or "Tokyo & Kyoto +2 more". Null when the
+/// trip has no city data (legacy trips), so the caller falls back to the title.
+String? _locationLabel(Trip t) {
+  final cities = t.cities ?? const <String>[];
+  if (cities.isEmpty) return null;
+  if (cities.length == 1) return cities.first;
+  if (cities.length == 2) return '${cities[0]} & ${cities[1]}';
+  return '${cities[0]} & ${cities[1]} +${cities.length - 2} more';
+}
+
 void _openTrip(BuildContext context, String tripId) {
   Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: tripId)),
@@ -111,13 +139,46 @@ class _TripCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final versions = trip.versionCount ?? 1;
     final hasHistory = isAdmin && versions > 1 && trip.chatId != null;
-    final subtitle = Text('${trip.status} · created ${_shortDate(trip.createdAt)}');
+    final range = _dateRange(trip);
+
+    final title = Text(
+      _locationLabel(trip) ?? trip.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context)
+          .textTheme
+          .titleMedium
+          ?.copyWith(fontWeight: FontWeight.w600),
+    );
+
+    final subtitle = Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (range != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.event, size: 14),
+                const SizedBox(width: 4),
+                Text(range),
+              ],
+            )
+          else
+            Text('Created ${_shortDate(trip.createdAt)}'),
+          _StatusChip(status: trip.status),
+        ],
+      ),
+    );
 
     if (!hasHistory) {
       return Card(
         child: ListTile(
           leading: const Icon(Icons.map_outlined),
-          title: Text(trip.title),
+          title: title,
           subtitle: subtitle,
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _openTrip(context, trip.id),
@@ -129,7 +190,7 @@ class _TripCard extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         leading: const Icon(Icons.map_outlined),
-        title: Text(trip.title),
+        title: title,
         subtitle: Row(
           children: [
             Expanded(child: subtitle),
@@ -141,6 +202,33 @@ class _TripCard extends ConsumerWidget {
           _VersionList(chatId: trip.chatId!, latestId: trip.id),
         ],
       ),
+    );
+  }
+}
+
+/// Small display-only status pill: a colored dot + capitalized label.
+class _StatusChip extends StatelessWidget {
+  final String status;
+  const _StatusChip({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isPlanned = status == 'planned';
+    final label = status.isEmpty
+        ? 'Draft'
+        : '${status[0].toUpperCase()}${status.substring(1)}';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.circle,
+          size: 10,
+          color: isPlanned ? Colors.green : theme.colorScheme.outline,
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: theme.textTheme.bodySmall),
+      ],
     );
   }
 }
