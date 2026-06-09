@@ -65,8 +65,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
   PlanNotifier(this._service, this._apiClient) : super(const PlanState());
 
+  // 0x7fffffff (not 1 << 32) because on the web target `1 << 32` overflows JS's
+  // 32-bit bitwise ops to 0, and Random.nextInt(0) throws RangeError.
   static String _newChatId() =>
-      'chat-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32).toRadixString(16)}';
+      'chat-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}-${Random.secure().nextInt(0x7fffffff).toRadixString(16)}';
 
   List<Location> get completedAsLocations {
     final locs = state.completedLocations;
