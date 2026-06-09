@@ -11,6 +11,7 @@ import '../providers/transport_provider.dart';
 import '../services/accommodations_api_service.dart';
 import '../services/airbnb_api_service.dart';
 import '../services/transport_api_service.dart';
+import '../widgets/trip_map.dart';
 import 'agent_screen.dart';
 
 class TripDetailScreen extends ConsumerStatefulWidget {
@@ -27,6 +28,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   bool _refining = false;
   String? _error;
   String _itemFilter = 'all'; // 'all' | 'attraction' | 'restaurant'
+  int? _selectedItem; // index of the place focused via a map pin tap
 
   @override
   void initState() {
@@ -270,6 +272,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           ),
                         ),
                         const Divider(height: 32),
+                        if ((trip.items ?? []).any((i) => i.latitude != 0 || i.longitude != 0)) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              height: 240,
+                              child: TripMap(
+                                items: trip.items!,
+                                selectedIndex: _selectedItem,
+                                onPinTap: (i) {
+                                  setState(() => _selectedItem = i);
+                                  _showSnack(trip.items![i].name);
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         Text('Itinerary', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 8),
                         if ((trip.items ?? []).isNotEmpty)
@@ -311,6 +330,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     leading: _itemLeading(item.category, item.position),
                                     title: Text(item.name),
                                     subtitle: item.address != null ? Text(item.address!) : null,
+                                    selected: _selectedItem == trip.items!.indexOf(item),
+                                    selectedTileColor:
+                                        theme.colorScheme.primary.withValues(alpha: 0.08),
+                                    onTap: () => setState(
+                                        () => _selectedItem = trip.items!.indexOf(item)),
                                   ),
                               ],
                             );

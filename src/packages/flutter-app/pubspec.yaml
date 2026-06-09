@@ -53,6 +53,10 @@ dependencies:
   # Open external Airbnb/Booking links
   url_launcher: ^6.3.0
 
+  # Interactive map (OpenStreetMap tiles) for trip itineraries
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
