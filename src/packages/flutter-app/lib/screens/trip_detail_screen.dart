@@ -3,16 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../models/trip.dart';
-import '../models/trip_segment.dart';
 import '../models/itinerary_item.dart';
 import '../models/accommodation.dart';
-import '../models/airbnb_listing.dart';
+import '../models/booking_todo.dart';
 import '../providers/trips_provider.dart';
-import '../providers/accommodations_provider.dart';
-import '../providers/transport_provider.dart';
-import '../services/accommodations_api_service.dart';
-import '../services/airbnb_api_service.dart';
-import '../services/transport_api_service.dart';
+import '../providers/booking_todos_provider.dart';
+import '../widgets/booking_todo_card.dart';
 import '../widgets/trip_map.dart';
 import 'agent_screen.dart';
 
@@ -31,6 +27,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   String? _error;
   String _itemFilter = 'all'; // 'all' | 'attraction' | 'restaurant'
   int? _selectedPosition; // position of the place focused via a map pin / list tap
+  List<BookingTodo> _bookingTodos = [];
+  bool _overviewExpanded = false;
 
   /// Itinerary items matching the active category filter, used by both the map
   /// and the list so they stay in sync.
@@ -54,12 +52,116 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     });
     try {
       final trip = await ref.read(tripsApiServiceProvider).getTrip(widget.tripId);
-      if (mounted) setState(() => _trip = trip);
+      if (mounted) {
+        setState(() {
+          _trip = trip;
+          _bookingTodos = trip.bookingTodos ?? [];
+        });
+      }
+      if (mounted && (trip.items ?? const []).isNotEmpty) {
+        await _syncBookingTodos(trip);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Pushes the itinerary-derived booking checklist to the server, which upserts
+  /// auto-TODOs (preserving booked state) and prunes legs no longer in the trip.
+  Future<void> _syncBookingTodos(Trip trip) async {
+    try {
+      final todos = await ref
+          .read(bookingTodosApiServiceProvider)
+          .syncTodos(trip.id, _deriveTodos(trip));
+      if (mounted) setState(() => _bookingTodos = todos);
+    } catch (_) {
+      // Non-fatal: keep whatever booking todos came with the trip.
+    }
+  }
+
+  /// Builds the auto-TODO payload from the itinerary's location groups: a stay
+  /// per city (with its dates) and a transport leg between consecutive cities.
+  List<Map<String, dynamic>> _deriveTodos(Trip trip) {
+    final ranges = _locationGroupRanges(trip);
+    final todos = <Map<String, dynamic>>[];
+    var pos = 0;
+    for (var i = 0; i < ranges.length; i++) {
+      final r = ranges[i];
+      final label = r.label;
+      final checkIn = r.start == null ? null : _fmt(r.start!);
+      final checkOut = r.end == null ? null : _fmt(r.end!);
+      todos.add({
+        'kind': 'stay',
+        'todo_key': 'stay:${label.toLowerCase()}',
+        'title': 'Stay in $label',
+        if (r.start != null && r.end != null)
+          'subtitle': _formatRange(r.start!, r.end!),
+        'provider': 'airbnb',
+        'position': pos++,
+        'destination': label,
+        if (checkIn != null) 'depart_date': checkIn,
+        if (checkOut != null) 'return_date': checkOut,
+        'guests': 1,
+      });
+      if (i < ranges.length - 1) {
+        final next = ranges[i + 1];
+        final depart = r.end == null ? null : _fmt(r.end!);
+        todos.add({
+          'kind': 'transport',
+          'todo_key':
+              'transport:${label.toLowerCase()}>>${next.label.toLowerCase()}',
+          'title': '$label → ${next.label}',
+          if (r.end != null) 'subtitle': _fmtShortDt(r.end!),
+          'provider': 'google_flights',
+          'position': pos++,
+          'origin': label,
+          'destination': next.label,
+          if (depart != null) 'depart_date': depart,
+          'passengers': 1,
+        });
+      }
+    }
+    return todos;
+  }
+
+  Future<void> _setBooked(BookingTodo todo, bool booked) async {
+    final prev = _bookingTodos;
+    setState(() {
+      _bookingTodos = [
+        for (final t in _bookingTodos)
+          if (t.id == todo.id) t.copyWith(booked: booked) else t,
+      ];
+    });
+    try {
+      await ref
+          .read(bookingTodosApiServiceProvider)
+          .setBooked(widget.tripId, todo.id, booked);
+    } catch (e) {
+      if (mounted) setState(() => _bookingTodos = prev);
+      _showSnack('Update failed: $e');
+    }
+  }
+
+  Future<void> _deleteTodo(BookingTodo todo) async {
+    try {
+      await ref.read(bookingTodosApiServiceProvider).delete(widget.tripId, todo.id);
+      if (mounted) {
+        setState(() =>
+            _bookingTodos = _bookingTodos.where((t) => t.id != todo.id).toList());
+      }
+    } catch (e) {
+      _showSnack('Delete failed: $e');
+    }
+  }
+
+  Future<void> _addBooking() async {
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AddBookingTodoDialog(tripId: widget.tripId),
+    );
+    if (added == true) await _load();
   }
 
   Future<void> _patch({String? title, String? startDate, String? endDate, String? status}) async {
@@ -194,12 +296,79 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
   }
 
-  /// The first comma-segment of an address (e.g. "Green Turtle Cay, Abaco,
-  /// Bahamas" -> "Green Turtle Cay"); null/empty addresses return null.
-  String? _localityOf(String? address) {
+  /// A stored title is "long" when it's really the AI summary (multi-line or
+  /// lengthy); such trips get a computed display title instead.
+  bool _titleIsLong(String t) => t.contains('\n') || t.length > 60;
+
+  /// What to show as the header title: the trip's own title when it's concise,
+  /// otherwise a title computed from the itinerary's cities + dates.
+  String _displayTitle(Trip t) =>
+      _titleIsLong(t.title) ? _computedTitle(t) : t.title;
+
+  /// The overview prose: the dedicated summary when present, else the long
+  /// stored title (legacy trips), else nothing.
+  String? _overviewText(Trip t) =>
+      t.summary ?? (_titleIsLong(t.title) ? t.title : null);
+
+  /// Builds "City" / "City & City" / "City & City +N more", with the trip's date
+  /// range appended when available. Falls back to the (truncated) stored title.
+  String _computedTitle(Trip t) {
+    final cities = <String>[];
+    for (final it in t.items ?? const <ItineraryItem>[]) {
+      final c = _hubOf(it);
+      if (c != null && c.isNotEmpty && !cities.contains(c)) cities.add(c);
+    }
+    String label;
+    if (cities.isEmpty) {
+      final firstLine = t.title.split('\n').first.trim();
+      label = firstLine.length > 40
+          ? '${firstLine.substring(0, 40).trim()}…'
+          : (firstLine.isEmpty ? 'Trip' : firstLine);
+    } else if (cities.length <= 2) {
+      label = cities.join(' & ');
+    } else {
+      label = '${cities.take(2).join(' & ')} +${cities.length - 2} more';
+    }
+    final start = DateTime.tryParse(t.startDate ?? '');
+    final end = DateTime.tryParse(t.endDate ?? '');
+    if (start != null && end != null && !end.isBefore(start)) {
+      return '$label · ${_formatRange(start, end)}';
+    }
+    return label;
+  }
+
+  /// The group an item belongs to: its day-trip hub city when set, else its own
+  /// city. Day trips (e.g. Versailles) thus fold under the hub (e.g. Paris).
+  String? _hubOf(ItineraryItem item) {
+    final h = item.dayTripFrom?.trim();
+    if (h != null && h.isNotEmpty) return h;
+    return _cityOf(item);
+  }
+
+  /// The city an item belongs to: the AI-assigned [ItineraryItem.city] when set,
+  /// otherwise a best-effort parse of the formatted address.
+  String? _cityOf(ItineraryItem item) {
+    final c = item.city?.trim();
+    if (c != null && c.isNotEmpty) return c;
+    return _cityFromAddress(item.address);
+  }
+
+  /// Fallback city from a formatted address. Drops the country (last segment)
+  /// and strips postal-code tokens from the segment before it, e.g.
+  /// "Av. ..., 1400-206 Lisboa, Portugal" -> "Lisboa"; a bare "Paris" stays as is.
+  String? _cityFromAddress(String? address) {
     if (address == null) return null;
-    final first = address.split(',').first.trim();
-    return first.isEmpty ? null : first;
+    final parts =
+        address.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    if (parts.length == 1) return parts.first;
+    final candidate = parts[parts.length - 2]; // segment before the country
+    final tokens = candidate
+        .split(RegExp(r'\s+'))
+        .where((t) => !RegExp(r'^[0-9][0-9\-]*$').hasMatch(t)) // drop postal tokens
+        .toList();
+    final city = tokens.join(' ').trim();
+    return city.isEmpty ? candidate : city;
   }
 
   /// Groups items into consecutive runs sharing the same locality, labelling
@@ -213,7 +382,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     String? currentKey;
     List<ItineraryItem>? current;
     for (final item in items) {
-      final locality = _localityOf(item.address);
+      final locality = _hubOf(item);
       if (current == null || locality != currentKey) {
         current = [];
         currentKey = locality;
@@ -228,21 +397,105 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return groups;
   }
 
-  /// Maps each itinerary item's position to its location's date range. Each
-  /// location gets a contiguous slice of the trip's start–end span, weighted by
-  /// how many places it has; an accommodation with its own dates overrides the
-  /// computed slice. Empty when no dates can be derived. Computed over the full
-  /// itinerary so the category filter doesn't shift the allocation.
+  /// Renders a hub group's items, batching consecutive day-trip places (by town)
+  /// under an indented "Day trip · <town>" sub-header so nearby towns read as
+  /// excursions from the hub city rather than separate stops.
+  List<Widget> _buildGroupItemWidgets(List<ItineraryItem> items, ThemeData theme) {
+    final widgets = <Widget>[];
+    var i = 0;
+    while (i < items.length) {
+      final dt = items[i].dayTripFrom?.trim();
+      if (dt != null && dt.isNotEmpty) {
+        final town = _cityOf(items[i]) ?? 'Day trip';
+        widgets.add(_dayTripSubHeader(town, theme));
+        while (i < items.length) {
+          final it = items[i];
+          final d = it.dayTripFrom?.trim();
+          if (d != null && d.isNotEmpty && _cityOf(it) == town) {
+            widgets.add(_itemTile(it, 32, theme));
+            i++;
+          } else {
+            break;
+          }
+        }
+      } else {
+        widgets.add(_itemTile(items[i], 12, theme));
+        i++;
+      }
+    }
+    return widgets;
+  }
+
+  Widget _dayTripSubHeader(String town, ThemeData theme) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 16, 0),
+        child: Row(
+          children: [
+            Icon(Icons.directions_bus, size: 16, color: theme.colorScheme.secondary),
+            const SizedBox(width: 6),
+            Text(
+              'Day trip · $town',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.secondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme) => Padding(
+        padding: EdgeInsets.only(left: indentLeft),
+        child: ListTile(
+          leading: _itemLeading(item.category, item.position),
+          title: Text(item.name),
+          subtitle: item.address != null ? Text(item.address!) : null,
+          trailing: item.timeOfDay == null
+              ? null
+              : _TimeOfDayChip(timeOfDay: item.timeOfDay!),
+          selected: _selectedPosition == item.position,
+          selectedTileColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+          onTap: () => setState(() => _selectedPosition = item.position),
+        ),
+      );
+
+  /// Maps each itinerary item's position to its location's formatted date range.
+  /// Delegates to [_locationGroupRanges] so the itinerary labels and the booking
+  /// checklist derive dates the same way.
   Map<int, String> _locationDates(Trip trip) {
     final items = trip.items ?? const <ItineraryItem>[];
     if (items.isEmpty) return const {};
+    final ranges = _locationGroupRanges(trip);
+    final result = <int, String>{};
+    var gi = -1;
+    String? currentKey;
+    for (final item in items) {
+      final locality = _hubOf(item);
+      if (gi < 0 || locality != currentKey) {
+        gi++;
+        currentKey = locality;
+      }
+      final r = ranges[gi];
+      if (r.start != null && r.end != null) {
+        result[item.position] = _formatRange(r.start!, r.end!);
+      }
+    }
+    return result;
+  }
+
+  /// Per-location-group label and date range. Each location gets a contiguous
+  /// slice of the trip's start–end span, weighted by how many places it has; an
+  /// accommodation with its own dates overrides the computed slice. Computed over
+  /// the full itinerary so the category filter doesn't shift the allocation.
+  List<({String label, DateTime? start, DateTime? end})> _locationGroupRanges(Trip trip) {
+    final items = trip.items ?? const <ItineraryItem>[];
+    if (items.isEmpty) return const [];
     final stays = trip.accommodations ?? const <Accommodation>[];
 
     // Canonical locality runs over the full itinerary.
     final groups = <List<ItineraryItem>>[];
     String? currentKey;
     for (final item in items) {
-      final locality = _localityOf(item.address);
+      final locality = _hubOf(item);
       if (groups.isEmpty || locality != currentKey) {
         groups.add([]);
         currentKey = locality;
@@ -278,19 +531,38 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       }
     }
 
-    final result = <int, String>{};
+    final result = <({String label, DateTime? start, DateTime? end})>[];
     for (var i = 0; i < groups.length; i++) {
       final g = groups[i];
-      final accRange = _dateRangeFor(_localityOf(g.first.address), stays);
+      final locality = _hubOf(g.first);
+      final accRange = _accDateRangeFor(locality, stays);
       final a = auto[i];
-      final range = accRange ?? (a == null ? null : _formatRange(a.start, a.end));
-      if (range != null) {
-        for (final it in g) {
-          result[it.position] = range;
-        }
-      }
+      result.add((
+        label: locality ?? 'Other places',
+        start: accRange?.start ?? a?.start,
+        end: accRange?.end ?? a?.end,
+      ));
     }
     return result;
+  }
+
+  /// First accommodation in [locality] with both check-in/out dates, as DateTimes.
+  ({DateTime start, DateTime end})? _accDateRangeFor(
+      String? locality, List<Accommodation> stays) {
+    if (locality == null) return null;
+    final key = locality.toLowerCase();
+    for (final acc in stays) {
+      final addr = acc.address?.toLowerCase();
+      if (addr == null) continue;
+      if ((addr.contains(key) || key.contains(addr)) &&
+          acc.checkIn != null &&
+          acc.checkOut != null) {
+        final ci = DateTime.tryParse(acc.checkIn!);
+        final co = DateTime.tryParse(acc.checkOut!);
+        if (ci != null && co != null) return (start: ci, end: co);
+      }
+    }
+    return null;
   }
 
   /// Splits [totalDays] across groups proportional to [weights], each group at
@@ -330,34 +602,131 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
   String _fmtShortDt(DateTime d) => '${_months[d.month - 1]} ${d.day}';
 
-  /// Finds the first accommodation in [locality] with both check-in/out dates
-  /// and formats them as a short range; null when nothing matches.
-  String? _dateRangeFor(String? locality, List<Accommodation> stays) {
-    if (locality == null) return null;
-    final key = locality.toLowerCase();
-    for (final acc in stays) {
-      final addr = acc.address?.toLowerCase();
-      if (addr == null) continue;
-      if ((addr.contains(key) || key.contains(addr)) &&
-          acc.checkIn != null &&
-          acc.checkOut != null) {
-        return '${_fmtShort(acc.checkIn!)} – ${_fmtShort(acc.checkOut!)}';
-      }
-    }
-    return null;
-  }
-
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
-  /// Formats a "YYYY-MM-DD" date as e.g. "Jun 10"; returns the raw string if it
-  /// cannot be parsed.
-  String _fmtShort(String iso) {
-    final d = DateTime.tryParse(iso);
-    if (d == null) return iso;
-    return _fmtShortDt(d);
+  /// The trip's hero header: title (+ rename), date/status chips, a Refine
+  /// button, and a collapsible overview.
+  Widget _buildHeaderCard(Trip trip, ThemeData theme) {
+    final overview = _overviewText(trip);
+    final hasDates = trip.startDate != null && trip.endDate != null;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    _displayTitle(trip),
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20),
+                  tooltip: 'Rename',
+                  onPressed: _editTitle,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.event, size: 16),
+                  label: Text(hasDates
+                      ? '${trip.startDate} → ${trip.endDate}'
+                      : 'Add dates'),
+                  onPressed: _editDates,
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (v) => _patch(status: v),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'draft', child: Text('Draft')),
+                    PopupMenuItem(value: 'planned', child: Text('Planned')),
+                  ],
+                  child: Chip(
+                    avatar: Icon(
+                      Icons.circle,
+                      size: 12,
+                      color: trip.status == 'planned'
+                          ? Colors.green
+                          : theme.colorScheme.outline,
+                    ),
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(trip.status == 'planned' ? 'Planned' : 'Draft'),
+                        const Icon(Icons.arrow_drop_down, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _refining ? null : () => _refine(trip),
+                icon: _refining
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: Text(_refining ? 'Opening…' : 'Refine with AI'),
+              ),
+            ),
+            if (overview != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Overview',
+                style: theme.textTheme.labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                overview,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                maxLines: _overviewExpanded ? null : 3,
+                overflow: _overviewExpanded
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
+              ),
+              if (overview.length > 140)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () =>
+                        setState(() => _overviewExpanded = !_overviewExpanded),
+                    child: Text(_overviewExpanded ? 'Show less' : 'Show more'),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -395,59 +764,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                   : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(trip.title, style: theme.textTheme.headlineSmall),
-                            ),
-                            IconButton(icon: const Icon(Icons.edit), onPressed: _editTitle),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.event, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              (trip.startDate != null && trip.endDate != null)
-                                  ? '${trip.startDate} → ${trip.endDate}'
-                                  : 'No dates set',
-                            ),
-                            TextButton(onPressed: _editDates, child: const Text('Edit')),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Text('Status:'),
-                            const SizedBox(width: 12),
-                            DropdownButton<String>(
-                              value: trip.status == 'planned' ? 'planned' : 'draft',
-                              items: const [
-                                DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                                DropdownMenuItem(value: 'planned', child: Text('Planned')),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) _patch(status: v);
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _refining ? null : () => _refine(trip),
-                            icon: _refining
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.auto_awesome),
-                            label: Text(_refining ? 'Opening…' : 'Refine with AI'),
-                          ),
-                        ),
+                        _buildHeaderCard(trip, theme),
                         const Divider(height: 32),
                         if (_filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0)) ...[
                           ClipRRect(
@@ -505,46 +822,45 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                 for (final group in groups) ...[
                                   Padding(
                                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: Text(
-                                            group.label,
-                                            style: theme.textTheme.titleSmall
-                                                ?.copyWith(fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                        if (group.dateRange != null)
-                                          Row(
-                                            children: [
-                                              Icon(Icons.event,
-                                                  size: 14, color: theme.colorScheme.primary),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                group.dateRange!,
-                                                style: theme.textTheme.labelMedium?.copyWith(
-                                                    color: theme.colorScheme.primary),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.location_on,
+                                                size: 18, color: theme.colorScheme.primary),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                group.label,
+                                                style: theme.textTheme.titleSmall
+                                                    ?.copyWith(fontWeight: FontWeight.bold),
                                               ),
-                                            ],
-                                          ),
+                                            ),
+                                            if (group.dateRange != null)
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.event,
+                                                      size: 14,
+                                                      color: theme.colorScheme.primary),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    group.dateRange!,
+                                                    style: theme.textTheme.labelMedium
+                                                        ?.copyWith(
+                                                            color:
+                                                                theme.colorScheme.primary),
+                                                  ),
+                                                ],
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Divider(height: 1),
                                       ],
                                     ),
                                   ),
-                                  for (final item in group.items)
-                                    ListTile(
-                                      leading: _itemLeading(item.category, item.position),
-                                      title: Text(item.name),
-                                      subtitle:
-                                          item.address != null ? Text(item.address!) : null,
-                                      trailing: item.timeOfDay == null
-                                          ? null
-                                          : _TimeOfDayChip(timeOfDay: item.timeOfDay!),
-                                      selected: _selectedPosition == item.position,
-                                      selectedTileColor:
-                                          theme.colorScheme.primary.withValues(alpha: 0.08),
-                                      onTap: () => setState(
-                                          () => _selectedPosition = item.position),
-                                    ),
+                                  ..._buildGroupItemWidgets(group.items, theme),
                                 ],
                               ],
                             );
@@ -552,88 +868,35 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         const Divider(height: 32),
                         Row(
                           children: [
-                            Expanded(child: Text('Stays', style: theme.textTheme.titleMedium)),
+                            Expanded(child: Text('Bookings', style: theme.textTheme.titleMedium)),
                             TextButton.icon(
-                              onPressed: () => _findStays(trip),
-                              icon: const Icon(Icons.search, size: 18),
-                              label: const Text('Find stays'),
+                              onPressed: _addBooking,
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add'),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        if ((trip.accommodations ?? []).isEmpty)
+                        if (_bookingTodos.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Text('No stays added yet.'),
+                            child: Text(
+                                'No bookings yet — they appear here once your itinerary has places.'),
                           )
                         else
-                          for (final acc in trip.accommodations!)
-                            ListTile(
-                              leading: const Icon(Icons.hotel),
-                              title: Text(acc.name),
-                              subtitle: Text([
-                                if (acc.provider != null) acc.provider!,
-                                if (acc.checkIn != null && acc.checkOut != null)
-                                  '${acc.checkIn} → ${acc.checkOut}',
-                                if (acc.priceNote != null) acc.priceNote!,
-                              ].join(' · ')),
-                              onTap: acc.url != null ? () => _launch(acc.url!) : null,
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                onPressed: () => _deleteAccommodation(acc.id),
+                          for (final todo in _bookingTodos)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: BookingTodoCard(
+                                todo: todo,
+                                onBookedChanged: (v) => _setBooked(todo, v),
+                                onOpen: todo.searchUrl != null
+                                    ? () => _launch(todo.searchUrl!)
+                                    : null,
+                                onDelete:
+                                    todo.auto ? null : () => _deleteTodo(todo),
                               ),
                             ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: FilledButton.tonalIcon(
-                            onPressed: _addStay,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add a stay'),
-                          ),
-                        ),
-                        const Divider(height: 32),
-                        Text('Travel', style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        if ((trip.segments ?? []).isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Text('No travel added yet.'),
-                          )
-                        else
-                          for (final seg in trip.segments!)
-                            ListTile(
-                              leading: Icon(_segmentIcon(seg.mode)),
-                              title: Text(_segmentTitle(seg)),
-                              subtitle: Text(_segmentSubtitle(seg)),
-                              onTap: seg.url != null ? () => _launch(seg.url!) : null,
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                onPressed: () => _deleteSegment(seg.id),
-                              ),
-                            ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: () => _findTransport(trip, 'flight'),
-                              icon: const Icon(Icons.flight, size: 18),
-                              label: const Text('Find flights'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: () => _findTransport(trip, 'ground'),
-                              icon: const Icon(Icons.directions_transit, size: 18),
-                              label: const Text('Find ground'),
-                            ),
-                            FilledButton.tonalIcon(
-                              onPressed: _addSegment,
-                              icon: const Icon(Icons.add),
-                              label: const Text('Add a segment'),
-                            ),
-                          ],
-                        ),
                       ],
                     ),
     );
@@ -644,489 +907,70 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (!ok) _showSnack('Could not open link');
   }
 
-  Future<void> _deleteAccommodation(String accId) async {
-    try {
-      await ref.read(accommodationsApiServiceProvider).delete(widget.tripId, accId);
-      await _load();
-    } catch (e) {
-      _showSnack('Delete failed: $e');
-    }
-  }
-
-  Future<void> _findStays(Trip trip) async {
-    final initial = (trip.items != null && trip.items!.isNotEmpty)
-        ? trip.items!.first.name
-        : trip.title;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _FindStaysDialog(
-        initialDestination: initial,
-        checkIn: trip.startDate,
-        checkOut: trip.endDate,
-      ),
-    );
-  }
-
-  Future<void> _addStay() async {
-    final added = await showDialog<bool>(
-      context: context,
-      builder: (_) => _AddStayDialog(tripId: widget.tripId),
-    );
-    if (added == true) await _load();
-  }
-
-  IconData _segmentIcon(String mode) {
-    switch (mode) {
-      case 'flight':
-        return Icons.flight;
-      case 'train':
-        return Icons.train;
-      case 'bus':
-        return Icons.directions_bus;
-      case 'car':
-        return Icons.directions_car;
-      case 'ferry':
-        return Icons.directions_boat;
-      default:
-        return Icons.route;
-    }
-  }
-
-  String _segmentTitle(TripSegment seg) {
-    final parts = <String>[
-      if (seg.origin != null) seg.origin!,
-      if (seg.destination != null) seg.destination!,
-    ];
-    return parts.isEmpty ? seg.mode : parts.join(' → ');
-  }
-
-  String _segmentSubtitle(TripSegment seg) {
-    return [
-      seg.mode,
-      if (seg.departDate != null) seg.departDate!,
-      if (seg.provider != null) seg.provider!,
-      if (seg.priceNote != null) seg.priceNote!,
-    ].join(' · ');
-  }
-
-  Future<void> _findTransport(Trip trip, String mode) async {
-    final initialDest = (trip.items != null && trip.items!.isNotEmpty)
-        ? trip.items!.first.name
-        : trip.title;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _FindTransportDialog(
-        mode: mode,
-        initialDestination: initialDest,
-        departDate: trip.startDate,
-        returnDate: mode == 'flight' ? trip.endDate : null,
-      ),
-    );
-  }
-
-  Future<void> _addSegment() async {
-    final added = await showDialog<bool>(
-      context: context,
-      builder: (_) => _AddSegmentDialog(tripId: widget.tripId),
-    );
-    if (added == true) await _load();
-  }
-
-  Future<void> _deleteSegment(String segmentId) async {
-    try {
-      await ref.read(transportApiServiceProvider).deleteSegment(widget.tripId, segmentId);
-      await _load();
-    } catch (e) {
-      _showSnack('Delete failed: $e');
-    }
-  }
 }
 
-/// Lets the user browse Airbnb + Booking.com for a destination via deep links.
-class _FindStaysDialog extends ConsumerStatefulWidget {
-  final String initialDestination;
-  final String? checkIn;
-  final String? checkOut;
-
-  const _FindStaysDialog({required this.initialDestination, this.checkIn, this.checkOut});
-
-  @override
-  ConsumerState<_FindStaysDialog> createState() => _FindStaysDialogState();
-}
-
-class _FindStaysDialogState extends ConsumerState<_FindStaysDialog> {
-  late final TextEditingController _destination =
-      TextEditingController(text: widget.initialDestination);
-  List<ProviderLink> _links = [];
-  bool _loading = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _destination.dispose();
-    super.dispose();
-  }
-
-  Future<void> _getLinks() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final links = await ref.read(accommodationsApiServiceProvider).links(
-            destination: _destination.text.trim(),
-            checkIn: widget.checkIn,
-            checkOut: widget.checkOut,
-          );
-      setState(() => _links = links);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      setState(() => _loading = false);
-    }
-  }
-
-  String _label(String provider) => provider == 'airbnb'
-      ? 'Browse on Airbnb'
-      : provider == 'booking'
-          ? 'Browse on Booking.com'
-          : provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Find stays'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _destination,
-            decoration: const InputDecoration(labelText: 'Destination'),
-          ),
-          const SizedBox(height: 12),
-          if (_error != null)
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          for (final link in _links)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication),
-                  child: Text(_label(link.provider)),
-                ),
-              ),
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        FilledButton(
-          onPressed: _loading ? null : _getLinks,
-          child: _loading
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Get links'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Add a stay manually, optionally pre-filled by parsing a pasted Airbnb URL.
-class _AddStayDialog extends ConsumerStatefulWidget {
+/// Adds a custom booking TODO. A destination (and optional dates) lets the
+/// server build the search link; a pasted link overrides it.
+class _AddBookingTodoDialog extends ConsumerStatefulWidget {
   final String tripId;
-  const _AddStayDialog({required this.tripId});
+  const _AddBookingTodoDialog({required this.tripId});
 
   @override
-  ConsumerState<_AddStayDialog> createState() => _AddStayDialogState();
+  ConsumerState<_AddBookingTodoDialog> createState() =>
+      _AddBookingTodoDialogState();
 }
 
-class _AddStayDialogState extends ConsumerState<_AddStayDialog> {
-  final _airbnbUrl = TextEditingController();
-  final _name = TextEditingController();
-  final _priceNote = TextEditingController();
-  String? _resolvedUrl;
-  String? _provider;
-  String? _address;
-  double? _lat;
-  double? _lng;
-  bool _fetching = false;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _airbnbUrl.dispose();
-    _name.dispose();
-    _priceNote.dispose();
-    super.dispose();
-  }
-
-  Future<void> _fetchAirbnb() async {
-    final url = _airbnbUrl.text.trim();
-    if (url.isEmpty) return;
-    setState(() {
-      _fetching = true;
-      _error = null;
-    });
-    try {
-      final apiClient = ref.read(accommodationsApiServiceProvider).apiClient;
-      final svc = AirbnbApiService(baseUrl: apiClient.baseUrl, httpClient: apiClient.httpClient);
-      final AirbnbListing listing = await svc.parseListing(url);
-      setState(() {
-        _name.text = listing.title;
-        _resolvedUrl = listing.url.isNotEmpty ? listing.url : url;
-        _provider = 'airbnb';
-        _address = '${listing.location.city}, ${listing.location.country}';
-        _lat = listing.location.latitude;
-        _lng = listing.location.longitude;
-        _priceNote.text =
-            '${listing.pricing.currency} ${listing.pricing.nightlyRate.toStringAsFixed(0)}/night';
-      });
-    } catch (e) {
-      setState(() => _error = 'Could not parse that Airbnb link');
-    } finally {
-      setState(() => _fetching = false);
-    }
-  }
-
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      setState(() => _error = 'Name is required');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      await ref.read(accommodationsApiServiceProvider).add(widget.tripId, {
-        'name': _name.text.trim(),
-        if (_provider != null) 'provider': _provider,
-        if (_resolvedUrl != null) 'url': _resolvedUrl,
-        if (_address != null) 'address': _address,
-        if (_lat != null) 'latitude': _lat,
-        if (_lng != null) 'longitude': _lng,
-        if (_priceNote.text.trim().isNotEmpty) 'price_note': _priceNote.text.trim(),
-      });
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      setState(() {
-        _saving = false;
-        _error = 'Save failed: $e';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add a stay'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _airbnbUrl,
-                    decoration: const InputDecoration(labelText: 'Airbnb link (optional)'),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _fetching ? null : _fetchAirbnb,
-                  child: _fetching
-                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Fetch'),
-                ),
-              ],
-            ),
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-            TextField(controller: _priceNote, decoration: const InputDecoration(labelText: 'Price note (optional)')),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Browse Google Flights / Kayak (mode=flight) or Rome2Rio (mode=ground) via deep links.
-class _FindTransportDialog extends ConsumerStatefulWidget {
-  final String mode;
-  final String initialDestination;
-  final String? departDate;
-  final String? returnDate;
-
-  const _FindTransportDialog({
-    required this.mode,
-    required this.initialDestination,
-    this.departDate,
-    this.returnDate,
-  });
-
-  @override
-  ConsumerState<_FindTransportDialog> createState() => _FindTransportDialogState();
-}
-
-class _FindTransportDialogState extends ConsumerState<_FindTransportDialog> {
-  late final TextEditingController _origin = TextEditingController();
-  late final TextEditingController _destination =
-      TextEditingController(text: widget.initialDestination);
-  List<TransportLink> _links = [];
-  bool _loading = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _origin.dispose();
-    _destination.dispose();
-    super.dispose();
-  }
-
-  Future<void> _getLinks() async {
-    if (_origin.text.trim().isEmpty || _destination.text.trim().isEmpty) {
-      setState(() => _error = 'Origin and destination are required');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final links = await ref.read(transportApiServiceProvider).links(
-            mode: widget.mode,
-            origin: _origin.text.trim(),
-            destination: _destination.text.trim(),
-            departDate: widget.departDate,
-            returnDate: widget.returnDate,
-          );
-      setState(() => _links = links);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      setState(() => _loading = false);
-    }
-  }
-
-  String _label(String provider) {
-    switch (provider) {
-      case 'google_flights':
-        return 'Browse on Google Flights';
-      case 'kayak':
-        return 'Browse on Kayak';
-      case 'rome2rio':
-        return 'Browse on Rome2Rio';
-      default:
-        return provider;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final title = widget.mode == 'flight' ? 'Find flights' : 'Find ground transport';
-    return AlertDialog(
-      title: Text(title),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _origin, decoration: const InputDecoration(labelText: 'Origin')),
-            const SizedBox(height: 8),
-            TextField(controller: _destination, decoration: const InputDecoration(labelText: 'Destination')),
-            const SizedBox(height: 12),
-            if (_error != null)
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            for (final link in _links)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication),
-                    child: Text(_label(link.provider)),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        FilledButton(
-          onPressed: _loading ? null : _getLinks,
-          child: _loading
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Get links'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Manual entry for a travel segment.
-class _AddSegmentDialog extends ConsumerStatefulWidget {
-  final String tripId;
-  const _AddSegmentDialog({required this.tripId});
-
-  @override
-  ConsumerState<_AddSegmentDialog> createState() => _AddSegmentDialogState();
-}
-
-class _AddSegmentDialogState extends ConsumerState<_AddSegmentDialog> {
-  String _mode = 'flight';
-  final _origin = TextEditingController();
+class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
+  String _kind = 'stay';
+  final _title = TextEditingController();
   final _destination = TextEditingController();
+  final _origin = TextEditingController();
   final _departDate = TextEditingController();
-  final _arriveDate = TextEditingController();
-  final _provider = TextEditingController();
-  final _priceNote = TextEditingController();
+  final _returnDate = TextEditingController();
+  final _url = TextEditingController();
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
-    _origin.dispose();
+    _title.dispose();
     _destination.dispose();
+    _origin.dispose();
     _departDate.dispose();
-    _arriveDate.dispose();
-    _provider.dispose();
-    _priceNote.dispose();
+    _returnDate.dispose();
+    _url.dispose();
     super.dispose();
   }
 
-  String? _emptyToNull(String s) {
+  String? _nn(String s) {
     final t = s.trim();
     return t.isEmpty ? null : t;
   }
 
   Future<void> _save() async {
+    if (_title.text.trim().isEmpty) {
+      setState(() => _error = 'Title is required');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      await ref.read(transportApiServiceProvider).addSegment(widget.tripId, {
-        'mode': _mode,
-        if (_emptyToNull(_origin.text) != null) 'origin': _emptyToNull(_origin.text),
-        if (_emptyToNull(_destination.text) != null) 'destination': _emptyToNull(_destination.text),
-        if (_emptyToNull(_departDate.text) != null) 'depart_date': _emptyToNull(_departDate.text),
-        if (_emptyToNull(_arriveDate.text) != null) 'arrive_date': _emptyToNull(_arriveDate.text),
-        if (_emptyToNull(_provider.text) != null) 'provider': _emptyToNull(_provider.text),
-        if (_emptyToNull(_priceNote.text) != null) 'price_note': _emptyToNull(_priceNote.text),
+      final isTransport = _kind == 'transport';
+      await ref.read(bookingTodosApiServiceProvider).addTodo(widget.tripId, {
+        'kind': _kind,
+        'title': _title.text.trim(),
+        if (_nn(_destination.text) != null) 'destination': _nn(_destination.text),
+        if (isTransport && _nn(_origin.text) != null) 'origin': _nn(_origin.text),
+        if (_nn(_departDate.text) != null) 'depart_date': _nn(_departDate.text),
+        if (!isTransport && _nn(_returnDate.text) != null)
+          'return_date': _nn(_returnDate.text),
+        if (_nn(_url.text) != null) 'search_url': _nn(_url.text),
+        if (_kind == 'stay') 'provider': 'airbnb',
+        if (isTransport) 'provider': 'google_flights',
+        'guests': 1,
+        'passengers': 1,
       });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -1139,44 +983,69 @@ class _AddSegmentDialogState extends ConsumerState<_AddSegmentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isTransport = _kind == 'transport';
     return AlertDialog(
-      title: const Text('Add a segment'),
+      title: const Text('Add a booking'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              initialValue: _mode,
-              decoration: const InputDecoration(labelText: 'Mode'),
+              initialValue: _kind,
+              decoration: const InputDecoration(labelText: 'Type'),
               items: const [
-                DropdownMenuItem(value: 'flight', child: Text('Flight')),
-                DropdownMenuItem(value: 'train', child: Text('Train')),
-                DropdownMenuItem(value: 'bus', child: Text('Bus')),
-                DropdownMenuItem(value: 'car', child: Text('Car')),
-                DropdownMenuItem(value: 'ferry', child: Text('Ferry')),
+                DropdownMenuItem(value: 'stay', child: Text('Stay')),
+                DropdownMenuItem(value: 'transport', child: Text('Transport')),
                 DropdownMenuItem(value: 'other', child: Text('Other')),
               ],
-              onChanged: (v) => setState(() => _mode = v ?? 'flight'),
+              onChanged: (v) => setState(() => _kind = v ?? 'stay'),
             ),
-            TextField(controller: _origin, decoration: const InputDecoration(labelText: 'Origin')),
-            TextField(controller: _destination, decoration: const InputDecoration(labelText: 'Destination')),
-            TextField(controller: _departDate, decoration: const InputDecoration(labelText: 'Depart date (YYYY-MM-DD)')),
-            TextField(controller: _arriveDate, decoration: const InputDecoration(labelText: 'Arrive date (YYYY-MM-DD)')),
-            TextField(controller: _provider, decoration: const InputDecoration(labelText: 'Provider / Airline (optional)')),
-            TextField(controller: _priceNote, decoration: const InputDecoration(labelText: 'Price note (optional)')),
+            TextField(
+                controller: _title,
+                decoration: const InputDecoration(labelText: 'Title')),
+            if (isTransport)
+              TextField(
+                  controller: _origin,
+                  decoration:
+                      const InputDecoration(labelText: 'Origin (optional)')),
+            TextField(
+                controller: _destination,
+                decoration:
+                    const InputDecoration(labelText: 'Destination (optional)')),
+            TextField(
+                controller: _departDate,
+                decoration: InputDecoration(
+                    labelText: isTransport
+                        ? 'Depart date (YYYY-MM-DD)'
+                        : 'Check-in (YYYY-MM-DD)')),
+            if (!isTransport)
+              TextField(
+                  controller: _returnDate,
+                  decoration: const InputDecoration(
+                      labelText: 'Check-out (YYYY-MM-DD)')),
+            TextField(
+                controller: _url,
+                decoration: const InputDecoration(
+                    labelText: 'Link (optional, overrides search)')),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel')),
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Save'),
         ),
       ],

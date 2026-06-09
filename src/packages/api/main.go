@@ -555,6 +555,10 @@ func main() {
 	api.HandleFunc("/transport-links", transportLinksHandler).Methods("GET")
 	api.Handle("/trips/{id}/segments", authMiddleware(http.HandlerFunc(addSegmentHandler))).Methods("POST")
 	api.Handle("/trips/{id}/segments/{segmentId}", authMiddleware(http.HandlerFunc(deleteSegmentHandler))).Methods("DELETE")
+	api.Handle("/trips/{id}/booking-todos", authMiddleware(http.HandlerFunc(syncBookingTodosHandler))).Methods("PUT")
+	api.Handle("/trips/{id}/booking-todos", authMiddleware(http.HandlerFunc(addBookingTodoHandler))).Methods("POST")
+	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(patchBookingTodoHandler))).Methods("PATCH")
+	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(deleteBookingTodoHandler))).Methods("DELETE")
 
 	// Server configuration
 	port := "8080"

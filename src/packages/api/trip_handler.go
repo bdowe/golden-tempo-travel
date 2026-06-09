@@ -21,15 +21,17 @@ const dateLayout = "2006-01-02"
 // --- response / request types ---
 
 type ItineraryItemResponse struct {
-	ID        string  `json:"id"`
-	Position  int     `json:"position"`
-	Name      string  `json:"name"`
-	PlaceID   *string `json:"place_id,omitempty"`
-	Address   *string `json:"address,omitempty"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	Category  *string `json:"category,omitempty"`
-	TimeOfDay *string `json:"time_of_day,omitempty"`
+	ID          string  `json:"id"`
+	Position    int     `json:"position"`
+	Name        string  `json:"name"`
+	PlaceID     *string `json:"place_id,omitempty"`
+	Address     *string `json:"address,omitempty"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+	Category    *string `json:"category,omitempty"`
+	TimeOfDay   *string `json:"time_of_day,omitempty"`
+	City        *string `json:"city,omitempty"`
+	DayTripFrom *string `json:"day_trip_from,omitempty"`
 }
 
 var allowedItemCategories = map[string]bool{"attraction": true, "restaurant": true}
@@ -39,6 +41,7 @@ var allowedTimesOfDay = map[string]bool{"morning": true, "afternoon": true, "eve
 type TripResponse struct {
 	ID             string                  `json:"id"`
 	Title          string                  `json:"title"`
+	Summary        *string                 `json:"summary,omitempty"`
 	StartDate      *string                 `json:"start_date,omitempty"`
 	EndDate        *string                 `json:"end_date,omitempty"`
 	Status         string                  `json:"status"`
@@ -49,6 +52,7 @@ type TripResponse struct {
 	Items          []ItineraryItemResponse `json:"items,omitempty"`
 	Accommodations []AccommodationResponse `json:"accommodations,omitempty"`
 	Segments       []SegmentResponse       `json:"segments,omitempty"`
+	BookingTodos   []BookingTodoResponse   `json:"booking_todos,omitempty"`
 }
 
 type PatchTripRequest struct {
@@ -70,10 +74,11 @@ func dateToPtr(d pgtype.Date) *string {
 	return &s
 }
 
-func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment) TripResponse {
+func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment, bookingTodos []store.BookingTodo) TripResponse {
 	resp := TripResponse{
 		ID:        t.ID.String(),
 		Title:     t.Title,
+		Summary:   t.Summary,
 		StartDate: dateToPtr(t.StartDate),
 		EndDate:   dateToPtr(t.EndDate),
 		Status:    t.Status,
@@ -83,15 +88,17 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 	}
 	for _, it := range items {
 		resp.Items = append(resp.Items, ItineraryItemResponse{
-			ID:        it.ID.String(),
-			Position:  int(it.Position),
-			Name:      it.Name,
-			PlaceID:   it.PlaceID,
-			Address:   it.Address,
-			Latitude:  it.Latitude,
-			Longitude: it.Longitude,
-			Category:  it.Category,
-			TimeOfDay: it.TimeOfDay,
+			ID:          it.ID.String(),
+			Position:    int(it.Position),
+			Name:        it.Name,
+			PlaceID:     it.PlaceID,
+			Address:     it.Address,
+			Latitude:    it.Latitude,
+			Longitude:   it.Longitude,
+			Category:    it.Category,
+			TimeOfDay:   it.TimeOfDay,
+			City:        it.City,
+			DayTripFrom: it.DayTripFrom,
 		})
 	}
 	for _, a := range accommodations {
@@ -100,6 +107,9 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 	for _, s := range segments {
 		resp.Segments = append(resp.Segments, toSegmentResponse(s))
 	}
+	for _, bt := range bookingTodos {
+		resp.BookingTodos = append(resp.BookingTodos, toBookingTodoResponse(bt))
+	}
 	return resp
 }
 
@@ -107,7 +117,7 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 // transaction. Called from the agent's create_itinerary step for signed-in users.
 // chatID stamps the trip with its conversation so My Trips can collapse repeated
 // refinements to the latest version; an empty chatID is stored as NULL.
-func persistTrip(ctx context.Context, userID uuid.UUID, chatID, summary string, locations []map[string]any) (string, error) {
+func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary string, locations []map[string]any) (string, error) {
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -115,23 +125,32 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, summary string, 
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
 
-	title := strings.TrimSpace(summary)
-	if title == "" {
-		if len(locations) > 0 {
+	summaryText := strings.TrimSpace(summary)
+	finalTitle := strings.TrimSpace(title)
+	if finalTitle == "" {
+		// Fall back to the first line of the summary, then the first location.
+		if summaryText != "" {
+			finalTitle = strings.TrimSpace(strings.SplitN(summaryText, "\n", 2)[0])
+		}
+		if finalTitle == "" && len(locations) > 0 {
 			if n, ok := locations[0]["name"].(string); ok && n != "" {
-				title = "Trip to " + n
+				finalTitle = "Trip to " + n
 			}
 		}
-		if title == "" {
-			title = "Untitled trip"
+		if finalTitle == "" {
+			finalTitle = "Untitled trip"
 		}
 	}
 
+	var summaryPtr *string
+	if summaryText != "" {
+		summaryPtr = &summaryText
+	}
 	var chatPtr *string
 	if c := strings.TrimSpace(chatID); c != "" {
 		chatPtr = &c
 	}
-	trip, err := q.CreateTrip(ctx, store.CreateTripParams{UserID: userID, Title: title, Status: "draft", ChatID: chatPtr})
+	trip, err := q.CreateTrip(ctx, store.CreateTripParams{UserID: userID, Title: finalTitle, Status: "draft", ChatID: chatPtr, Summary: summaryPtr})
 	if err != nil {
 		return "", err
 	}
@@ -140,12 +159,24 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, summary string, 
 		name, _ := loc["name"].(string)
 		lat, _ := loc["latitude"].(float64)
 		lng, _ := loc["longitude"].(float64)
-		var placeID, address, category, timeOfDay *string
+		var placeID, address, city, dayTripFrom, category, timeOfDay *string
 		if s, ok := loc["place_id"].(string); ok && s != "" {
 			placeID = &s
 		}
 		if s, ok := loc["address"].(string); ok && s != "" {
 			address = &s
+		}
+		if s, ok := loc["city"].(string); ok {
+			c := strings.TrimSpace(s)
+			if c != "" {
+				city = &c
+			}
+		}
+		if s, ok := loc["day_trip_from"].(string); ok {
+			d := strings.TrimSpace(s)
+			if d != "" {
+				dayTripFrom = &d
+			}
 		}
 		if s, ok := loc["category"].(string); ok {
 			c := strings.ToLower(strings.TrimSpace(s))
@@ -160,15 +191,17 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, summary string, 
 			}
 		}
 		if _, err := q.CreateItineraryItem(ctx, store.CreateItineraryItemParams{
-			TripID:    trip.ID,
-			Position:  int32(i),
-			Name:      name,
-			PlaceID:   placeID,
-			Address:   address,
-			Latitude:  lat,
-			Longitude: lng,
-			Category:  category,
-			TimeOfDay: timeOfDay,
+			TripID:      trip.ID,
+			Position:    int32(i),
+			Name:        name,
+			PlaceID:     placeID,
+			Address:     address,
+			Latitude:    lat,
+			Longitude:   lng,
+			Category:    category,
+			TimeOfDay:   timeOfDay,
+			City:        city,
+			DayTripFrom: dayTripFrom,
 		}); err != nil {
 			return "", err
 		}
@@ -211,7 +244,7 @@ func listTripsHandler(w http.ResponseWriter, r *http.Request) {
 			EndDate:   t.EndDate,
 			Status:    t.Status,
 			ChatID:    t.ChatID,
-		}, nil, nil, nil)
+		}, nil, nil, nil, nil)
 		resp.VersionCount = int(t.VersionCount)
 		out = append(out, resp)
 	}
@@ -240,7 +273,7 @@ func listTripVersionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]TripResponse, 0, len(trips))
 	for _, t := range trips {
-		out = append(out, toTripResponse(t, nil, nil, nil))
+		out = append(out, toTripResponse(t, nil, nil, nil, nil))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -273,7 +306,12 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load segments")
 		return
 	}
-	writeJSON(w, http.StatusOK, toTripResponse(trip, items, accommodations, segments))
+	bookingTodos, err := q.ListBookingTodosByTrip(r.Context(), trip.ID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not load booking todos")
+		return
+	}
+	writeJSON(w, http.StatusOK, toTripResponse(trip, items, accommodations, segments, bookingTodos))
 }
 
 // refineTripHandler returns the chat_id to reopen a saved trip in the AI agent,
@@ -369,7 +407,7 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
 		return
 	}
-	writeJSON(w, http.StatusOK, toTripResponse(trip, items, nil, nil))
+	writeJSON(w, http.StatusOK, toTripResponse(trip, items, nil, nil, nil))
 }
 
 func deleteTripHandler(w http.ResponseWriter, r *http.Request) {

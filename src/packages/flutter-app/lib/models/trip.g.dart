@@ -9,6 +9,7 @@ part of 'trip.dart';
 Trip _$TripFromJson(Map<String, dynamic> json) => Trip(
       id: json['id'] as String,
       title: json['title'] as String,
+      summary: json['summary'] as String?,
       startDate: json['start_date'] as String?,
       endDate: json['end_date'] as String?,
       status: json['status'] as String,
@@ -25,11 +26,15 @@ Trip _$TripFromJson(Map<String, dynamic> json) => Trip(
       segments: (json['segments'] as List<dynamic>?)
           ?.map((e) => TripSegment.fromJson(e as Map<String, dynamic>))
           .toList(),
+      bookingTodos: (json['booking_todos'] as List<dynamic>?)
+          ?.map((e) => BookingTodo.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
 
 Map<String, dynamic> _$TripToJson(Trip instance) => <String, dynamic>{
       'id': instance.id,
       'title': instance.title,
+      'summary': instance.summary,
       'start_date': instance.startDate,
       'end_date': instance.endDate,
       'status': instance.status,
@@ -41,4 +46,5 @@ Map<String, dynamic> _$TripToJson(Trip instance) => <String, dynamic>{
       'accommodations':
           instance.accommodations?.map((e) => e.toJson()).toList(),
       'segments': instance.segments?.map((e) => e.toJson()).toList(),
+      'booking_todos': instance.bookingTodos?.map((e) => e.toJson()).toList(),
     };

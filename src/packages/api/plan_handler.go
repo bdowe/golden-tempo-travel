@@ -82,9 +82,17 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"name":      map[string]any{"type": "string"},
-							"place_id":  map[string]any{"type": "string"},
-							"address":   map[string]any{"type": "string"},
+							"name":     map[string]any{"type": "string"},
+							"place_id": map[string]any{"type": "string"},
+							"address":  map[string]any{"type": "string"},
+							"city": map[string]any{
+								"type":        "string",
+								"description": "The city/town the place is physically located in — use the actual municipality, not the nearest major city (e.g. 'Versailles', not 'Paris'). Used to group the itinerary by city.",
+							},
+							"day_trip_from": map[string]any{
+								"type":        "string",
+								"description": "If this place is a day trip from the city the traveler is staying in (a nearby town visited and returned from the same day, e.g. Versailles from Paris), set this to that hub city's name. Leave unset for places in the city you're staying in.",
+							},
 							"latitude":  map[string]any{"type": "number"},
 							"longitude": map[string]any{"type": "number"},
 							"category": map[string]any{
@@ -101,9 +109,13 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 						"required": []string{"name", "latitude", "longitude"},
 					},
 				},
+				"title": map[string]any{
+					"type":        "string",
+					"description": "A short, human-friendly trip name, 3–6 words (e.g. 'Luxury Paris Weekend'). Distinct from the longer summary.",
+				},
 				"summary": map[string]any{
 					"type":        "string",
-					"description": "A brief summary of the itinerary to show the user",
+					"description": "A 1–2 sentence overview of the trip to show the user (the per-day breakdown already appears in the itinerary list, so keep this brief).",
 				},
 			},
 			Required: []string{"locations"},
@@ -262,6 +274,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			case "create_itinerary":
 				var in struct {
 					Locations []map[string]any `json:"locations"`
+					Title     string           `json:"title"`
 					Summary   string           `json:"summary"`
 				}
 				json.Unmarshal(variant.Input, &in)
@@ -270,7 +283,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).
 				if authed {
-					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Summary, in.Locations); err != nil {
+					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.Locations); err != nil {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID

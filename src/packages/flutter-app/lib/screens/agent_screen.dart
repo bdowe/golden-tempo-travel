@@ -362,28 +362,43 @@ class _ItineraryBanner extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: onLoad,
-              icon: const Icon(Icons.map),
-              label: const Text('Load into Planner'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.teal.shade600,
+          // When the trip was saved, opening it is the primary action (it has the
+          // full itinerary, bookings, etc.); loading into the route planner stays
+          // available as a secondary option. Anonymous sessions have no saved
+          // trip, so the planner is their only action.
+          if (onViewTrip != null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onViewTrip,
+                icon: const Icon(Icons.luggage),
+                label: const Text('View trip'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.teal.shade600,
+                ),
               ),
             ),
-          ),
-          if (onViewTrip != null) ...[
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: onViewTrip,
-                icon: const Icon(Icons.luggage),
-                label: const Text('View saved trip'),
+                onPressed: onLoad,
+                icon: const Icon(Icons.map),
+                label: const Text('Load into route planner'),
               ),
             ),
-          ],
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onLoad,
+                icon: const Icon(Icons.map),
+                label: const Text('Load into Planner'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.teal.shade600,
+                ),
+              ),
+            ),
         ],
       ),
     );

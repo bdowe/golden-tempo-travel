@@ -27,18 +27,38 @@ type Accommodation struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+type BookingTodo struct {
+	ID         uuid.UUID   `json:"id"`
+	TripID     uuid.UUID   `json:"trip_id"`
+	Kind       string      `json:"kind"`
+	TodoKey    string      `json:"todo_key"`
+	Title      string      `json:"title"`
+	Subtitle   *string     `json:"subtitle"`
+	Provider   *string     `json:"provider"`
+	SearchUrl  *string     `json:"search_url"`
+	DepartDate pgtype.Date `json:"depart_date"`
+	ReturnDate pgtype.Date `json:"return_date"`
+	Booked     bool        `json:"booked"`
+	Auto       bool        `json:"auto"`
+	Position   int32       `json:"position"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
 type ItineraryItem struct {
-	ID        uuid.UUID `json:"id"`
-	TripID    uuid.UUID `json:"trip_id"`
-	Position  int32     `json:"position"`
-	Name      string    `json:"name"`
-	PlaceID   *string   `json:"place_id"`
-	Address   *string   `json:"address"`
-	Latitude  float64   `json:"latitude"`
-	Longitude float64   `json:"longitude"`
-	CreatedAt time.Time `json:"created_at"`
-	Category  *string   `json:"category"`
-	TimeOfDay *string   `json:"time_of_day"`
+	ID          uuid.UUID `json:"id"`
+	TripID      uuid.UUID `json:"trip_id"`
+	Position    int32     `json:"position"`
+	Name        string    `json:"name"`
+	PlaceID     *string   `json:"place_id"`
+	Address     *string   `json:"address"`
+	Latitude    float64   `json:"latitude"`
+	Longitude   float64   `json:"longitude"`
+	CreatedAt   time.Time `json:"created_at"`
+	Category    *string   `json:"category"`
+	TimeOfDay   *string   `json:"time_of_day"`
+	City        *string   `json:"city"`
+	DayTripFrom *string   `json:"day_trip_from"`
 }
 
 type Session struct {
@@ -67,6 +87,7 @@ type Trip struct {
 	EndDate   pgtype.Date `json:"end_date"`
 	Status    string      `json:"status"`
 	ChatID    *string     `json:"chat_id"`
+	Summary   *string     `json:"summary"`
 }
 
 type TripSegment struct {
