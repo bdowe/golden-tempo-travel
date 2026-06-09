@@ -256,13 +256,25 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final auto = List<({DateTime start, DateTime end})?>.filled(groups.length, null);
     if (start != null && end != null && !end.isBefore(start)) {
       final totalDays = end.difference(start).inDays + 1;
-      final counts = _allocateDays(totalDays, [for (final g in groups) g.length]);
-      var cursor = start;
-      for (var i = 0; i < groups.length; i++) {
-        var rEnd = cursor.add(Duration(days: counts[i] - 1));
-        if (rEnd.isAfter(end)) rEnd = end;
-        auto[i] = (start: cursor, end: rEnd);
-        cursor = rEnd.add(const Duration(days: 1));
+      final n = groups.length;
+      if (n <= totalDays) {
+        // Enough days: give each location a contiguous slice weighted by size.
+        final counts = _allocateDays(totalDays, [for (final g in groups) g.length]);
+        var cursor = start;
+        for (var i = 0; i < n; i++) {
+          final rStart = cursor.isAfter(end) ? end : cursor;
+          var rEnd = rStart.add(Duration(days: counts[i] - 1));
+          if (rEnd.isAfter(end)) rEnd = end;
+          auto[i] = (start: rStart, end: rEnd);
+          cursor = rEnd.add(const Duration(days: 1));
+        }
+      } else {
+        // More locations than days: map each to a single day in order, so dates
+        // stay ascending and within the trip (some days carry several stops).
+        for (var i = 0; i < n; i++) {
+          final d = start.add(Duration(days: (i * totalDays ~/ n).clamp(0, totalDays - 1)));
+          auto[i] = (start: d, end: d);
+        }
       }
     }
 
