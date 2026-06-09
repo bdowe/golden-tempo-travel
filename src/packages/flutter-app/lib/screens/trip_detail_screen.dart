@@ -4,8 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../models/trip.dart';
 import '../models/trip_segment.dart';
-import '../models/itinerary_item.dart';
-import '../models/accommodation.dart';
 import '../models/airbnb_listing.dart';
 import '../providers/trips_provider.dart';
 import '../providers/accommodations_provider.dart';
