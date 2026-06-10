@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/flight_offer.dart';
 import '../models/plan_message.dart';
@@ -39,6 +40,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// Autoscroll follows the stream only while the user is at the bottom;
+  /// scrolling up to re-read pauses it until they return to the bottom.
+  bool _stickToBottom = true;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -48,7 +53,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_stickToBottom && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
@@ -58,11 +63,28 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     });
   }
 
+  // Only UserScrollNotification flips the flag off — the programmatic
+  // animateTo also moves the position, and may be mid-flight (away from the
+  // bottom) when the next stream chunk arrives.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.forward) {
+      _stickToBottom = false;
+    } else if (notification is ScrollUpdateNotification) {
+      final position = notification.metrics;
+      if (position.pixels >= position.maxScrollExtent - 50) {
+        _stickToBottom = true;
+      }
+    }
+    return false;
+  }
+
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
     ref.read(widget.notifier).sendMessage(text);
+    _stickToBottom = true;
     _scrollToBottom();
   }
 
@@ -82,58 +104,61 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         Expanded(
           child: planState.messages.isEmpty && planState.streamingText == null
               ? (widget.emptyState ?? const SizedBox.shrink())
-              : ListView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  children: [
-                    for (final msg in planState.messages)
-                      ChatMessageBubble(message: msg),
-                    if (planState.streamingText != null && planState.streamingText!.isNotEmpty)
-                      ChatMessageBubble(
-                        message: PlanMessage(
-                          role: MessageRole.assistant,
-                          content: planState.streamingText!,
+              : NotificationListener<ScrollNotification>(
+                  onNotification: _onScrollNotification,
+                  child: ListView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    children: [
+                      for (final msg in planState.messages)
+                        ChatMessageBubble(message: msg),
+                      if (planState.streamingText != null && planState.streamingText!.isNotEmpty)
+                        ChatMessageBubble(
+                          message: PlanMessage(
+                            role: MessageRole.assistant,
+                            content: planState.streamingText!,
+                          ),
+                          isStreaming: true,
                         ),
-                        isStreaming: true,
-                      ),
-                    if (planState.activeTools.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Wrap(
-                          spacing: 8,
-                          children: planState.activeTools.map((tool) {
-                            return Chip(
-                              avatar: const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              label: Text(_toolLabel(tool)),
-                            );
-                          }).toList(),
+                      if (planState.activeTools.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Wrap(
+                            spacing: 8,
+                            children: planState.activeTools.map((tool) {
+                              return Chip(
+                                avatar: const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                label: Text(_toolLabel(tool)),
+                              );
+                            }).toList(),
+                          ),
                         ),
-                      ),
-                    if (planState.flightOffers != null && planState.flightOffers!.isNotEmpty)
-                      _FlightOptions(
-                        routeLabel: planState.flightRouteLabel,
-                        offers: planState.flightOffers!,
-                      ),
-                    if (widget.footerBuilder != null)
-                      widget.footerBuilder!(context, planState),
-                    if (planState.error != null)
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
+                      if (planState.flightOffers != null && planState.flightOffers!.isNotEmpty)
+                        _FlightOptions(
+                          routeLabel: planState.flightRouteLabel,
+                          offers: planState.flightOffers!,
                         ),
-                        child: Text(
-                          planState.error!,
-                          style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                      if (widget.footerBuilder != null)
+                        widget.footerBuilder!(context, planState),
+                      if (planState.error != null)
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            planState.error!,
+                            style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
         ),
         _InputBar(
