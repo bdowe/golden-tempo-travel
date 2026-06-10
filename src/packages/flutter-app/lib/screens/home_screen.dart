@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../providers/recent_trip_provider.dart';
 import '../widgets/gradient_app_bar.dart';
 import 'route_optimizer_screen.dart';
 import 'country_optimizer_screen.dart';
@@ -9,6 +10,7 @@ import 'agent_screen.dart';
 import 'airbnb_parser_screen.dart';
 import 'flight_search_screen.dart';
 import 'trips_list_screen.dart';
+import 'trip_detail_screen.dart';
 import 'preferences_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -26,6 +28,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
+    final recentTrip = ref.watch(recentTripProvider);
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -104,6 +107,22 @@ class HomeScreen extends ConsumerWidget {
               ),
 
               const SizedBox(height: 16),
+
+              // Most recently viewed trip — hidden until one has been opened.
+              if (recentTrip != null) ...[
+                _ToolRow(
+                  icon: Icons.history,
+                  color: Colors.teal.shade700,
+                  title: 'Continue planning',
+                  description: recentTrip.title,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TripDetailScreen(tripId: recentTrip.tripId),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // My Trips
               _ToolRow(

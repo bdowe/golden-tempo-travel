@@ -10,6 +10,7 @@ import '../models/location.dart';
 import '../models/location_timing.dart';
 import '../models/route_request.dart';
 import '../providers/trips_provider.dart';
+import '../providers/recent_trip_provider.dart';
 import '../providers/booking_todos_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../providers/api_client_provider.dart';
@@ -74,6 +75,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           _trip = trip;
           _bookingTodos = trip.bookingTodos ?? [];
         });
+        // Remember this as the most recently viewed trip (home screen tile).
+        ref.read(recentTripProvider.notifier).record(trip.id, trip.title);
       }
       // Load the home airport so the booking checklist can derive the outbound
       // and return flights (no-op / null for anonymous sessions).
@@ -354,6 +357,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (confirm == true) {
       try {
         await ref.read(tripsProvider.notifier).deleteTrip(widget.tripId);
+        await ref.read(recentTripProvider.notifier).clearIfMatches(widget.tripId);
         if (mounted) Navigator.of(context).pop();
       } catch (e) {
         _showSnack('Delete failed: $e');

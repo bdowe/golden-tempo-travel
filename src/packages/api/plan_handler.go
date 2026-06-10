@@ -319,6 +319,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				json.Unmarshal(variant.Input, &in)
 
+				// Distance-optimize the walking order within each day/time-of-day
+				// block, leaving Claude's day and time-of-day assignments intact.
+				in.Locations = reorderItineraryByDistance(in.Locations)
+
 				donePayload := map[string]any{"locations": in.Locations, "summary": in.Summary}
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).

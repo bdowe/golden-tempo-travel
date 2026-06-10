@@ -50,6 +50,9 @@ dependencies:
   # Secure on-device storage for the session token
   flutter_secure_storage: ^9.2.2
 
+  # Plain on-device storage (last viewed trip)
+  shared_preferences: ^2.3.0
+
   # Open external Airbnb/Booking links
   url_launcher: ^6.3.0
 
