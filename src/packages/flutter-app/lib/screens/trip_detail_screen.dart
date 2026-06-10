@@ -222,6 +222,57 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return todos;
   }
 
+  /// Partitions [_bookingTodos] into per-city embedded slots — the flight that
+  /// arrives at the city, its stay, and (for the last city) the return flight
+  /// home — plus the residual list of everything that matched no city
+  /// (user-added `custom:*` todos, stale auto todos). Each todo is claimed at
+  /// most once, so repeated city labels still render each booking exactly once.
+  ({
+    List<({BookingTodo? arrival, BookingTodo? stay, BookingTodo? departure})> slots,
+    List<BookingTodo> residual,
+  }) _groupedBookings(List<String> groupLabels) {
+    final claimed = <String>{};
+    BookingTodo? claim(bool Function(BookingTodo) test) {
+      for (final t in _bookingTodos) {
+        if (!claimed.contains(t.id) && test(t)) {
+          claimed.add(t.id);
+          return t;
+        }
+      }
+      return null;
+    }
+
+    final arrivals = <BookingTodo?>[];
+    final stays = <BookingTodo?>[];
+    for (final label in groupLabels) {
+      final l = label.toLowerCase();
+      arrivals.add(claim(
+          (t) => t.kind == 'transport' && t.todoKey.endsWith('>>$l')));
+      stays.add(claim((t) => t.todoKey == 'stay:$l'));
+    }
+    // Claimed after all arrivals so an inter-city leg can't be taken as its
+    // origin's departure — only the final leg home remains unclaimed by then.
+    BookingTodo? departure;
+    if (groupLabels.isNotEmpty) {
+      final last = groupLabels.last.toLowerCase();
+      departure = claim((t) =>
+          t.kind == 'transport' && t.todoKey.startsWith('transport:$last>>'));
+    }
+
+    return (
+      slots: [
+        for (var i = 0; i < groupLabels.length; i++)
+          (
+            arrival: arrivals[i],
+            stay: stays[i],
+            departure: i == groupLabels.length - 1 ? departure : null,
+          ),
+      ],
+      residual:
+          _bookingTodos.where((t) => !claimed.contains(t.id)).toList(),
+    );
+  }
+
   Future<void> _setBooked(BookingTodo todo, bool booked) async {
     final prev = _bookingTodos;
     setState(() {
@@ -601,6 +652,28 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       }
     }
     return widgets;
+  }
+
+  /// Compact booking rows for a city group's slot: arrival flight + stay when
+  /// [departureOnly] is false, the return-home flight when true.
+  List<Widget> _bookingRowWidgets(
+    ({BookingTodo? arrival, BookingTodo? stay, BookingTodo? departure}) slot, {
+    required bool departureOnly,
+  }) {
+    final todos = departureOnly
+        ? [slot.departure]
+        : [slot.arrival, slot.stay];
+    return [
+      for (final todo in todos)
+        if (todo != null)
+          BookingTodoRow(
+            todo: todo,
+            onBookedChanged: (v) => _setBooked(todo, v),
+            onOpen: _openCallbackFor(todo),
+            openLabelOverride:
+                _flightLegs.containsKey(todo.todoKey) ? 'Find flights' : null,
+          ),
+    ];
   }
 
   /// Batches consecutive day-trip places (by town) under an indented
@@ -1190,6 +1263,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               : trip == null
                   ? const SizedBox.shrink()
                   : LayoutBuilder(builder: (context, constraints) {
+                      // City-matched bookings render inside their city group;
+                      // the rest fall through to the "Other bookings" section.
+                      final grouped = _groupedBookings(
+                          [for (final r in _locationGroupRanges(trip)) r.label]);
                       final scrollView = CustomScrollView(
                         slivers: [
                         SliverPadding(
@@ -1317,7 +1394,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     final groups = _buildGroups(filtered, _locationDates(trip));
                                     return Column(
                                       children: [
-                                        for (final group in groups) ...[
+                                        for (final (gi, group)
+                                            in groups.indexed) ...[
                                           Builder(builder: (_) {
                                             final cityCollapsed =
                                                 _collapsedCities.contains(group.label);
@@ -1400,36 +1478,58 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               ),
                                             );
                                           }),
-                                          if (!_collapsedCities.contains(group.label))
+                                          if (!_collapsedCities.contains(group.label)) ...[
+                                            // Embedded bookings render only in the
+                                            // unfiltered view: a category filter can
+                                            // merge adjacent same-label runs, which
+                                            // would break the slot<->group mapping.
+                                            if (_itemFilter == 'all' &&
+                                                gi < grouped.slots.length)
+                                              ..._bookingRowWidgets(
+                                                  grouped.slots[gi],
+                                                  departureOnly: false),
                                             ..._buildGroupItemWidgets(
                                                 group.label,
                                                 group.items,
                                                 theme,
                                                 DateTime.tryParse(trip.startDate ?? '')),
+                                            if (_itemFilter == 'all' &&
+                                                gi == groups.length - 1 &&
+                                                gi < grouped.slots.length)
+                                              ..._bookingRowWidgets(
+                                                  grouped.slots[gi],
+                                                  departureOnly: true),
+                                          ],
                                         ],
                                       ],
                                     );
                                   }),
-                                const Divider(height: 32),
-                                Row(
-                                  children: [
-                                    Expanded(child: Text('Bookings', style: theme.textTheme.titleMedium)),
-                                    TextButton.icon(
+                                // Bookings live embedded in their city groups;
+                                // this section appears only when something
+                                // didn't match a city (custom or stale todos).
+                                if (grouped.residual.isEmpty)
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton.icon(
                                       onPressed: _addBooking,
                                       icon: const Icon(Icons.add, size: 18),
-                                      label: const Text('Add'),
+                                      label: const Text('Add booking'),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                if (_bookingTodos.isEmpty)
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 8),
-                                    child: Text(
-                                        'No bookings yet — they appear here once your itinerary has places.'),
                                   )
-                                else
-                                  for (final todo in _bookingTodos)
+                                else ...[
+                                  const Divider(height: 32),
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text('Other bookings', style: theme.textTheme.titleMedium)),
+                                      TextButton.icon(
+                                        onPressed: _addBooking,
+                                        icon: const Icon(Icons.add, size: 18),
+                                        label: const Text('Add'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  for (final todo in grouped.residual)
                                     Padding(
                                       padding: const EdgeInsets.symmetric(vertical: 4),
                                       child: BookingTodoCard(
@@ -1444,6 +1544,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                             todo.auto ? null : () => _deleteTodo(todo),
                                       ),
                                     ),
+                                ],
                               ],
                             ),
                           ),
