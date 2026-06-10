@@ -19,6 +19,7 @@ ItineraryItem _$ItineraryItemFromJson(Map<String, dynamic> json) =>
       timeOfDay: json['time_of_day'] as String?,
       city: json['city'] as String?,
       dayTripFrom: json['day_trip_from'] as String?,
+      day: (json['day'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$ItineraryItemToJson(ItineraryItem instance) =>
@@ -34,4 +35,5 @@ Map<String, dynamic> _$ItineraryItemToJson(ItineraryItem instance) =>
       'time_of_day': instance.timeOfDay,
       'city': instance.city,
       'day_trip_from': instance.dayTripFrom,
+      'day': instance.day,
     };

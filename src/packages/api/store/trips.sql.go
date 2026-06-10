@@ -14,9 +14,9 @@ import (
 )
 
 const createItineraryItem = `-- name: CreateItineraryItem :one
-INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from
+INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day
 `
 
 type CreateItineraryItemParams struct {
@@ -31,6 +31,7 @@ type CreateItineraryItemParams struct {
 	TimeOfDay   *string   `json:"time_of_day"`
 	City        *string   `json:"city"`
 	DayTripFrom *string   `json:"day_trip_from"`
+	Day         *int32    `json:"day"`
 }
 
 func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryItemParams) (ItineraryItem, error) {
@@ -46,6 +47,7 @@ func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryIt
 		arg.TimeOfDay,
 		arg.City,
 		arg.DayTripFrom,
+		arg.Day,
 	)
 	var i ItineraryItem
 	err := row.Scan(
@@ -62,6 +64,7 @@ func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryIt
 		&i.TimeOfDay,
 		&i.City,
 		&i.DayTripFrom,
+		&i.Day,
 	)
 	return i, err
 }
@@ -132,7 +135,7 @@ func (q *Queries) DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, 
 }
 
 const getItineraryItemsByTrip = `-- name: GetItineraryItemsByTrip :many
-SELECT id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from FROM itinerary_items WHERE trip_id = $1 ORDER BY position ASC
+SELECT id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day FROM itinerary_items WHERE trip_id = $1 ORDER BY position ASC
 `
 
 func (q *Queries) GetItineraryItemsByTrip(ctx context.Context, tripID uuid.UUID) ([]ItineraryItem, error) {
@@ -158,6 +161,7 @@ func (q *Queries) GetItineraryItemsByTrip(ctx context.Context, tripID uuid.UUID)
 			&i.TimeOfDay,
 			&i.City,
 			&i.DayTripFrom,
+			&i.Day,
 		); err != nil {
 			return nil, err
 		}

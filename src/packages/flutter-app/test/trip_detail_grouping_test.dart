@@ -20,7 +20,8 @@ class _FakeTripsApiService extends TripsApiService {
   Future<Trip> getTrip(String id) async => trip;
 }
 
-ItineraryItem _item(int pos, String name, String address, String category) =>
+ItineraryItem _item(int pos, String name, String address, String category,
+        {int? day, String? city, String? dayTripFrom}) =>
     ItineraryItem(
       id: 'i$pos',
       position: pos,
@@ -30,6 +31,9 @@ ItineraryItem _item(int pos, String name, String address, String category) =>
       latitude: 0,
       longitude: 0,
       category: category,
+      day: day,
+      city: city,
+      dayTripFrom: dayTripFrom,
     );
 
 void main() {
@@ -42,10 +46,10 @@ void main() {
       createdAt: '2026-06-01',
       updatedAt: '2026-06-01',
       items: [
-        _item(0, "Brendal's Dive Center", 'Green Turtle Cay, Abaco, Bahamas', 'attraction'),
-        _item(1, "Miss Emily's Blue Bee Bar", 'Green Turtle Cay, Abaco, Bahamas', 'restaurant'),
-        _item(2, 'Dive Guana', 'Great Guana Cay, Abaco, Bahamas', 'attraction'),
-        _item(3, "Nipper's Beach Bar", 'Great Guana Cay, Abaco, Bahamas', 'restaurant'),
+        _item(0, "Brendal's Dive Center", 'Green Turtle Cay, Abaco, Bahamas', 'attraction', city: 'Green Turtle Cay'),
+        _item(1, "Miss Emily's Blue Bee Bar", 'Green Turtle Cay, Abaco, Bahamas', 'restaurant', city: 'Green Turtle Cay'),
+        _item(2, 'Dive Guana', 'Great Guana Cay, Abaco, Bahamas', 'attraction', city: 'Great Guana Cay'),
+        _item(3, "Nipper's Beach Bar", 'Great Guana Cay, Abaco, Bahamas', 'restaurant', city: 'Great Guana Cay'),
       ],
       // A stay in Green Turtle Cay supplies that group's dates; Great Guana has none.
       accommodations: const [
@@ -79,5 +83,57 @@ void main() {
     // Items still render under their groups.
     expect(find.text("Brendal's Dive Center"), findsOneWidget);
     expect(find.text('Dive Guana'), findsOneWidget);
+
+    // Legacy items (no day) render with no "Day N" sub-headers.
+    expect(find.textContaining('Day 1'), findsNothing);
+  });
+
+  testWidgets('items with day numbers render Day sub-sections and city dates',
+      (WidgetTester tester) async {
+    final trip = Trip(
+      id: 't2',
+      title: 'Europe',
+      status: 'planned',
+      startDate: '2026-06-10',
+      endDate: '2026-06-14',
+      createdAt: '2026-06-01',
+      updatedAt: '2026-06-01',
+      items: [
+        _item(0, 'Louvre', 'Paris, France', 'attraction', day: 1, city: 'Paris'),
+        _item(1, 'Café de Flore', 'Paris, France', 'restaurant', day: 1, city: 'Paris'),
+        // Day 2 in Paris is a day trip to Versailles.
+        _item(2, 'Versailles', 'Versailles, France', 'attraction',
+            day: 2, city: 'Versailles', dayTripFrom: 'Paris'),
+        // Day 4 jumps to Rome — day numbers stay continuous across the trip.
+        _item(3, 'Colosseum', 'Rome, Italy', 'attraction', day: 4, city: 'Rome'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
+        ],
+        child: MaterialApp(home: TripDetailScreen(tripId: 't2')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // City headers.
+    expect(find.text('Paris'), findsOneWidget);
+    expect(find.text('Rome'), findsOneWidget);
+
+    // Day sub-headers show the weekday + date derived from the trip start
+    // (day N -> startDate + (N-1)). Jun 10 2026 is a Wednesday.
+    expect(find.text('Wed, Jun 10'), findsOneWidget);
+    expect(find.text('Thu, Jun 11'), findsOneWidget);
+    expect(find.text('Sat, Jun 13'), findsOneWidget);
+
+    // Paris spans days 1–2 -> Jun 10 – Jun 11 next to the city name.
+    expect(find.text('Jun 10 – Jun 11'), findsOneWidget);
+
+    // The Versailles day trip still nests under its day.
+    expect(find.text('Day trip · Versailles'), findsOneWidget);
+    expect(find.text('Colosseum'), findsOneWidget);
   });
 }

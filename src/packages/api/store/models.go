@@ -59,6 +59,7 @@ type ItineraryItem struct {
 	TimeOfDay   *string   `json:"time_of_day"`
 	City        *string   `json:"city"`
 	DayTripFrom *string   `json:"day_trip_from"`
+	Day         *int32    `json:"day"`
 }
 
 type Session struct {

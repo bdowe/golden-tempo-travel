@@ -29,6 +29,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   int? _selectedPosition; // position of the place focused via a map pin / list tap
   List<BookingTodo> _bookingTodos = [];
   bool _overviewExpanded = false;
+  // Collapsed sets (empty => all expanded). Cities keyed by group label; days
+  // keyed by "<city>#<day>" since day numbers repeat across cities.
+  final Set<String> _collapsedCities = {};
+  final Set<String> _collapsedDays = {};
+  final GlobalKey _mapKey = GlobalKey(); // for scrolling the trip map into view on tap
 
   /// Itinerary items matching the active category filter, used by both the map
   /// and the list so they stay in sync.
@@ -397,10 +402,47 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return groups;
   }
 
-  /// Renders a hub group's items, batching consecutive day-trip places (by town)
-  /// under an indented "Day trip · <town>" sub-header so nearby towns read as
-  /// excursions from the hub city rather than separate stops.
-  List<Widget> _buildGroupItemWidgets(List<ItineraryItem> items, ThemeData theme) {
+  /// Renders a hub group's items, split into "Day N" sub-sections when items
+  /// carry day numbers (day-trip batching applied within each day). Legacy items
+  /// with no day fall back to flat day-trip batching with no day headers.
+  List<Widget> _buildGroupItemWidgets(String cityKey, List<ItineraryItem> items,
+      ThemeData theme, DateTime? tripStart) {
+    if (!items.any((it) => it.day != null)) {
+      return _buildDayTripWidgets(items, theme);
+    }
+    final widgets = <Widget>[];
+    var i = 0;
+    while (i < items.length) {
+      final day = items[i].day;
+      final run = <ItineraryItem>[];
+      while (i < items.length && items[i].day == day) {
+        run.add(items[i]);
+        i++;
+      }
+      if (day != null) {
+        final dayKey = '$cityKey#$day';
+        final collapsed = _collapsedDays.contains(dayKey);
+        widgets.add(_daySubHeader(day, tripStart, theme, collapsed, () {
+          setState(() {
+            if (collapsed) {
+              _collapsedDays.remove(dayKey);
+            } else {
+              _collapsedDays.add(dayKey);
+            }
+          });
+        }));
+        if (!collapsed) widgets.addAll(_buildDayTripWidgets(run, theme));
+      } else {
+        widgets.addAll(_buildDayTripWidgets(run, theme));
+      }
+    }
+    return widgets;
+  }
+
+  /// Batches consecutive day-trip places (by town) under an indented
+  /// "Day trip · <town>" sub-header so nearby towns read as excursions from the
+  /// hub city rather than separate stops.
+  List<Widget> _buildDayTripWidgets(List<ItineraryItem> items, ThemeData theme) {
     final widgets = <Widget>[];
     var i = 0;
     while (i < items.length) {
@@ -426,6 +468,41 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return widgets;
   }
 
+  /// Day section header: shows the calendar date (day N -> startDate + (N-1))
+  /// when the trip start is known, otherwise falls back to "Day N".
+  Widget _daySubHeader(int day, DateTime? tripStart, ThemeData theme,
+      bool collapsed, VoidCallback onTap) {
+    final label = tripStart != null
+        ? _fmtDayHeader(tripStart.add(Duration(days: day - 1)))
+        : 'Day $day';
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+        child: Row(
+          children: [
+            Icon(Icons.today, size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Icon(
+              collapsed ? Icons.chevron_right : Icons.expand_more,
+              size: 18,
+              color: theme.colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _dayTripSubHeader(String town, ThemeData theme) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 16, 0),
         child: Row(
@@ -449,14 +526,49 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           leading: _itemLeading(item.category, item.position),
           title: Text(item.name),
           subtitle: item.address != null ? Text(item.address!) : null,
-          trailing: item.timeOfDay == null
-              ? null
-              : _TimeOfDayChip(timeOfDay: item.timeOfDay!),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (item.timeOfDay != null)
+                _TimeOfDayChip(timeOfDay: item.timeOfDay!),
+              IconButton(
+                icon: const Icon(Icons.map_outlined),
+                tooltip: 'Open in Google Maps',
+                onPressed: () => _launch(_mapsUrl(item)),
+              ),
+            ],
+          ),
           selected: _selectedPosition == item.position,
           selectedTileColor: theme.colorScheme.primary.withValues(alpha: 0.08),
-          onTap: () => setState(() => _selectedPosition = item.position),
+          onTap: () {
+            setState(() => _selectedPosition = item.position);
+            _scrollToMap();
+          },
         ),
       );
+
+  /// Scrolls the page so the trip map is visible (focusing the tapped pin). No-op
+  /// when the trip has no mappable items, so the map isn't built.
+  void _scrollToMap() {
+    final ctx = _mapKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+    }
+  }
+
+  /// Google Maps deep link for a place: prefer place_id, then coordinates, then a
+  /// name/address text search.
+  String _mapsUrl(ItineraryItem it) {
+    const base = 'https://www.google.com/maps/search/?api=1';
+    if (it.placeId != null && it.placeId!.isNotEmpty) {
+      return '$base&query=${Uri.encodeComponent(it.name)}&query_place_id=${it.placeId}';
+    }
+    if (it.latitude != 0 || it.longitude != 0) {
+      return '$base&query=${it.latitude},${it.longitude}';
+    }
+    return '$base&query=${Uri.encodeComponent('${it.name} ${it.address ?? ''}'.trim())}';
+  }
 
   /// Maps each itinerary item's position to its location's formatted date range.
   /// Delegates to [_locationGroupRanges] so the itinerary labels and the booking
@@ -536,14 +648,35 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       final g = groups[i];
       final locality = _hubOf(g.first);
       final accRange = _accDateRangeFor(locality, stays);
+      final dayRange = _dayRangeFor(g, start);
       final a = auto[i];
       result.add((
         label: locality ?? 'Other places',
-        start: accRange?.start ?? a?.start,
-        end: accRange?.end ?? a?.end,
+        start: accRange?.start ?? dayRange?.start ?? a?.start,
+        end: accRange?.end ?? dayRange?.end ?? a?.end,
       ));
     }
     return result;
+  }
+
+  /// Date range for a location group from its items' AI-assigned day numbers,
+  /// anchored to the trip start: day N -> startDate + (N-1). Null when the trip
+  /// has no start date or none of the items carry a day.
+  ({DateTime start, DateTime end})? _dayRangeFor(
+      List<ItineraryItem> items, DateTime? tripStart) {
+    if (tripStart == null) return null;
+    int? lo, hi;
+    for (final it in items) {
+      final d = it.day;
+      if (d == null || d < 1) continue;
+      if (lo == null || d < lo) lo = d;
+      if (hi == null || d > hi) hi = d;
+    }
+    if (lo == null || hi == null) return null;
+    return (
+      start: tripStart.add(Duration(days: lo - 1)),
+      end: tripStart.add(Duration(days: hi - 1)),
+    );
   }
 
   /// First accommodation in [locality] with both check-in/out dates, as DateTimes.
@@ -602,9 +735,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
   String _fmtShortDt(DateTime d) => '${_months[d.month - 1]} ${d.day}';
 
+  /// Day-header date, e.g. "Tue, Jul 15" (weekday + month + day).
+  String _fmtDayHeader(DateTime d) =>
+      '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static const _weekdays = [
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
   ];
 
   /// The trip's hero header: title (+ rename), date/status chips, a Refine
@@ -768,6 +909,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         const Divider(height: 32),
                         if (_filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0)) ...[
                           ClipRRect(
+                            key: _mapKey,
                             borderRadius: BorderRadius.circular(12),
                             child: SizedBox(
                               height: 240,
@@ -820,47 +962,76 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                             return Column(
                               children: [
                                 for (final group in groups) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                                  Builder(builder: (_) {
+                                    final cityCollapsed =
+                                        _collapsedCities.contains(group.label);
+                                    return InkWell(
+                                      onTap: () => setState(() {
+                                        if (cityCollapsed) {
+                                          _collapsedCities.remove(group.label);
+                                        } else {
+                                          _collapsedCities.add(group.label);
+                                        }
+                                      }),
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Icon(Icons.location_on,
-                                                size: 18, color: theme.colorScheme.primary),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                group.label,
-                                                style: theme.textTheme.titleSmall
-                                                    ?.copyWith(fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                            if (group.dateRange != null)
-                                              Row(
-                                                children: [
+                                            Row(
+                                              children: [
+                                                Icon(Icons.location_on,
+                                                    size: 18,
+                                                    color: theme.colorScheme.primary),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    group.label,
+                                                    style: theme.textTheme.titleSmall
+                                                        ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.bold),
+                                                  ),
+                                                ),
+                                                if (group.dateRange != null) ...[
                                                   Icon(Icons.event,
                                                       size: 14,
-                                                      color: theme.colorScheme.primary),
+                                                      color:
+                                                          theme.colorScheme.primary),
                                                   const SizedBox(width: 4),
                                                   Text(
                                                     group.dateRange!,
                                                     style: theme.textTheme.labelMedium
                                                         ?.copyWith(
-                                                            color:
-                                                                theme.colorScheme.primary),
+                                                            color: theme
+                                                                .colorScheme.primary),
                                                   ),
                                                 ],
-                                              ),
+                                                const SizedBox(width: 4),
+                                                Icon(
+                                                  cityCollapsed
+                                                      ? Icons.chevron_right
+                                                      : Icons.expand_more,
+                                                  size: 20,
+                                                  color: theme.colorScheme.primary,
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            const Divider(height: 1),
                                           ],
                                         ),
-                                        const SizedBox(height: 4),
-                                        const Divider(height: 1),
-                                      ],
-                                    ),
-                                  ),
-                                  ..._buildGroupItemWidgets(group.items, theme),
+                                      ),
+                                    );
+                                  }),
+                                  if (!_collapsedCities.contains(group.label))
+                                    ..._buildGroupItemWidgets(
+                                        group.label,
+                                        group.items,
+                                        theme,
+                                        DateTime.tryParse(trip.startDate ?? '')),
                                 ],
                               ],
                             );

@@ -32,6 +32,7 @@ type ItineraryItemResponse struct {
 	TimeOfDay   *string `json:"time_of_day,omitempty"`
 	City        *string `json:"city,omitempty"`
 	DayTripFrom *string `json:"day_trip_from,omitempty"`
+	Day         *int    `json:"day,omitempty"`
 }
 
 var allowedItemCategories = map[string]bool{"attraction": true, "restaurant": true}
@@ -75,6 +76,14 @@ func dateToPtr(d pgtype.Date) *string {
 	return &s
 }
 
+func int32PtrToIntPtr(p *int32) *int {
+	if p == nil {
+		return nil
+	}
+	v := int(*p)
+	return &v
+}
+
 func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment, bookingTodos []store.BookingTodo) TripResponse {
 	resp := TripResponse{
 		ID:        t.ID.String(),
@@ -100,6 +109,7 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 			TimeOfDay:   it.TimeOfDay,
 			City:        it.City,
 			DayTripFrom: it.DayTripFrom,
+			Day:         int32PtrToIntPtr(it.Day),
 		})
 	}
 	for _, a := range accommodations {
@@ -118,7 +128,7 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 // transaction. Called from the agent's create_itinerary step for signed-in users.
 // chatID stamps the trip with its conversation so My Trips can collapse repeated
 // refinements to the latest version; an empty chatID is stored as NULL.
-func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary string, locations []map[string]any) (string, error) {
+func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, startDate, endDate string, locations []map[string]any) (string, error) {
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -156,11 +166,13 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary s
 		return "", err
 	}
 
+	maxDay := 1
 	for i, loc := range locations {
 		name, _ := loc["name"].(string)
 		lat, _ := loc["latitude"].(float64)
 		lng, _ := loc["longitude"].(float64)
 		var placeID, address, city, dayTripFrom, category, timeOfDay *string
+		var day *int32
 		if s, ok := loc["place_id"].(string); ok && s != "" {
 			placeID = &s
 		}
@@ -191,6 +203,14 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary s
 				timeOfDay = &t
 			}
 		}
+		// JSON numbers decode as float64; keep only sensible 1-based day numbers.
+		if v, ok := loc["day"].(float64); ok && v >= 1 {
+			d := int32(v)
+			day = &d
+			if int(d) > maxDay {
+				maxDay = int(d)
+			}
+		}
 		if _, err := q.CreateItineraryItem(ctx, store.CreateItineraryItemParams{
 			TripID:      trip.ID,
 			Position:    int32(i),
@@ -203,8 +223,32 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary s
 			TimeOfDay:   timeOfDay,
 			City:        city,
 			DayTripFrom: dayTripFrom,
+			Day:         day,
 		}); err != nil {
 			return "", err
+		}
+	}
+
+	// Save the trip's date span when the agent supplied a start date. A missing
+	// end date is derived from the start plus the itinerary's day span.
+	if start := strings.TrimSpace(startDate); start != "" {
+		end := strings.TrimSpace(endDate)
+		if end == "" {
+			if t, perr := time.Parse("2006-01-02", start); perr == nil {
+				end = t.AddDate(0, 0, maxDay-1).Format("2006-01-02")
+			}
+		}
+		startD, serr := parseDateParam(&start)
+		endD, eerr := parseDateParam(&end)
+		if serr == nil && eerr == nil {
+			if _, err := q.UpdateTrip(ctx, store.UpdateTripParams{
+				ID:        trip.ID,
+				UserID:    userID,
+				StartDate: startD,
+				EndDate:   endD,
+			}); err != nil {
+				return "", err
+			}
 		}
 	}
 

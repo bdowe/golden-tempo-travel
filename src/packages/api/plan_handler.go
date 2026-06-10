@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -106,6 +107,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 								"enum":        []string{"morning", "afternoon", "evening"},
 								"description": "Which part of the day to do this — spread a day's places sensibly (sights/activities across morning–afternoon, meals at their natural times).",
 							},
+							"day": map[string]any{
+								"type":        "integer",
+								"description": "The trip day this place belongs to, starting at 1 and increasing chronologically across the whole trip; all places on the same day share the same number (e.g. days 1–3 in Paris, then day 4 onward in Rome). Combined with time_of_day this makes each day read as a sequential schedule.",
+							},
 						},
 						"required": []string{"name", "latitude", "longitude"},
 					},
@@ -118,13 +123,21 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 					"type":        "string",
 					"description": "A 1–2 sentence overview of the trip to show the user (the per-day breakdown already appears in the itinerary list, so keep this brief).",
 				},
+				"start_date": map[string]any{
+					"type":        "string",
+					"description": "The trip's first day as YYYY-MM-DD (day 1). Include it whenever the traveler has given or agreed to travel dates.",
+				},
+				"end_date": map[string]any{
+					"type":        "string",
+					"description": "The trip's last day as YYYY-MM-DD. Optional — if omitted it's derived from start_date plus the number of days in the itinerary.",
+				},
 			},
 			Required: []string{"locations"},
 		},
 	}
 	savePrefsTool := anthropic.ToolParam{
 		Name:        "save_preferences",
-		Description: anthropic.String("Save what you learn about the traveler's preferences so future trips are personalized. Call this when the user reveals a budget level, trip pace, or interests. Only include fields you actually learned."),
+		Description: anthropic.String("Save what you learn about the traveler's preferences so future trips are personalized. Call this when the user reveals a budget level, trip pace, interests, or which airport they fly from. Only include fields you actually learned."),
 		InputSchema: anthropic.ToolInputSchemaParam{
 			Properties: map[string]any{
 				"budget": map[string]any{
@@ -218,7 +231,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	basePrompt := "You are an expert travel agent. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant') and a time_of_day ('morning', 'afternoon', or 'evening') so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan. Be conversational and helpful — ask clarifying questions if needed before searching."
+	today := time.Now()
+	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. Be conversational and helpful — ask clarifying questions if needed before searching."
 
 	placesService := NewGooglePlacesService()
 	ctx := r.Context()
@@ -300,6 +314,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 					Locations []map[string]any `json:"locations"`
 					Title     string           `json:"title"`
 					Summary   string           `json:"summary"`
+					StartDate string           `json:"start_date"`
+					EndDate   string           `json:"end_date"`
 				}
 				json.Unmarshal(variant.Input, &in)
 
@@ -307,7 +323,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).
 				if authed {
-					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.Locations); err != nil {
+					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID
