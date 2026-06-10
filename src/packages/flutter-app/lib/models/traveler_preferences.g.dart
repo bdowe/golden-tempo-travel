@@ -14,6 +14,7 @@ TravelerPreferences _$TravelerPreferencesFromJson(Map<String, dynamic> json) =>
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      homeAirport: json['home_airport'] as String?,
     );
 
 Map<String, dynamic> _$TravelerPreferencesToJson(
@@ -22,4 +23,5 @@ Map<String, dynamic> _$TravelerPreferencesToJson(
       'budget': instance.budget,
       'pace': instance.pace,
       'interests': instance.interests,
+      'home_airport': instance.homeAirport,
     };

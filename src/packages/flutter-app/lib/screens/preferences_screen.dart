@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/airport.dart';
+import '../widgets/airport_field.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../providers/preferences_provider.dart';
 
@@ -20,6 +22,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
   String? _budget;
   String? _pace;
   final Set<String> _interests = {};
+  Airport? _homeAirport;
   final _interestController = TextEditingController();
   bool _initialized = false;
 
@@ -34,6 +37,10 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           _budget = prefs.budget;
           _pace = prefs.pace;
           _interests.addAll(prefs.interests);
+          final home = prefs.homeAirport;
+          if (home != null && home.isNotEmpty) {
+            _homeAirport = Airport(iataCode: home, name: home);
+          }
           _initialized = true;
         });
       } else if (mounted) {
@@ -61,6 +68,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           budget: _budget,
           pace: _pace,
           interests: _interests.toList(),
+          homeAirport: _homeAirport?.iataCode,
         );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -133,6 +141,22 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                     ),
                     IconButton(icon: const Icon(Icons.add), onPressed: _addInterest),
                   ],
+                ),
+                const SizedBox(height: 24),
+                Text('Home airport', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Used as the default origin when planning flights.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                AirportField(
+                  label: 'Home airport',
+                  icon: Icons.home,
+                  selected: _homeAirport,
+                  onSelected: (a) => setState(() => _homeAirport = a),
                 ),
                 const SizedBox(height: 32),
                 FilledButton(

@@ -47,10 +47,16 @@ class PreferencesNotifier extends StateNotifier<PreferencesState> {
     }
   }
 
-  Future<bool> save({String? budget, String? pace, required List<String> interests}) async {
+  Future<bool> save({
+    String? budget,
+    String? pace,
+    required List<String> interests,
+    String? homeAirport,
+  }) async {
     state = state.copyWith(saving: true, error: null);
     try {
-      final prefs = await _service.savePreferences(budget: budget, pace: pace, interests: interests);
+      final prefs = await _service.savePreferences(
+          budget: budget, pace: pace, interests: interests, homeAirport: homeAirport);
       state = state.copyWith(prefs: prefs, saving: false);
       return true;
     } catch (e) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -141,6 +142,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 					"items":       map[string]any{"type": "string"},
 					"description": "Theme tags, e.g. museums, food, nightlife, nature",
 				},
+				"home_airport": map[string]any{
+					"type":        "string",
+					"description": "The traveler's home/departure airport as an IATA code, e.g. BOS — save it when they mention where they usually fly from",
+				},
 			},
 		},
 	}
@@ -175,11 +180,30 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	searchFlightsTool := anthropic.ToolParam{
+		Name: "search_flights",
+		Description: anthropic.String("Search real flight options between two places for given dates and present a few good ones (ranked by overall desirability). " +
+			"Ask the traveler for their departure city/airport and travel dates first if you don't know them. " +
+			"origin/destination may be city names or IATA codes. Choose optimize_for from the traveler's budget: budget→'cost', luxury→'time', otherwise 'balanced'."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"origin":       map[string]any{"type": "string", "description": "Departure city or IATA code, e.g. 'Boston' or 'BOS'"},
+				"destination":  map[string]any{"type": "string", "description": "Arrival city or IATA code"},
+				"depart_date":  map[string]any{"type": "string", "description": "YYYY-MM-DD"},
+				"return_date":  map[string]any{"type": "string", "description": "Optional YYYY-MM-DD for round trips"},
+				"adults":       map[string]any{"type": "integer", "description": "Optional, defaults to 1"},
+				"optimize_for": map[string]any{"type": "string", "enum": []string{"cost", "time", "balanced"}, "description": "Ranking emphasis"},
+			},
+			Required: []string{"origin", "destination", "depart_date"},
+		},
+	}
+
 	tools := []anthropic.ToolUnionParam{
 		{OfTool: &searchTool},
 		{OfTool: &createTool},
 		{OfTool: &suggestStaysTool},
 		{OfTool: &suggestTransportTool},
+		{OfTool: &searchFlightsTool},
 	}
 	if authed {
 		tools = append(tools, anthropic.ToolUnionParam{OfTool: &savePrefsTool})
@@ -294,20 +318,22 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 			case "save_preferences":
 				var in struct {
-					Budget    *string  `json:"budget"`
-					Pace      *string  `json:"pace"`
-					Interests []string `json:"interests"`
+					Budget      *string  `json:"budget"`
+					Pace        *string  `json:"pace"`
+					Interests   []string `json:"interests"`
+					HomeAirport *string  `json:"home_airport"`
 				}
 				json.Unmarshal(variant.Input, &in)
 
 				budget, _ := normalizeChoice(in.Budget, allowedBudgets, "budget")
 				pace, _ := normalizeChoice(in.Pace, allowedPaces, "pace")
+				homeAirport, _ := normalizeAirportCode(in.HomeAirport)
 				var interestsArg interface{}
 				if in.Interests != nil {
 					interestsArg = normalizeInterests(in.Interests)
 				}
 				_, err := store.New(dbPool).UpsertPreferences(ctx, store.UpsertPreferencesParams{
-					UserID: uid, Budget: budget, Pace: pace, Interests: interestsArg,
+					UserID: uid, Budget: budget, Pace: pace, Interests: interestsArg, HomeAirport: homeAirport,
 				})
 				msg := "Preferences saved."
 				if err != nil {
@@ -352,6 +378,58 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				sendSSE(w, "tool_result", map[string]string{"name": "suggest_transport"})
 				b, _ := json.Marshal(links)
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, "Provided browse links: "+string(b), false))
+
+			case "search_flights":
+				var in struct {
+					Origin      string `json:"origin"`
+					Destination string `json:"destination"`
+					DepartDate  string `json:"depart_date"`
+					ReturnDate  string `json:"return_date"`
+					Adults      int    `json:"adults"`
+					OptimizeFor string `json:"optimize_for"`
+				}
+				json.Unmarshal(variant.Input, &in)
+
+				originIata := resolveIATA(ctx, in.Origin)
+				destIata := resolveIATA(ctx, in.Destination)
+				if originIata == "" || destIata == "" {
+					sendSSE(w, "tool_result", map[string]string{"name": "search_flights"})
+					msg := fmt.Sprintf("Could not resolve %q or %q to an airport. Ask the traveler to clarify the city or airport.", in.Origin, in.Destination)
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, msg, true))
+					break
+				}
+
+				adults := in.Adults
+				if adults < 1 {
+					adults = 1
+				}
+				offers, err := duffelService.SearchFlightOffers(ctx, FlightSearchRequest{
+					Origin: originIata, Destination: destIata, DepartDate: in.DepartDate,
+					ReturnDate: in.ReturnDate, Adults: adults, OptimizeFor: in.OptimizeFor,
+				})
+				if err != nil {
+					sendSSE(w, "tool_result", map[string]string{"name": "search_flights"})
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, fmt.Sprintf("Error searching flights: %v", err), true))
+					break
+				}
+
+				bestN := RankFlightOffers(offers, in.OptimizeFor)
+				if len(bestN) > 4 {
+					bestN = bestN[:4]
+				}
+				attachBookingURLs(bestN, FlightSearchRequest{
+					Origin: originIata, Destination: destIata,
+					DepartDate: in.DepartDate, ReturnDate: in.ReturnDate, Adults: adults,
+				})
+				if len(bestN) > 0 {
+					sendSSE(w, "flights", map[string]any{
+						"origin": originIata, "destination": destIata,
+						"depart_date": in.DepartDate, "optimize_for": normalizeOptimizeFor(in.OptimizeFor),
+						"offers": bestN,
+					})
+				}
+				sendSSE(w, "tool_result", map[string]string{"name": "search_flights"})
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summarizeOffers(originIata, destIata, bestN), false))
 			}
 		}
 
@@ -363,6 +441,63 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	}
+}
+
+// resolveIATA turns a city name or IATA code into an IATA code for flight
+// search. A 3-letter alphabetic input is treated as a code; anything else is
+// looked up via Duffel, preferring a city (metropolitan) code so the search
+// spans all of a city's airports. Returns "" when nothing resolves.
+func resolveIATA(ctx context.Context, s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) == 3 && isAlpha(s) {
+		return strings.ToUpper(s)
+	}
+	results, err := duffelService.SearchAirports(ctx, s)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	for _, a := range results {
+		if a.SubType == "city" && a.IataCode != "" {
+			return a.IataCode
+		}
+	}
+	return results[0].IataCode
+}
+
+func isAlpha(s string) bool {
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// summarizeOffers builds a compact text summary of ranked offers for the model,
+// so it can describe and compare them without re-sending the full payload (which
+// already reached the UI via the "flights" event).
+func summarizeOffers(origin, dest string, offers []FlightOffer) string {
+	if len(offers) == 0 {
+		return fmt.Sprintf("No flights found from %s to %s for those dates.", origin, dest)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d ranked flight options %s→%s (best first):\n", len(offers), origin, dest)
+	for i, o := range offers {
+		airline := "—"
+		if len(o.Airlines) > 0 {
+			airline = strings.Join(o.Airlines, "/")
+		}
+		stops := "nonstop"
+		if o.Stops == 1 {
+			stops = "1 stop"
+		} else if o.Stops > 1 {
+			stops = fmt.Sprintf("%d stops", o.Stops)
+		}
+		fmt.Fprintf(&b, "%d. %s — %s %.0f, %s, %dh%02dm (score %.1f)\n",
+			i+1, airline, o.Currency, o.Price, stops, o.DurationMin/60, o.DurationMin%60, o.Score)
+	}
+	b.WriteString("These option cards are already shown to the traveler; summarize and help them choose.")
+	return b.String()
 }
 
 // personalizedSystemPrompt appends the traveler's saved preferences to the base
@@ -382,9 +517,16 @@ func personalizedSystemPrompt(base string, p *store.TravelerPreference) string {
 	if len(p.Interests) > 0 {
 		parts = append(parts, "interests: "+strings.Join(p.Interests, ", "))
 	}
+	var homeNote string
+	if p.HomeAirport != nil && *p.HomeAirport != "" {
+		parts = append(parts, "home airport: "+*p.HomeAirport)
+		homeNote = " When searching flights, default the origin to the traveler's home airport (" +
+			*p.HomeAirport + ") and state the assumption (e.g. 'flying from " + *p.HomeAirport +
+			"'); only use a different origin if the trip clearly starts elsewhere or they say so."
+	}
 	if len(parts) == 0 {
 		return base
 	}
 	return base + "\n\nTraveler preferences — " + strings.Join(parts, "; ") +
-		". Tailor your suggestions accordingly."
+		". Tailor your suggestions accordingly." + homeNote
 }

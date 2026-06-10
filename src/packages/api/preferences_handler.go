@@ -15,16 +15,18 @@ var allowedBudgets = map[string]bool{"budget": true, "mid": true, "luxury": true
 var allowedPaces = map[string]bool{"relaxed": true, "balanced": true, "packed": true}
 
 type PreferencesResponse struct {
-	Budget    *string  `json:"budget"`
-	Pace      *string  `json:"pace"`
-	Interests []string `json:"interests"`
+	Budget      *string  `json:"budget"`
+	Pace        *string  `json:"pace"`
+	Interests   []string `json:"interests"`
+	HomeAirport *string  `json:"home_airport"`
 }
 
 type PutPreferencesRequest struct {
 	Budget *string `json:"budget"`
 	Pace   *string `json:"pace"`
 	// Pointer distinguishes omitted (nil -> keep) from cleared ([] -> clear).
-	Interests *[]string `json:"interests"`
+	Interests   *[]string `json:"interests"`
+	HomeAirport *string   `json:"home_airport"`
 }
 
 func toPreferencesResponse(p store.TravelerPreference) PreferencesResponse {
@@ -32,7 +34,7 @@ func toPreferencesResponse(p store.TravelerPreference) PreferencesResponse {
 	if interests == nil {
 		interests = []string{}
 	}
-	return PreferencesResponse{Budget: p.Budget, Pace: p.Pace, Interests: interests}
+	return PreferencesResponse{Budget: p.Budget, Pace: p.Pace, Interests: interests, HomeAirport: p.HomeAirport}
 }
 
 func getPreferencesHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +79,12 @@ func putPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	homeAirport, err := normalizeAirportCode(req.HomeAirport)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// nil interests -> leave unchanged; provided (incl. empty) -> set/clear.
 	var interestsArg interface{}
 	if req.Interests != nil {
@@ -84,10 +92,11 @@ func putPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p, err := store.New(dbPool).UpsertPreferences(r.Context(), store.UpsertPreferencesParams{
-		UserID:    user.ID,
-		Budget:    budget,
-		Pace:      pace,
-		Interests: interestsArg,
+		UserID:      user.ID,
+		Budget:      budget,
+		Pace:        pace,
+		Interests:   interestsArg,
+		HomeAirport: homeAirport,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not save preferences")
@@ -108,6 +117,22 @@ func normalizeChoice(v *string, allowed map[string]bool, field string) (*string,
 	}
 	if !allowed[s] {
 		return nil, errors.New(field + " is not a recognized value")
+	}
+	return &s, nil
+}
+
+// normalizeAirportCode validates and upper-cases a home airport. Empty/nil ->
+// nil (omit, keep existing); anything other than a 3-letter IATA code -> error.
+func normalizeAirportCode(v *string) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	s := strings.ToUpper(strings.TrimSpace(*v))
+	if s == "" {
+		return nil, nil
+	}
+	if len(s) != 3 || !isAlpha(s) {
+		return nil, errors.New("home_airport must be a 3-letter IATA code")
 	}
 	return &s, nil
 }

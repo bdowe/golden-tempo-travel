@@ -2,15 +2,17 @@
 SELECT * FROM traveler_preferences WHERE user_id = $1;
 
 -- name: UpsertPreferences :one
-INSERT INTO traveler_preferences (user_id, budget, pace, interests)
+INSERT INTO traveler_preferences (user_id, budget, pace, interests, home_airport)
 VALUES (
     sqlc.arg('user_id'),
     sqlc.narg('budget'),
     sqlc.narg('pace'),
-    COALESCE(sqlc.narg('interests'), '{}'::text[])
+    COALESCE(sqlc.narg('interests'), '{}'::text[]),
+    sqlc.narg('home_airport')
 )
 ON CONFLICT (user_id) DO UPDATE SET
-    budget    = COALESCE(sqlc.narg('budget'), traveler_preferences.budget),
-    pace      = COALESCE(sqlc.narg('pace'), traveler_preferences.pace),
-    interests = COALESCE(sqlc.narg('interests'), traveler_preferences.interests)
+    budget       = COALESCE(sqlc.narg('budget'), traveler_preferences.budget),
+    pace         = COALESCE(sqlc.narg('pace'), traveler_preferences.pace),
+    interests    = COALESCE(sqlc.narg('interests'), traveler_preferences.interests),
+    home_airport = COALESCE(sqlc.narg('home_airport'), traveler_preferences.home_airport)
 RETURNING *;

@@ -29,11 +29,17 @@ class PreferencesApiService {
     String? budget,
     String? pace,
     required List<String> interests,
+    String? homeAirport,
   }) async {
     final res = await apiClient.httpClient.put(
       Uri.parse('${apiClient.baseUrl}/preferences'),
       headers: _headers(json: true),
-      body: jsonEncode({'budget': budget, 'pace': pace, 'interests': interests}),
+      body: jsonEncode({
+        'budget': budget,
+        'pace': pace,
+        'interests': interests,
+        'home_airport': homeAirport,
+      }),
     );
     if (res.statusCode == 200) {
       return TravelerPreferences.fromJson(jsonDecode(res.body));

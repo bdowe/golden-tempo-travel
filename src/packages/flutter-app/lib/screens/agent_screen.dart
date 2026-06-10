@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/flight_offer_card.dart';
+import '../models/flight_offer.dart';
 import '../models/plan_message.dart';
 import '../providers/plan_provider.dart';
 import '../providers/route_provider.dart';
@@ -139,6 +141,11 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
                             }).toList(),
                           ),
                         ),
+                      if (planState.flightOffers != null && planState.flightOffers!.isNotEmpty)
+                        _FlightOptions(
+                          routeLabel: planState.flightRouteLabel,
+                          offers: planState.flightOffers!,
+                        ),
                       if (planState.completedLocations != null)
                         _ItineraryBanner(
                           summary: planState.completedSummary,
@@ -184,6 +191,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
         return 'Searching places...';
       case 'create_itinerary':
         return 'Building itinerary...';
+      case 'search_flights':
+        return 'Searching flights...';
       default:
         return '$tool...';
     }
@@ -307,6 +316,55 @@ class _MessageBubble extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Inline flight results in the chat — a header plus the agent's top ranked
+/// options as shared FlightOfferCards (first = best match).
+class _FlightOptions extends StatelessWidget {
+  final String? routeLabel;
+  final List<FlightOffer> offers;
+
+  const _FlightOptions({required this.routeLabel, required this.offers});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = (routeLabel == null || routeLabel!.trim().isEmpty)
+        ? 'Flight options'
+        : 'Flight options · $routeLabel';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.teal.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flight, color: Colors.teal.shade700, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.teal.shade800,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < offers.length; i++)
+            FlightOfferCard(offer: offers[i], isBest: i == 0),
+        ],
       ),
     );
   }

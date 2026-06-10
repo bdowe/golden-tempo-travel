@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/plan_message.dart';
 import '../models/location.dart';
+import '../models/flight_offer.dart';
 import '../services/api_client.dart';
 import '../services/plan_service.dart';
 import 'api_client_provider.dart';
@@ -14,6 +15,8 @@ class PlanState {
   final List<Map<String, dynamic>>? completedLocations;
   final String? completedSummary;
   final String? savedTripId;
+  final List<FlightOffer>? flightOffers;
+  final String? flightRouteLabel;
   final String? error;
 
   const PlanState({
@@ -24,6 +27,8 @@ class PlanState {
     this.completedLocations,
     this.completedSummary,
     this.savedTripId,
+    this.flightOffers,
+    this.flightRouteLabel,
     this.error,
   });
 
@@ -35,6 +40,8 @@ class PlanState {
     Object? completedLocations = _sentinel,
     Object? completedSummary = _sentinel,
     Object? savedTripId = _sentinel,
+    Object? flightOffers = _sentinel,
+    Object? flightRouteLabel = _sentinel,
     Object? error = _sentinel,
   }) {
     return PlanState(
@@ -47,6 +54,8 @@ class PlanState {
           : completedLocations as List<Map<String, dynamic>>?,
       completedSummary: completedSummary == _sentinel ? this.completedSummary : completedSummary as String?,
       savedTripId: savedTripId == _sentinel ? this.savedTripId : savedTripId as String?,
+      flightOffers: flightOffers == _sentinel ? this.flightOffers : flightOffers as List<FlightOffer>?,
+      flightRouteLabel: flightRouteLabel == _sentinel ? this.flightRouteLabel : flightRouteLabel as String?,
       error: error == _sentinel ? this.error : error as String?,
     );
   }
@@ -103,6 +112,8 @@ class PlanNotifier extends StateNotifier<PlanState> {
       isStreaming: true,
       streamingText: '',
       activeTools: [],
+      flightOffers: null,
+      flightRouteLabel: null,
       error: null,
     );
 
@@ -136,6 +147,18 @@ class PlanNotifier extends StateNotifier<PlanState> {
               completedLocations: locations,
               completedSummary: summary,
               savedTripId: event.data['trip_id'] as String?,
+            );
+
+          case 'flights':
+            final raw = event.data['offers'] as List<dynamic>? ?? [];
+            final offers = raw
+                .map((e) => FlightOffer.fromJson(e as Map<String, dynamic>))
+                .toList();
+            final origin = event.data['origin'] as String? ?? '';
+            final dest = event.data['destination'] as String? ?? '';
+            state = state.copyWith(
+              flightOffers: offers,
+              flightRouteLabel: '$origin → $dest',
             );
 
           case 'error':
