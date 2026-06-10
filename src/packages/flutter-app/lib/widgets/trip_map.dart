@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
@@ -34,6 +36,17 @@ class _TripMapState extends State<TripMap> {
 
   static bool _hasCoords(ItineraryItem i) =>
       i.latitude != 0 || i.longitude != 0;
+
+  /// Clockwise angle (radians) from screen-up to the segment a->b as rendered
+  /// on the Web Mercator map, so a rotated up-arrow lies along the polyline.
+  static double _bearing(LatLng a, LatLng b) {
+    double mercY(double lat) =>
+        math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
+    // Both deltas must be in radians for the angle to come out right.
+    final dLng =
+        (((b.longitude - a.longitude + 540) % 360) - 180) * math.pi / 180;
+    return math.atan2(dLng, mercY(b.latitude) - mercY(a.latitude));
+  }
 
   /// The coordinate of the currently selected itinerary item, if mappable.
   LatLng? _selectedPoint() {
@@ -144,6 +157,30 @@ class _TripMapState extends State<TripMap> {
       );
     }
 
+    // Direction arrows on every drawn segment (each consecutive pair of mapped
+    // points, matching the polyline). Placed at the midpoint, or further along
+    // when a travel-time label already occupies the midpoint.
+    final arrowMarkers = <Marker>[];
+    for (var k = 0; k < mapped.length - 1; k++) {
+      final a = mapped[k];
+      final b = mapped[k + 1];
+      if (a.point == b.point) continue;
+      final hasLabel = b.item.position == a.item.position + 1 &&
+          widget.segmentLabels[a.item.position] != null;
+      final t = hasLabel ? 0.7 : 0.5;
+      arrowMarkers.add(
+        Marker(
+          point: LatLng(
+            a.point.latitude + (b.point.latitude - a.point.latitude) * t,
+            a.point.longitude + (b.point.longitude - a.point.longitude) * t,
+          ),
+          width: 18,
+          height: 18,
+          child: _SegmentArrow(angle: _bearing(a.point, b.point)),
+        ),
+      );
+    }
+
     // Wheel scroll stays with the page (the map lives inside a ListView);
     // zooming is done via the on-map buttons or touch pinch.
     const interaction = InteractionOptions(
@@ -193,6 +230,7 @@ class _TripMapState extends State<TripMap> {
                   ),
                 ],
               ),
+            if (arrowMarkers.isNotEmpty) MarkerLayer(markers: arrowMarkers),
             if (labelMarkers.isNotEmpty) MarkerLayer(markers: labelMarkers),
             MarkerClusterLayerWidget(
               options: MarkerClusterLayerOptions(
@@ -282,6 +320,31 @@ class _MapButton extends StatelessWidget {
             child: Icon(icon, size: 20, color: scheme.onSurface),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// An arrow on a route segment showing the direction of travel. [angle] is
+/// clockwise radians from screen-up; the marker keeps the default
+/// rotate-with-map behavior so the arrow stays aligned with the polyline.
+class _SegmentArrow extends StatelessWidget {
+  final double angle;
+  const _SegmentArrow({required this.angle});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Transform.rotate(
+      angle: angle,
+      child: Icon(
+        Icons.navigation,
+        size: 14,
+        color: scheme.primary,
+        shadows: const [
+          Shadow(color: Colors.white, blurRadius: 3),
+          Shadow(color: Colors.white, blurRadius: 6),
+        ],
       ),
     );
   }
