@@ -43,6 +43,10 @@ class HomeScreen extends ConsumerWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PreferencesScreen()),
                 );
+              } else if (value == 'my_trips') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TripsListScreen()),
+                );
               }
             },
             itemBuilder: (context) => [
@@ -52,6 +56,16 @@ class HomeScreen extends ConsumerWidget {
                   child: Text(user.displayName,
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
+              const PopupMenuItem<String>(
+                value: 'my_trips',
+                child: Row(
+                  children: [
+                    Icon(Icons.luggage, size: 20),
+                    SizedBox(width: 8),
+                    Text('My Trips'),
+                  ],
+                ),
+              ),
               const PopupMenuItem<String>(
                 value: 'preferences',
                 child: Row(
@@ -124,66 +138,89 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
 
-              // My Trips
-              _ToolRow(
-                icon: Icons.luggage,
-                color: Colors.teal.shade700,
-                title: 'My Trips',
-                description: 'View and manage trips saved from the AI agent',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TripsListScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Route Optimizer
-              _ToolRow(
-                icon: MdiIcons.mapMarkerMultiple,
-                color: Colors.teal.shade700,
-                title: 'Route Optimizer',
-                description: 'Optimize routes for multiple locations in a city',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const RouteOptimizerScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Find Flights
-              _ToolRow(
-                icon: MdiIcons.airplane,
-                color: Colors.teal.shade700,
-                title: 'Find Flights',
-                description: 'Search and rank flights by price, time, and stops',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FlightSearchScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Country Planner
-              _ToolRow(
-                icon: MdiIcons.earth,
-                color: Colors.teal.shade700,
-                title: 'Country Planner',
-                description: 'Plan multi-country trips with seasonal optimization',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CountryOptimizerScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Airbnb Parser
-              _ToolRow(
-                icon: Icons.home_work_outlined,
-                color: Colors.teal.shade700,
-                title: 'Airbnb Parser',
-                description: 'Extract photos, pricing, and details from any Airbnb link',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AirbnbParserScreen()),
+              // Remaining manual tools, collapsed by default.
+              Card(
+                elevation: 2,
+                clipBehavior: Clip.antiAlias,
+                child: ExpansionTile(
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  tilePadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade700.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.handyman_outlined,
+                        color: Colors.teal.shade700, size: 26),
+                  ),
+                  title: Text(
+                    'More tools',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal.shade700,
+                    ),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: _ToolRow(
+                        icon: MdiIcons.mapMarkerMultiple,
+                        color: Colors.teal.shade700,
+                        title: 'Route Optimizer',
+                        description:
+                            'Optimize routes for multiple locations in a city',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const RouteOptimizerScreen()),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: _ToolRow(
+                        icon: MdiIcons.airplane,
+                        color: Colors.teal.shade700,
+                        title: 'Find Flights',
+                        description:
+                            'Search and rank flights by price, time, and stops',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const FlightSearchScreen()),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: _ToolRow(
+                        icon: MdiIcons.earth,
+                        color: Colors.teal.shade700,
+                        title: 'Country Planner',
+                        description:
+                            'Plan multi-country trips with seasonal optimization',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const CountryOptimizerScreen()),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: _ToolRow(
+                        icon: Icons.home_work_outlined,
+                        color: Colors.teal.shade700,
+                        title: 'Airbnb Parser',
+                        description:
+                            'Extract photos, pricing, and details from any Airbnb link',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const AirbnbParserScreen()),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
