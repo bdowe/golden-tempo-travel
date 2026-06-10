@@ -1164,7 +1164,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('Trip'),
+        title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
           if (trip != null)
             IconButton(
