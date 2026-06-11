@@ -125,7 +125,7 @@ class HomeScreen extends ConsumerWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
-                        'or use manual tools',
+                        'or plan it your way',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -135,15 +135,12 @@ class HomeScreen extends ConsumerWidget {
                   ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // Most recently viewed trip — hidden until one has been opened.
                 if (recentTrip != null) ...[
-                  _ToolRow(
-                    icon: Icons.history,
-                    color: Colors.teal.shade700,
-                    title: 'Continue planning',
-                    description: recentTrip.title,
+                  _RecentTripCard(
+                    title: recentTrip.title,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) =>
@@ -151,7 +148,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                 ],
 
                 // Remaining manual tools, collapsed by default.
@@ -169,11 +166,11 @@ class HomeScreen extends ConsumerWidget {
                         color: Colors.teal.shade700.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(Icons.handyman_outlined,
+                      child: Icon(Icons.explore_outlined,
                           color: Colors.teal.shade700, size: 26),
                     ),
                     title: Text(
-                      'More tools',
+                      'Planning toolkit',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: theme.colorScheme.onSurface,
@@ -187,7 +184,7 @@ class HomeScreen extends ConsumerWidget {
                           color: Colors.deepOrange.shade600,
                           title: 'Route Optimizer',
                           description:
-                              'Optimize routes for multiple locations in a city',
+                              'Map out the smartest path between your stops in a city',
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const RouteOptimizerScreen()),
@@ -201,7 +198,7 @@ class HomeScreen extends ConsumerWidget {
                           color: Colors.blue.shade700,
                           title: 'Find Flights',
                           description:
-                              'Search and rank flights by price, time, and stops',
+                              'Compare flights by price, schedule, and stops',
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const FlightSearchScreen()),
@@ -215,7 +212,7 @@ class HomeScreen extends ConsumerWidget {
                           color: Colors.green.shade700,
                           title: 'Country Planner',
                           description:
-                              'Plan multi-country trips with seasonal optimization',
+                              'Order your countries around the best weather and seasons',
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const CountryOptimizerScreen()),
@@ -227,9 +224,9 @@ class HomeScreen extends ConsumerWidget {
                         child: _ToolRow(
                           icon: Icons.home_work_outlined,
                           color: Colors.pink.shade600,
-                          title: 'Airbnb Parser',
+                          title: 'Airbnb Lookup',
                           description:
-                              'Extract photos, pricing, and details from any Airbnb link',
+                              'Paste an Airbnb link to preview photos, pricing, and details',
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const AirbnbParserScreen()),
@@ -413,6 +410,87 @@ class _AgentHeroCard extends StatelessWidget {
   }
 }
 
+/// One-tap way back into the most recently viewed trip, styled as a lighter
+/// sibling of the hero card (same teal family as the app bar gradient).
+class _RecentTripCard extends StatelessWidget {
+  final String title;
+  final VoidCallback onTap;
+
+  const _RecentTripCard({required this.title, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.teal.shade600, Colors.teal.shade900],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.teal.shade900.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      const Icon(Icons.luggage, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CONTINUE PLANNING',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: Colors.white70,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.white70),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ToolRow extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -431,7 +509,7 @@ class _ToolRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 1,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
