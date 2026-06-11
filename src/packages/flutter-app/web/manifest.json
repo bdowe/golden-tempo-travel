@@ -1,11 +1,11 @@
 {
-    "name": "Travel Route Planner",
-    "short_name": "Route Planner",
+    "name": "Wayfare",
+    "short_name": "Wayfare",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#2E7D32",
-    "theme_color": "#2E7D32",
-    "description": "Optimize your travel routes and country visits with intelligent algorithms.",
+    "background_color": "#00695C",
+    "theme_color": "#00695C",
+    "description": "Plan trips, optimize routes, and build itineraries with AI.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

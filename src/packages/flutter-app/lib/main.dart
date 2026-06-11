@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'constants/app_info.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
@@ -18,7 +19,7 @@ class TravelRoutePlannerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Travel Route Planner',
+      title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

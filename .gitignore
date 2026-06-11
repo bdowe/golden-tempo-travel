@@ -18,7 +18,9 @@ vendor/
 go.work
 
 # Build outputs
-main
+# Stray `go build` binary in the API package only — a bare `main` would also
+# ignore Flutter's android/app/src/main/ directory.
+src/packages/api/main
 travel-route-planner
 dist/
 build/
