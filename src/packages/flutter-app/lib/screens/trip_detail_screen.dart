@@ -684,7 +684,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         slivers.add(MultiSliver(
           pushPinnedChildren: true,
           children: [
-            SliverPinnedHeader(child: header),
+            _pinnedShadowHeader(header),
             if (!collapsed) _boxSliver(_buildDayTripWidgets(run, theme)),
           ],
         ));
@@ -700,6 +700,25 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: children,
+        ),
+      );
+
+  /// Pins [child] like [SliverPinnedHeader], casting a soft bottom shadow
+  /// while it is docked: overlap > 0 means it has bumped into the pinned
+  /// stack above (map/filter/city headers), scrollOffset > 0 that it is
+  /// pinned at the top of the scroll area itself.
+  Widget _pinnedShadowHeader(Widget child) => SliverLayoutBuilder(
+        builder: (context, constraints) => SliverPinnedHeader(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              boxShadow:
+                  constraints.overlap > 0 || constraints.scrollOffset > 0
+                      ? _pinnedHeaderShadow
+                      : const [],
+            ),
+            child: child,
+          ),
         ),
       );
 
@@ -1486,6 +1505,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                   : 48,
                               backgroundColor: theme.scaffoldBackgroundColor,
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              showOverlapShadow: true,
                               // Align fills the header's full extent so the child's
                               // measured height matches maxExtent (a min-sized
                               // Column would be shorter, yielding an invalid sliver
@@ -1575,9 +1595,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                   MultiSliver(
                                     pushPinnedChildren: true,
                                     children: [
-                                      SliverPinnedHeader(
-                                          child:
-                                              _cityHeader(trip, group, theme)),
+                                      _pinnedShadowHeader(
+                                          _cityHeader(trip, group, theme)),
                                       if (!_collapsedCities
                                           .contains(group.label)) ...[
                                         // Embedded bookings render only in the
@@ -1944,6 +1963,15 @@ class _TimeOfDayChip extends StatelessWidget {
   }
 }
 
+/// Shadow cast by pinned headers while content scrolls beneath them.
+const _pinnedHeaderShadow = [
+  BoxShadow(
+    color: Color(0x38000000), // black at 22%
+    blurRadius: 10,
+    offset: Offset(0, 3),
+  ),
+];
+
 /// A fixed-height header that scrolls with the page until it reaches the top,
 /// then stays pinned. Used for the trip map and, stacked beneath it, the
 /// itinerary filter bar. The opaque [backgroundColor] fill keeps list content
@@ -1954,11 +1982,17 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
   final EdgeInsetsGeometry padding;
   final Widget child;
 
+  /// Casts a soft bottom shadow while content is scrolled underneath. Enable
+  /// only on the bottom-most header of a pinned stack so a single shadow
+  /// marks the edge where list content disappears.
+  final bool showOverlapShadow;
+
   const _PinnedHeaderDelegate({
     required this.height,
     required this.backgroundColor,
     required this.padding,
     required this.child,
+    this.showOverlapShadow = false,
   });
 
   @override
@@ -1969,17 +2003,27 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-          BuildContext context, double shrinkOffset, bool overlapsContent) =>
-      Container(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // overlapsContent only fires when an earlier sliver (the map header)
+    // paints over this one; shrinkOffset covers the no-map case where this
+    // is the first pinned header.
+    final pinned = overlapsContent || shrinkOffset > 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      decoration: BoxDecoration(
         color: backgroundColor,
-        padding: padding,
-        child: child,
-      );
+        boxShadow: showOverlapShadow && pinned ? _pinnedHeaderShadow : const [],
+      ),
+      padding: padding,
+      child: child,
+    );
+  }
 
   @override
   bool shouldRebuild(_PinnedHeaderDelegate oldDelegate) =>
       oldDelegate.child != child ||
       oldDelegate.height != height ||
       oldDelegate.backgroundColor != backgroundColor ||
-      oldDelegate.padding != padding;
+      oldDelegate.padding != padding ||
+      oldDelegate.showOverlapShadow != showOverlapShadow;
 }
