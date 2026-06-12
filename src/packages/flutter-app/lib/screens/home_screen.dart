@@ -23,6 +23,12 @@ String greetingForHour(int hour) {
   return 'Good evening';
 }
 
+/// Single uppercase letter for the account avatar.
+String _initialFor(String displayName) {
+  final trimmed = displayName.trim();
+  return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+}
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -56,7 +62,29 @@ class HomeScreen extends ConsumerWidget {
         ),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.account_circle),
+            tooltip: 'Account',
+            // Open below the bar, on an M3 surface, instead of the default
+            // overlapping grey panel that inherited the app bar's white icons.
+            position: PopupMenuPosition.under,
+            color: theme.colorScheme.surface,
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            icon: user != null
+                ? CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.white.withOpacity(0.25),
+                    child: Text(
+                      _initialFor(user.displayName),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.account_circle),
             onSelected: (value) {
               if (value == 'logout') {
                 ref.read(authProvider.notifier).logout();
@@ -71,39 +99,87 @@ class HomeScreen extends ConsumerWidget {
               }
             },
             itemBuilder: (context) => [
-              if (user != null)
+              // Account header: identity, not an action — styled explicitly so
+              // the disabled item doesn't read as greyed-out.
+              if (user != null) ...[
                 PopupMenuItem<String>(
                   enabled: false,
-                  child: Text(user.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: Colors.teal.shade700,
+                        child: Text(
+                          _initialFor(user.displayName),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              user.email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              const PopupMenuItem<String>(
+                const PopupMenuDivider(),
+              ],
+              PopupMenuItem<String>(
                 value: 'my_trips',
                 child: Row(
                   children: [
-                    Icon(Icons.luggage, size: 20),
-                    SizedBox(width: 8),
-                    Text('My Trips'),
+                    Icon(Icons.luggage,
+                        size: 20, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    const Text('My Trips'),
                   ],
                 ),
               ),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'preferences',
                 child: Row(
                   children: [
-                    Icon(Icons.tune, size: 20),
-                    SizedBox(width: 8),
-                    Text('Travel profile'),
+                    Icon(Icons.tune,
+                        size: 20, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    const Text('Travel profile'),
                   ],
                 ),
               ),
-              const PopupMenuItem<String>(
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, size: 20),
-                    SizedBox(width: 8),
-                    Text('Sign out'),
+                    Icon(Icons.logout,
+                        size: 20, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    const Text('Sign out'),
                   ],
                 ),
               ),
