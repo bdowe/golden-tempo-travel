@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
-  const AuthScreen({super.key});
+  /// Whether the form opens in sign-in (true) or create-account (false) mode.
+  final bool initialIsLogin;
+
+  const AuthScreen({super.key, this.initialIsLogin = true});
 
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
@@ -14,7 +17,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _displayNameController = TextEditingController();
-  bool _isLogin = true;
+  late bool _isLogin = widget.initialIsLogin;
 
   @override
   void dispose() {
@@ -29,13 +32,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final notifier = ref.read(authProvider.notifier);
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-    if (_isLogin) {
-      await notifier.login(email, password);
-    } else {
-      await notifier.register(email, password,
-          displayName: _displayNameController.text.trim());
+    final ok = _isLogin
+        ? await notifier.login(email, password)
+        : await notifier.register(email, password,
+            displayName: _displayNameController.text.trim());
+    // On success the AuthGate swaps the root from the landing page to the app.
+    // When this screen was pushed on top of the landing page, pop it so the
+    // app (now the root) is revealed instead of this form staying on top.
+    if (ok && mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
-    // On success the AuthGate swaps this screen for the app automatically.
   }
 
   void _toggleMode() {
