@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_info.dart';
 import '../navigation/app_nav.dart';
+import '../theme/app_colors.dart';
+import '../theme/spacing.dart';
+import '../widgets/account_menu.dart';
 import 'home_screen.dart';
 import 'agent_screen.dart';
 import 'trips_list_screen.dart';
@@ -9,40 +13,23 @@ import 'trips_list_screen.dart';
 /// outside the per-tab navigators, so it never moves when a page is pushed —
 /// only the content area animates. Each tab keeps its own push stack, so a trip
 /// opened in one tab stays put when you switch away and back.
-class AppShell extends ConsumerStatefulWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
   @override
-  ConsumerState<AppShell> createState() => _AppShellState();
-}
-
-class _AppShellState extends ConsumerState<AppShell> {
-  // One navigator per tab. Pushes from inside a tab resolve to its navigator
-  // (via the ambient `Navigator.of(context)`), animating only the content
-  // region rather than the whole screen.
-  late final List<GlobalKey<NavigatorState>> _navKeys =
-      List.generate(AppTab.values.length, (_) => GlobalKey<NavigatorState>());
-
-  static const List<Widget> _tabRoots = [
-    HomeScreen(),
-    AgentScreen(),
-    TripsListScreen(),
-  ];
-
-  void _onSelect(int i) {
-    final current = ref.read(navIndexProvider);
-    if (i == current) {
-      // Tapping the active tab again returns it to its root.
-      _navKeys[i].currentState?.popUntil((r) => r.isFirst);
-    } else {
-      ref.read(navIndexProvider.notifier).state = i;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final index = ref.watch(navIndexProvider);
+    final navKeys = ref.watch(tabNavKeysProvider);
     final isWide = MediaQuery.sizeOf(context).width >= kRailBreakpoint;
+
+    void onSelect(int i) {
+      if (i == ref.read(navIndexProvider)) {
+        // Tapping the active tab again returns it to its root.
+        navKeys[i].currentState?.popUntil((r) => r.isFirst);
+      } else {
+        ref.read(navIndexProvider.notifier).state = i;
+      }
+    }
 
     // The root navigator only holds the shell, so forward a system/browser back
     // to the active tab's navigator — otherwise nested pushes (trip detail, etc.)
@@ -51,13 +38,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        _navKeys[ref.read(navIndexProvider)].currentState?.maybePop();
+        navKeys[ref.read(navIndexProvider)].currentState?.maybePop();
       },
       child: IndexedStack(
         index: index,
         children: [
-          for (var i = 0; i < _tabRoots.length; i++)
-            _TabNavigator(navKey: _navKeys[i], child: _tabRoots[i]),
+          for (var i = 0; i < navKeys.length; i++)
+            _TabNavigator(navKey: navKeys[i], child: _tabRoots[i]),
         ],
       ),
     );
@@ -68,8 +55,15 @@ class _AppShellState extends ConsumerState<AppShell> {
           children: [
             NavigationRail(
               selectedIndex: index,
-              onDestinationSelected: _onSelect,
+              onDestinationSelected: onSelect,
               labelType: NavigationRailLabelType.all,
+              leading: const _RailBrand(),
+              // Pin the account avatar to the bottom of the rail.
+              trailingAtBottom: true,
+              trailing: const Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.lg),
+                child: RailAccountButton(),
+              ),
               destinations: [
                 for (final d in navDestinations)
                   NavigationRailDestination(
@@ -90,7 +84,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       body: content,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: _onSelect,
+        onDestinationSelected: onSelect,
         destinations: [
           for (final d in navDestinations)
             NavigationDestination(
@@ -98,6 +92,47 @@ class _AppShellState extends ConsumerState<AppShell> {
               selectedIcon: Icon(d.selectedIcon),
               label: d.label,
             ),
+        ],
+      ),
+    );
+  }
+}
+
+const List<Widget> _tabRoots = [
+  HomeScreen(),
+  AgentScreen(),
+  TripsListScreen(),
+];
+
+/// The Wayfare brand mark for the top of the rail — the persistent Site ID
+/// (Krug). A compact icon badge + wordmark so it fits the narrow rail.
+class _RailBrand extends StatelessWidget {
+  const _RailBrand();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.sm),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.brand.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Icon(Icons.flight_takeoff, color: AppColors.brand, size: 22),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          const Text(
+            AppInfo.name,
+            style: TextStyle(
+              fontFamily: 'Playfair Display',
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );

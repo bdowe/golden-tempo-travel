@@ -8,6 +8,7 @@ import '../providers/recent_trip_provider.dart';
 import '../navigation/app_nav.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../widgets/account_menu.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
 import 'route_optimizer_screen.dart';
@@ -15,7 +16,6 @@ import 'country_optimizer_screen.dart';
 import 'airbnb_parser_screen.dart';
 import 'flight_search_screen.dart';
 import 'trip_detail_screen.dart';
-import 'preferences_screen.dart';
 
 /// Time-of-day greeting for the home header.
 @visibleForTesting
@@ -23,12 +23,6 @@ String greetingForHour(int hour) {
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
   return 'Good evening';
-}
-
-/// Single uppercase letter for the account avatar.
-String _initialFor(String displayName) {
-  final trimmed = displayName.trim();
-  return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
 }
 
 class HomeScreen extends ConsumerWidget {
@@ -63,117 +57,7 @@ class HomeScreen extends ConsumerWidget {
             letterSpacing: 0.5,
           ),
         ),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Account',
-            // Open below the bar, on an M3 surface, instead of the default
-            // overlapping grey panel that inherited the app bar's white icons.
-            position: PopupMenuPosition.under,
-            color: theme.colorScheme.surface,
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            icon: user != null
-                ? CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.white.withValues(alpha: 0.25),
-                    child: Text(
-                      _initialFor(user.displayName),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                : const Icon(Icons.account_circle),
-            onSelected: (value) {
-              if (value == 'logout') {
-                ref.read(authProvider.notifier).logout();
-              } else if (value == 'preferences') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PreferencesScreen()),
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              // Account header: identity, not an action — styled explicitly so
-              // the disabled item doesn't read as greyed-out.
-              if (user != null) ...[
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Colors.teal.shade700,
-                        child: Text(
-                          _initialFor(user.displayName),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: theme.colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              user.email,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-              ],
-              PopupMenuItem<String>(
-                value: 'preferences',
-                child: Row(
-                  children: [
-                    Icon(Icons.tune,
-                        size: 20, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 12),
-                    const Text('Travel profile'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<String>(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout,
-                        size: 20, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 12),
-                    const Text('Sign out'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+        actions: const [AccountMenu()],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -424,10 +308,10 @@ class _AgentHeroCard extends StatelessWidget {
               onPressed: () => onStart(),
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: Colors.teal.shade800,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                foregroundColor: AppColors.brandDark,
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppRadius.mdAll,
                 ),
               ),
               child: const Text(
@@ -444,7 +328,7 @@ class _AgentHeroCard extends StatelessWidget {
                 .map((s) => ActionChip(
                       label: Text(s,
                           style: TextStyle(
-                              color: Colors.teal.shade800,
+                              color: AppColors.brandDark,
                               fontSize: 12,
                               fontWeight: FontWeight.w500)),
                       backgroundColor: Colors.white,
