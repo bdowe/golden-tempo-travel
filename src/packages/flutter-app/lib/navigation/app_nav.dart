@@ -11,6 +11,23 @@ enum AppTab { home, plan, trips }
 /// without prop-drilling callbacks.
 final navIndexProvider = StateProvider<int>((ref) => AppTab.home.index);
 
+/// One navigator key per tab, created once for the app's lifetime. Shared (via a
+/// provider, not held privately by the shell) so utility actions rendered
+/// *outside* the tab navigators — e.g. the nav rail's account menu — can push
+/// onto the active tab's navigator instead of the root, keeping the rail in
+/// place.
+final tabNavKeysProvider = Provider<List<GlobalKey<NavigatorState>>>(
+  (ref) => List.generate(AppTab.values.length, (_) => GlobalKey<NavigatorState>()),
+);
+
+/// Push [page] onto the currently-selected tab's navigator, so the content area
+/// animates while the persistent rail/bar stays put.
+void pushOnActiveTab(WidgetRef ref, Widget page) {
+  final keys = ref.read(tabNavKeysProvider);
+  final state = keys[ref.read(navIndexProvider)].currentState;
+  state?.push(MaterialPageRoute(builder: (_) => page));
+}
+
 /// One nav destination's display data. Shared so the shell's rail and bar render
 /// the exact same set, in lockstep.
 class NavDestinationData {

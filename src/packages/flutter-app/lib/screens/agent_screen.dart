@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../widgets/account_menu.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/chat_panel.dart';
 import '../widgets/empty_state.dart';
@@ -61,7 +62,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('AI Travel Agent'),
+        title: const Text('Plan your trip'),
         actions: [
           if (planState.messages.isNotEmpty || planState.completedLocations != null)
             IconButton(
@@ -69,6 +70,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
               onPressed: () => ref.read(planProvider.notifier).reset(),
               tooltip: 'Start over',
             ),
+          const AccountMenu(),
         ],
       ),
       body: ChatPanel(
@@ -143,10 +145,11 @@ class _ItineraryBanner extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
+      // Tint fill (no border) separates this from the chat — spacing/tint over
+      // borders.
       decoration: BoxDecoration(
         color: AppColors.brandTint,
         borderRadius: AppRadius.mdAll,
-        border: Border.all(color: AppColors.brand.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

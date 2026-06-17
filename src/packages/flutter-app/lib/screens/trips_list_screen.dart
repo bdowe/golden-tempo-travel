@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
+import '../widgets/account_menu.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/status_pill.dart';
@@ -77,6 +78,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     return Scaffold(
       appBar: const GradientAppBar(
         title: Text('My Trips'),
+        actions: [AccountMenu()],
       ),
       body: body,
     );
