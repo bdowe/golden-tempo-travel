@@ -8,7 +8,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
 
   /// Null inherits the app-wide AppBarTheme (centered); the home screen passes
-  /// false so the Wayfare wordmark sits on the left.
+  /// false so the brand mark sits on the left.
   final bool? centerTitle;
 
   const GradientAppBar(

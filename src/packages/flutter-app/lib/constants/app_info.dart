@@ -4,8 +4,8 @@
 /// - web/index.html (title, description, apple-mobile-web-app-title)
 /// - web/manifest.json (name, short_name, description)
 /// - pubspec.yaml (description)
-/// - ios/Runner/Info.plist (CFBundleName)
+/// - ios/Runner/Info.plist (CFBundleDisplayName)
 /// - android/app/src/main/AndroidManifest.xml (android:label)
 abstract final class AppInfo {
-  static const String name = 'Wayfare';
+  static const String name = 'Golden Tempo Travel';
 }

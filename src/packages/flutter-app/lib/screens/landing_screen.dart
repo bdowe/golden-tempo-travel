@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-import '../constants/app_info.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
 import 'auth_screen.dart';
@@ -29,14 +29,10 @@ class LandingScreen extends StatelessWidget {
     return Scaffold(
       appBar: GradientAppBar(
         centerTitle: false,
-        title: const Text(
-          AppInfo.name,
-          style: TextStyle(
-            fontFamily: 'Playfair Display',
-            fontWeight: FontWeight.w600,
-            fontSize: 24,
-            letterSpacing: 0.5,
-          ),
+        title: const BrandBadge(
+          padding: EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+          child: BrandLogo.mark(size: 30),
         ),
         actions: [
           TextButton(
@@ -165,14 +161,10 @@ class _LandingHero extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.flight_takeoff,
-                        size: 44, color: Colors.white),
+                  const BrandBadge(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+                    child: BrandLogo.lockup(height: 132),
                   ),
                   const SizedBox(height: 16),
                   Text(
