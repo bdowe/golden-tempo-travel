@@ -92,7 +92,7 @@ TICKETMASTER_API_KEY=...    # Required for /events/* endpoint (Ticketmaster Disc
 DATABASE_URL=...            # Postgres connection; absent/unreachable => degraded mode (no persistence)
 ```
 
-Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected. Without `TICKETMASTER_API_KEY`, the `/events/search` endpoint (and the `/plan` agent's `search_events` tool) returns a configured-error; the rest of the API is unaffected.
+Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected. Without `TICKETMASTER_API_KEY`, the `/events/search` endpoint (and the `/plan` agent's `search_events` tool) returns a configured-error; the rest of the API is unaffected. `FERRYHOPPER_AFFILIATE_ID` is optional — ferry links work without it (just unattributed).
 
 ## API Endpoints
 
@@ -105,6 +105,7 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 | GET | `/api/v1/flights/airports?q=` | Duffel airport/city autocomplete (IATA codes) |
 | POST | `/api/v1/flights/search` | Duffel flight offers, ranked by `optimize_for` (`cost`/`time`/`balanced`) |
 | GET | `/api/v1/events/search?city=&start_date=&end_date=` | Ticketmaster Discovery events in a city for a date window (optional `category`) |
+| GET | `/api/v1/ferries/search?origin=&destination=&date=` | Ferryhopper ferry booking link for a route (Greek island-hopping); returns `FerryOption[]` |
 | POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 with `search_places` tool |
 
 ## Key Constraints
@@ -115,4 +116,7 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 - The `optimize_for` field on flight search accepts only `"cost"`, `"time"`, or `"balanced"` (empty defaults to balanced).
 - Flight search inputs are **IATA codes** (e.g. `JFK`, `CDG`), not city names — resolve names via `/flights/airports?q=` first. Flight data comes from **Duffel** (`duffel_service.go`, process-wide `duffelService` singleton, static `DUFFEL_ACCESS_TOKEN`); the provider is isolated to that one file behind the `FlightOffer`/`Airport` types so it can be swapped without touching the handler, optimizer, or Flutter app.
 - Local events come from **Ticketmaster Discovery** (`events_service.go`, process-wide `eventsService` singleton, static `TICKETMASTER_API_KEY` passed as an `apikey` query param). Inputs are a **city name** + a `start_date`/`end_date` window (YYYY-MM-DD), with an optional `category`. Like Duffel, the provider is isolated to that one file behind the `Event` type so it can be swapped without touching the handler, the `/plan` agent's `search_events` tool, or the Flutter app. Events are **looked up live** — nothing is persisted.
+- **Greece** has two dedicated provider helpers (deep-links, no API yet):
+  - **Ferries** (`ferry_service.go`, `ferryService` singleton, optional `FERRYHOPPER_AFFILIATE_ID`): builds a **Ferryhopper** route-page deep link from island/port names. Exposed via `GET /api/v1/ferries/search` and the `/plan` agent's `suggest_ferries` tool. The `FerryOption` type carries structured fields (operator/time/price) that stay empty in link mode — designed so the **FerryhAPI** B2B upgrade fills the same shape without touching callers.
+  - **Greek events** (`greece_events_service.go`): Ticketmaster is empty for Greece, so `search_events` falls back to curated source links (more.com/Viva.gr, visitgreece.gr, seasonal Athens-Epidaurus) when the structured lookup is empty **and** `isGreekLocation(city)` is true (hardcoded Greek city/island set). Surfaced as an `event_links` SSE event.
 - Persistence uses **pgx + sqlc + goose** (Postgres). The `store/` package is sqlc-generated — run `make api-sqlc` after editing `query/*.sql` or the schema; never hand-edit it. UUID primary keys; migrations run on boot and via `make api-migrate`.

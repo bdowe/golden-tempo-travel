@@ -173,7 +173,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 	suggestTransportTool := anthropic.ToolParam{
 		Name:        "suggest_transport",
-		Description: anthropic.String("Give the traveler links to browse transport options. Call this when they need to get to or between destinations. Mode 'flight' returns Google Flights + Kayak; mode 'ground' returns Rome2Rio (covers trains, buses, cars, ferries)."),
+		Description: anthropic.String("Give the traveler links to browse transport options. Call this when they need to get to or between destinations. Mode 'flight' returns Google Flights + Kayak; mode 'ground' returns Rome2Rio (covers trains, buses, cars, ferries). For travel between Greek islands, prefer suggest_ferries instead."),
 		InputSchema: anthropic.ToolInputSchemaParam{
 			Properties: map[string]any{
 				"mode":        map[string]any{"type": "string", "enum": []string{"flight", "ground"}, "description": "flight or ground (multimodal)"},
@@ -184,6 +184,20 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				"passengers":  map[string]any{"type": "integer", "description": "Optional passenger count"},
 			},
 			Required: []string{"mode", "origin", "destination"},
+		},
+	}
+
+	suggestFerriesTool := anthropic.ToolParam{
+		Name:        "suggest_ferries",
+		Description: anthropic.String("Give the traveler a ferry booking link for a route between two ports/islands — use this for Greek island-hopping (e.g. Santorini→Naxos) and other ferry legs. Backed by Ferryhopper, which aggregates the major Greek operators (Blue Star, SeaJets, etc.)."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"origin":      map[string]any{"type": "string", "description": "Departure port or island, e.g. 'Santorini' or 'Piraeus'"},
+				"destination": map[string]any{"type": "string", "description": "Arrival port or island, e.g. 'Naxos'"},
+				"date":        map[string]any{"type": "string", "description": "Optional YYYY-MM-DD travel date"},
+				"passengers":  map[string]any{"type": "integer", "description": "Optional passenger count"},
+			},
+			Required: []string{"origin", "destination"},
 		},
 	}
 
@@ -253,6 +267,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		{OfTool: &searchTool},
 		{OfTool: &suggestStaysTool},
 		{OfTool: &suggestTransportTool},
+		{OfTool: &suggestFerriesTool},
 		{OfTool: &searchFlightsTool},
 		{OfTool: &searchEventsTool},
 	}
@@ -277,7 +292,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	today := time.Now()
-	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. Be conversational and helpful — ask clarifying questions if needed before searching."
+	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Be conversational and helpful — ask clarifying questions if needed before searching."
 
 	placesService := NewGooglePlacesService()
 	ctx := r.Context()
@@ -512,6 +527,25 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				b, _ := json.Marshal(links)
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, "Provided browse links: "+string(b), false))
 
+			case "suggest_ferries":
+				var in struct {
+					Origin      string `json:"origin"`
+					Destination string `json:"destination"`
+					Date        string `json:"date"`
+					Passengers  int    `json:"passengers"`
+				}
+				json.Unmarshal(variant.Input, &in)
+				options := ferryService.SearchFerries(FerryQuery{
+					Origin: in.Origin, Destination: in.Destination,
+					Date: in.Date, Passengers: in.Passengers,
+				})
+				sendSSE(w, "ferries", map[string]any{
+					"origin": in.Origin, "destination": in.Destination, "options": options,
+				})
+				sendSSE(w, "tool_result", map[string]string{"name": "suggest_ferries"})
+				b, _ := json.Marshal(options)
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, "Provided ferry booking link(s): "+string(b), false))
+
 			case "search_flights":
 				var in struct {
 					Origin      string `json:"origin"`
@@ -574,12 +608,6 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				json.Unmarshal(variant.Input, &in)
 
 				events, err := eventsService.SearchEvents(ctx, in.City, in.StartDate, in.EndDate, in.Category)
-				if err != nil {
-					sendSSE(w, "tool_result", map[string]string{"name": "search_events"})
-					toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, fmt.Sprintf("Error searching events: %v", err), true))
-					break
-				}
-
 				if len(events) > 0 {
 					sendSSE(w, "events", map[string]any{
 						"city":       in.City,
@@ -588,8 +616,23 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 						"events":     events,
 					})
 				}
+
+				// Greece has no usable events API, so when the structured lookup
+				// comes back empty (or errors, e.g. no key) for a Greek city, fall
+				// back to curated Greek source links instead of nothing.
+				summary := summarizeEvents(in.City, events)
+				if len(events) == 0 && isGreekLocation(in.City) {
+					links := greekEventLinks(in.City, in.StartDate, in.EndDate)
+					sendSSE(w, "event_links", map[string]any{"city": in.City, "links": links})
+					b, _ := json.Marshal(links)
+					summary = "No ticketed listings via the events provider for " + in.City +
+						". Provided Greek event-discovery links: " + string(b)
+				} else if err != nil {
+					summary = fmt.Sprintf("Error searching events: %v", err)
+				}
+
 				sendSSE(w, "tool_result", map[string]string{"name": "search_events"})
-				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summarizeEvents(in.City, events), false))
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summary, err != nil && len(events) == 0 && !isGreekLocation(in.City)))
 			}
 		}
 

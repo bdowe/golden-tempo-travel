@@ -17,6 +17,7 @@ import '../providers/preferences_provider.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/events_provider.dart';
+import '../providers/ferries_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
@@ -24,6 +25,8 @@ import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
+import '../widgets/ferry_card.dart';
+import '../widgets/source_links_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
@@ -842,11 +845,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               ],
             ),
           ),
-          // Stay quiet on errors (e.g. provider key not set) — events are a
-          // nice-to-have, not core to the itinerary.
-          error: (_, __) => const SizedBox.shrink(),
+          // On error (e.g. provider key not set), try the Greek source-links
+          // fallback rather than going silent.
+          error: (_, __) => _greekEventsFallback(query, theme),
           data: (events) {
-            if (events.isEmpty) return const SizedBox.shrink();
+            if (events.isEmpty) return _greekEventsFallback(query, theme);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -855,6 +858,91 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               ],
             );
           },
+        );
+      }),
+    );
+  }
+
+  /// When the structured events lookup is empty/errored, show curated Greek
+  /// event-discovery links for Greek cities (empty for everywhere else, so this
+  /// renders nothing). Keeps the section useful where Ticketmaster has no data.
+  Widget _greekEventsFallback(EventsQuery query, ThemeData theme) {
+    return Consumer(builder: (context, ref, _) {
+      final links = ref.watch(greeceEventLinksProvider(query)).valueOrNull;
+      if (links == null || links.isEmpty) return const SizedBox.shrink();
+      return SourceLinksCard(
+        icon: Icons.local_activity,
+        accent: AppColors.toolEvents,
+        title: 'Find events in ${query.city}',
+        links: links,
+      );
+    });
+  }
+
+  /// Greek islands/ports we offer ferry connectors between (mirrors the API's
+  /// isGreekLocation set; kept small and local since it only gates the UI hint).
+  static const _greekIslands = {
+    'athens', 'piraeus', 'santorini', 'thira', 'fira', 'oia', 'mykonos',
+    'naxos', 'paros', 'ios', 'milos', 'syros', 'tinos', 'folegandros',
+    'crete', 'heraklion', 'chania', 'rethymno', 'rhodes', 'kos', 'corfu',
+    'kefalonia', 'zakynthos', 'lefkada', 'skiathos', 'skopelos', 'samos',
+    'chios', 'lesbos', 'mytilene', 'karpathos', 'symi', 'hydra', 'spetses',
+    'aegina',
+  };
+
+  bool _isGreekIsland(String label) {
+    final n = label.toLowerCase().trim();
+    if (n.contains('greece')) return true;
+    if (_greekIslands.contains(n)) return true;
+    final comma = n.indexOf(',');
+    if (comma > 0 && _greekIslands.contains(n.substring(0, comma).trim())) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Ferry connector between two consecutive Greek-island groups. Renders
+  /// nothing unless both stops are Greek islands. The lookup is keyed by route +
+  /// the next stop's start date.
+  Widget _ferrySliver(
+      String fromLabel, String toLabel, DateTime? toStart, ThemeData theme) {
+    if (!_isGreekIsland(fromLabel) || !_isGreekIsland(toLabel)) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    final query = FerryQuery(
+      origin: fromLabel,
+      destination: toLabel,
+      date: toStart == null ? null : _fmt(toStart),
+    );
+    return SliverToBoxAdapter(
+      child: Consumer(builder: (context, ref, _) {
+        final options = ref.watch(ferriesByRouteProvider(query)).valueOrNull;
+        if (options == null || options.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                  top: AppSpacing.sm, bottom: AppSpacing.xs),
+              child: Row(
+                children: [
+                  Icon(Icons.directions_boat,
+                      size: 16, color: AppColors.toolFerries),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ferry to $toLabel',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.toolFerries,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            FerryCard(option: options.first),
+          ],
         );
       }),
     );
@@ -1675,6 +1763,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               group.label,
                                               groupRanges[group.label],
                                               theme),
+                                        // Island-hopping connector: a ferry
+                                        // suggestion to the next stop when both
+                                        // this and the next group are Greek
+                                        // islands, dated at the next stop's start.
+                                        if (_itemFilter == 'all' &&
+                                            gi < groups.length - 1)
+                                          _ferrySliver(
+                                            group.label,
+                                            groups[gi + 1].label,
+                                            groupRanges[groups[gi + 1].label]
+                                                ?.start,
+                                            theme,
+                                          ),
                                         if (_itemFilter == 'all' &&
                                             gi == groups.length - 1 &&
                                             gi < grouped.slots.length)
