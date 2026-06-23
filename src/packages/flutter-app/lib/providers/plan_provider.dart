@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/plan_message.dart';
 import '../models/location.dart';
 import '../models/flight_offer.dart';
+import '../models/event.dart';
 import '../services/api_client.dart';
 import '../services/plan_service.dart';
 import 'api_client_provider.dart';
@@ -17,6 +18,8 @@ class PlanState {
   final String? savedTripId;
   final List<FlightOffer>? flightOffers;
   final String? flightRouteLabel;
+  final List<Event>? eventResults;
+  final String? eventsCityLabel;
   final String? error;
 
   /// Short excerpt of profile notes the agent just saved (server
@@ -37,6 +40,8 @@ class PlanState {
     this.savedTripId,
     this.flightOffers,
     this.flightRouteLabel,
+    this.eventResults,
+    this.eventsCityLabel,
     this.error,
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
@@ -52,6 +57,8 @@ class PlanState {
     Object? savedTripId = _sentinel,
     Object? flightOffers = _sentinel,
     Object? flightRouteLabel = _sentinel,
+    Object? eventResults = _sentinel,
+    Object? eventsCityLabel = _sentinel,
     Object? error = _sentinel,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
@@ -68,6 +75,8 @@ class PlanState {
       savedTripId: savedTripId == _sentinel ? this.savedTripId : savedTripId as String?,
       flightOffers: flightOffers == _sentinel ? this.flightOffers : flightOffers as List<FlightOffer>?,
       flightRouteLabel: flightRouteLabel == _sentinel ? this.flightRouteLabel : flightRouteLabel as String?,
+      eventResults: eventResults == _sentinel ? this.eventResults : eventResults as List<Event>?,
+      eventsCityLabel: eventsCityLabel == _sentinel ? this.eventsCityLabel : eventsCityLabel as String?,
       error: error == _sentinel ? this.error : error as String?,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
@@ -133,6 +142,8 @@ class PlanNotifier extends StateNotifier<PlanState> {
       activeTools: [],
       flightOffers: null,
       flightRouteLabel: null,
+      eventResults: null,
+      eventsCityLabel: null,
       error: null,
       profileUpdateNote: null,
     );
@@ -187,6 +198,16 @@ class PlanNotifier extends StateNotifier<PlanState> {
             state = state.copyWith(
               flightOffers: offers,
               flightRouteLabel: '$origin → $dest',
+            );
+
+          case 'events':
+            final raw = event.data['events'] as List<dynamic>? ?? [];
+            final events = raw
+                .map((e) => Event.fromJson(e as Map<String, dynamic>))
+                .toList();
+            state = state.copyWith(
+              eventResults: events,
+              eventsCityLabel: event.data['city'] as String?,
             );
 
           case 'error':

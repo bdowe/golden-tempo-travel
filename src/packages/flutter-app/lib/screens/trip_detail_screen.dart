@@ -16,11 +16,14 @@ import '../providers/booking_todos_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/plan_provider.dart';
+import '../providers/events_provider.dart';
+import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/event_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
@@ -784,6 +787,79 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     );
   }
 
+  /// Live local-events section for a city group, looked up for the group's date
+  /// window. Returns an empty box (no sliver content) when the group has no
+  /// real city/dates to query. Wrapped in a [Consumer] so only this section
+  /// rebuilds as the async lookup resolves.
+  Widget _eventsSliver(
+    String label,
+    ({DateTime? start, DateTime? end})? range,
+    ThemeData theme,
+  ) {
+    if (label == 'Other places' ||
+        range?.start == null ||
+        range?.end == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    final query = EventsQuery(
+      city: label,
+      startDate: _fmt(range!.start!),
+      endDate: _fmt(range.end!),
+    );
+    return SliverToBoxAdapter(
+      child: Consumer(builder: (context, ref, _) {
+        final async = ref.watch(eventsByCityProvider(query));
+        final header = Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xs),
+          child: Row(
+            children: [
+              Icon(Icons.local_activity, size: 16, color: AppColors.toolEvents),
+              const SizedBox(width: 6),
+              Text(
+                'Events while you\'re here',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.toolEvents,
+                ),
+              ),
+            ],
+          ),
+        );
+        return async.when(
+          loading: () => Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Text('Finding events in $label…',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          // Stay quiet on errors (e.g. provider key not set) — events are a
+          // nice-to-have, not core to the itinerary.
+          error: (_, __) => const SizedBox.shrink(),
+          data: (events) {
+            if (events.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                for (final e in events.take(5)) EventCard(event: e),
+              ],
+            );
+          },
+        );
+      }),
+    );
+  }
+
   /// Compact booking rows for a city group's slot: arrival flight + stay when
   /// [departureOnly] is false, the return-home flight when true.
   List<Widget> _bookingRowWidgets(
@@ -1429,6 +1505,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       final filtered = _filtered(trip);
                       final groups =
                           _buildGroups(filtered, _locationDates(trip));
+                      // Date window per city group, for the embedded events
+                      // lookup (keyed by the same label _buildGroups uses).
+                      final groupRanges = {
+                        for (final r in _locationGroupRanges(trip))
+                          r.label: (start: r.start, end: r.end)
+                      };
                       final tripStart = DateTime.tryParse(trip.startDate ?? '');
                       final scrollView = CustomScrollView(
                         slivers: [
@@ -1585,6 +1667,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               departureOnly: false)),
                                         ..._buildGroupItemSlivers(group.label,
                                             group.items, theme, tripStart),
+                                        // Local events for this city's dates —
+                                        // only in the unfiltered view, where
+                                        // group labels map 1:1 to date ranges.
+                                        if (_itemFilter == 'all')
+                                          _eventsSliver(
+                                              group.label,
+                                              groupRanges[group.label],
+                                              theme),
                                         if (_itemFilter == 'all' &&
                                             gi == groups.length - 1 &&
                                             gi < grouped.slots.length)
