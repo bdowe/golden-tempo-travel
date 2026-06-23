@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/event.dart';
+import '../models/source_link.dart';
 import '../services/events_api_service.dart';
 import 'api_client_provider.dart';
 
@@ -49,5 +50,19 @@ final eventsByCityProvider =
     query.startDate,
     query.endDate,
     category: query.category,
+  );
+});
+
+/// Curated Greek event-discovery links for a city + date window (empty for
+/// non-Greek cities). Used as the trip-detail fallback when [eventsByCityProvider]
+/// returns nothing for a Greek city.
+final greeceEventLinksProvider =
+    FutureProvider.family<List<SourceLink>, EventsQuery>((ref, query) async {
+  if (query.city.trim().isEmpty) return [];
+  final service = ref.watch(eventsApiServiceProvider);
+  return service.greeceEventLinks(
+    query.city.trim(),
+    query.startDate,
+    query.endDate,
   );
 });

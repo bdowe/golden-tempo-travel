@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../models/event.dart';
+import '../models/source_link.dart';
 import 'api_client.dart';
 
 /// Wraps the /events/search endpoint (Ticketmaster-backed local events). The
@@ -44,6 +45,36 @@ class EventsApiService {
       statusCode: res.statusCode,
       message: 'Failed to search events: ${res.body}',
       endpoint: 'events/search',
+    );
+  }
+
+  /// Curated Greek event-discovery links for a city + date window. Returns []
+  /// for non-Greek cities (the API decides). Used as the trip-detail fallback
+  /// when the structured events lookup is empty for a Greek city.
+  Future<List<SourceLink>> greeceEventLinks(
+    String city,
+    String startDate,
+    String endDate,
+  ) async {
+    final uri = Uri.parse('${apiClient.baseUrl}/events/greece-links').replace(
+      queryParameters: {
+        'city': city,
+        'start_date': startDate,
+        'end_date': endDate,
+      },
+    );
+    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final list = (body['links'] as List<dynamic>? ?? []);
+      return list
+          .map((e) => SourceLink.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    throw ApiException(
+      statusCode: res.statusCode,
+      message: 'Failed to fetch Greek event links: ${res.body}',
+      endpoint: 'events/greece-links',
     );
   }
 }

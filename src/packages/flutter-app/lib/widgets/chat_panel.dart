@@ -3,11 +3,14 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/flight_offer.dart';
 import '../models/event.dart';
+import '../models/ferry_option.dart';
 import '../models/plan_message.dart';
 import '../providers/plan_provider.dart';
 import '../theme/app_colors.dart';
 import 'flight_offer_card.dart';
 import 'event_card.dart';
+import 'ferry_card.dart';
+import 'source_links_card.dart';
 
 /// The plan-agent chat surface (messages, tool chips, flight cards, input bar)
 /// decoupled from any screen, so the full-screen Agent tab and the trip-detail
@@ -167,6 +170,23 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                           cityLabel: planState.eventsCityLabel,
                           events: planState.eventResults!,
                         ),
+                      if (planState.ferryOptions != null && planState.ferryOptions!.isNotEmpty)
+                        _FerryOptions(
+                          routeLabel: planState.ferryRouteLabel,
+                          options: planState.ferryOptions!,
+                        ),
+                      if (planState.eventLinks != null && planState.eventLinks!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: SourceLinksCard(
+                            icon: Icons.local_activity,
+                            accent: AppColors.toolEvents,
+                            title: planState.eventLinksCity == null
+                                ? 'Find local events'
+                                : 'Find events in ${planState.eventLinksCity}',
+                            links: planState.eventLinks!,
+                          ),
+                        ),
                       if (widget.footerBuilder != null)
                         widget.footerBuilder!(context, planState),
                       if (planState.error != null)
@@ -208,6 +228,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         return 'Searching flights...';
       case 'search_events':
         return 'Finding events...';
+      case 'suggest_ferries':
+        return 'Finding ferries...';
       default:
         return '$tool...';
     }
@@ -366,6 +388,55 @@ class _EventOptions extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (final e in events) EventCard(event: e),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inline ferry results in the chat — a header plus the agent's ferry option(s)
+/// for a route as shared FerryCards.
+class _FerryOptions extends StatelessWidget {
+  final String? routeLabel;
+  final List<FerryOption> options;
+
+  const _FerryOptions({required this.routeLabel, required this.options});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = AppColors.toolFerries;
+    final label = (routeLabel == null || routeLabel!.trim().isEmpty)
+        ? 'Ferries'
+        : 'Ferries · $routeLabel';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.directions_boat, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final o in options) FerryCard(option: o),
         ],
       ),
     );

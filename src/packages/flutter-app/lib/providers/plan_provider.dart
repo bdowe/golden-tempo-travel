@@ -4,6 +4,8 @@ import '../models/plan_message.dart';
 import '../models/location.dart';
 import '../models/flight_offer.dart';
 import '../models/event.dart';
+import '../models/ferry_option.dart';
+import '../models/source_link.dart';
 import '../services/api_client.dart';
 import '../services/plan_service.dart';
 import 'api_client_provider.dart';
@@ -20,6 +22,10 @@ class PlanState {
   final String? flightRouteLabel;
   final List<Event>? eventResults;
   final String? eventsCityLabel;
+  final List<FerryOption>? ferryOptions;
+  final String? ferryRouteLabel;
+  final List<SourceLink>? eventLinks;
+  final String? eventLinksCity;
   final String? error;
 
   /// Short excerpt of profile notes the agent just saved (server
@@ -42,6 +48,10 @@ class PlanState {
     this.flightRouteLabel,
     this.eventResults,
     this.eventsCityLabel,
+    this.ferryOptions,
+    this.ferryRouteLabel,
+    this.eventLinks,
+    this.eventLinksCity,
     this.error,
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
@@ -59,6 +69,10 @@ class PlanState {
     Object? flightRouteLabel = _sentinel,
     Object? eventResults = _sentinel,
     Object? eventsCityLabel = _sentinel,
+    Object? ferryOptions = _sentinel,
+    Object? ferryRouteLabel = _sentinel,
+    Object? eventLinks = _sentinel,
+    Object? eventLinksCity = _sentinel,
     Object? error = _sentinel,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
@@ -77,6 +91,10 @@ class PlanState {
       flightRouteLabel: flightRouteLabel == _sentinel ? this.flightRouteLabel : flightRouteLabel as String?,
       eventResults: eventResults == _sentinel ? this.eventResults : eventResults as List<Event>?,
       eventsCityLabel: eventsCityLabel == _sentinel ? this.eventsCityLabel : eventsCityLabel as String?,
+      ferryOptions: ferryOptions == _sentinel ? this.ferryOptions : ferryOptions as List<FerryOption>?,
+      ferryRouteLabel: ferryRouteLabel == _sentinel ? this.ferryRouteLabel : ferryRouteLabel as String?,
+      eventLinks: eventLinks == _sentinel ? this.eventLinks : eventLinks as List<SourceLink>?,
+      eventLinksCity: eventLinksCity == _sentinel ? this.eventLinksCity : eventLinksCity as String?,
       error: error == _sentinel ? this.error : error as String?,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
@@ -144,6 +162,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
       flightRouteLabel: null,
       eventResults: null,
       eventsCityLabel: null,
+      ferryOptions: null,
+      ferryRouteLabel: null,
+      eventLinks: null,
+      eventLinksCity: null,
       error: null,
       profileUpdateNote: null,
     );
@@ -208,6 +230,28 @@ class PlanNotifier extends StateNotifier<PlanState> {
             state = state.copyWith(
               eventResults: events,
               eventsCityLabel: event.data['city'] as String?,
+            );
+
+          case 'ferries':
+            final raw = event.data['options'] as List<dynamic>? ?? [];
+            final options = raw
+                .map((e) => FerryOption.fromJson(e as Map<String, dynamic>))
+                .toList();
+            final origin = event.data['origin'] as String? ?? '';
+            final dest = event.data['destination'] as String? ?? '';
+            state = state.copyWith(
+              ferryOptions: options,
+              ferryRouteLabel: '$origin → $dest',
+            );
+
+          case 'event_links':
+            final raw = event.data['links'] as List<dynamic>? ?? [];
+            final links = raw
+                .map((e) => SourceLink.fromJson(e as Map<String, dynamic>))
+                .toList();
+            state = state.copyWith(
+              eventLinks: links,
+              eventLinksCity: event.data['city'] as String?,
             );
 
           case 'error':
