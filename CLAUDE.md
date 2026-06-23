@@ -89,10 +89,11 @@ Create `src/packages/api/.env` (see `.env.sample`):
 GOOGLE_PLACES_API_KEY=...   # Required for /places/* endpoints
 ANTHROPIC_API_KEY=...       # Required for /api/v1/plan SSE endpoint
 DUFFEL_ACCESS_TOKEN=...     # Required for /flights/* endpoints (Duffel; test or live token)
+TICKETMASTER_API_KEY=...    # Required for /events/* endpoint (Ticketmaster Discovery; free key)
 DATABASE_URL=...            # Postgres connection; absent/unreachable => degraded mode (no persistence)
 ```
 
-Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected.
+Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected. Without `TICKETMASTER_API_KEY`, the `/events/search` endpoint (and the `/plan` agent's `search_events` tool) returns a configured-error; the rest of the API is unaffected.
 
 ## API Endpoints
 
@@ -105,6 +106,7 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 | GET | `/api/v1/places/details?place_id=` | Google Places Details |
 | GET | `/api/v1/flights/airports?q=` | Duffel airport/city autocomplete (IATA codes) |
 | POST | `/api/v1/flights/search` | Duffel flight offers, ranked by `optimize_for` (`cost`/`time`/`balanced`) |
+| GET | `/api/v1/events/search?city=&start_date=&end_date=` | Ticketmaster Discovery events in a city for a date window (optional `category`) |
 | POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 with `search_places` tool |
 
 ## Key Constraints
@@ -114,4 +116,5 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 - Flutter models use `json_serializable`; never edit `.g.dart` files by hand.
 - The `optimize_for` field on country routes accepts only `"distance"`, `"season"`, or `"balanced"` (empty string defaults to balanced). On flight search it accepts `"cost"`, `"time"`, or `"balanced"` (empty defaults to balanced).
 - Flight search inputs are **IATA codes** (e.g. `JFK`, `CDG`), not city names — resolve names via `/flights/airports?q=` first. Flight data comes from **Duffel** (`duffel_service.go`, process-wide `duffelService` singleton, static `DUFFEL_ACCESS_TOKEN`); the provider is isolated to that one file behind the `FlightOffer`/`Airport` types so it can be swapped without touching the handler, optimizer, or Flutter app.
+- Local events come from **Ticketmaster Discovery** (`events_service.go`, process-wide `eventsService` singleton, static `TICKETMASTER_API_KEY` passed as an `apikey` query param). Inputs are a **city name** + a `start_date`/`end_date` window (YYYY-MM-DD), with an optional `category`. Like Duffel, the provider is isolated to that one file behind the `Event` type so it can be swapped without touching the handler, the `/plan` agent's `search_events` tool, or the Flutter app. Events are **looked up live** — nothing is persisted.
 - Persistence uses **pgx + sqlc + goose** (Postgres). The `store/` package is sqlc-generated — run `make api-sqlc` after editing `query/*.sql` or the schema; never hand-edit it. UUID primary keys; migrations run on boot and via `make api-migrate`.

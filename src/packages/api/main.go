@@ -651,6 +651,7 @@ func main() {
 	api.HandleFunc("/places/details", placesDetailsHandler).Methods("GET")
 	api.HandleFunc("/flights/search", flightsSearchHandler).Methods("POST")
 	api.HandleFunc("/flights/airports", airportsSearchHandler).Methods("GET")
+	api.HandleFunc("/events/search", eventsSearchHandler).Methods("GET")
 	api.HandleFunc("/plan", planHandler).Methods("POST")
 	api.HandleFunc("/airbnb/parse", airbnbParseHandler).Methods("POST")
 	api.HandleFunc("/airbnb/debug", airbnbDebugHandler).Methods("POST")

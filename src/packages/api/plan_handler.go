@@ -205,6 +205,22 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	searchEventsTool := anthropic.ToolParam{
+		Name: "search_events",
+		Description: anthropic.String("Find local events (concerts, sports, festivals, theatre/shows) happening in a city during specific dates, so the itinerary can account for what's on while the traveler is there. " +
+			"Use the city and the dates the traveler is in that city; you already know the trip's cities and dates from the itinerary. " +
+			"Present a few that fit the traveler's interests."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"city":       map[string]any{"type": "string", "description": "City name, e.g. 'Paris'"},
+				"start_date": map[string]any{"type": "string", "description": "First day to look from, YYYY-MM-DD (when the traveler arrives in the city)"},
+				"end_date":   map[string]any{"type": "string", "description": "Last day to look through, YYYY-MM-DD (when the traveler leaves the city)"},
+				"category":   map[string]any{"type": "string", "enum": []string{"music", "sports", "arts", "film", "miscellaneous"}, "description": "Optional event category filter"},
+			},
+			Required: []string{"city", "start_date", "end_date"},
+		},
+	}
+
 	updateSectionTool := anthropic.ToolParam{
 		Name:        "update_itinerary_section",
 		Description: anthropic.String("Replace one section of the traveler's saved itinerary in place. Pass the COMPLETE updated list of places for the targeted section, in visit order — places you omit are removed from that section. Places outside the section are untouched. Use scope 'day' for a single trip day, 'city' for one city/hub and its day trips, or 'trip' for the whole itinerary."),
@@ -238,6 +254,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		{OfTool: &suggestStaysTool},
 		{OfTool: &suggestTransportTool},
 		{OfTool: &searchFlightsTool},
+		{OfTool: &searchEventsTool},
 	}
 	// Trip-bound sessions get the in-place section tool instead of
 	// create_itinerary, so a refinement can never spawn a new trip version.
@@ -546,6 +563,33 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				sendSSE(w, "tool_result", map[string]string{"name": "search_flights"})
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summarizeOffers(originIata, destIata, bestN), false))
+
+			case "search_events":
+				var in struct {
+					City      string  `json:"city"`
+					StartDate string  `json:"start_date"`
+					EndDate   string  `json:"end_date"`
+					Category  *string `json:"category"`
+				}
+				json.Unmarshal(variant.Input, &in)
+
+				events, err := eventsService.SearchEvents(ctx, in.City, in.StartDate, in.EndDate, in.Category)
+				if err != nil {
+					sendSSE(w, "tool_result", map[string]string{"name": "search_events"})
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, fmt.Sprintf("Error searching events: %v", err), true))
+					break
+				}
+
+				if len(events) > 0 {
+					sendSSE(w, "events", map[string]any{
+						"city":       in.City,
+						"start_date": in.StartDate,
+						"end_date":   in.EndDate,
+						"events":     events,
+					})
+				}
+				sendSSE(w, "tool_result", map[string]string{"name": "search_events"})
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summarizeEvents(in.City, events), false))
 			}
 		}
 
@@ -613,6 +657,32 @@ func summarizeOffers(origin, dest string, offers []FlightOffer) string {
 			i+1, airline, o.Currency, o.Price, stops, o.DurationMin/60, o.DurationMin%60, o.Score)
 	}
 	b.WriteString("These option cards are already shown to the traveler; summarize and help them choose.")
+	return b.String()
+}
+
+// summarizeEvents renders the events returned for a city into a compact text
+// block for the model (the event cards themselves are streamed to the UI).
+func summarizeEvents(city string, events []Event) string {
+	if len(events) == 0 {
+		return fmt.Sprintf("No events found in %s for those dates.", city)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d events in %s (soonest first):\n", len(events), city)
+	for i, e := range events {
+		when := e.StartDate
+		if e.StartTime != "" {
+			when += " " + e.StartTime
+		}
+		line := fmt.Sprintf("%d. %s — %s", i+1, e.Name, when)
+		if e.Venue != "" {
+			line += " @ " + e.Venue
+		}
+		if e.Category != "" {
+			line += " (" + e.Category + ")"
+		}
+		b.WriteString(line + "\n")
+	}
+	b.WriteString("These event cards are already shown to the traveler; highlight ones that fit their interests and dates.")
 	return b.String()
 }
 

@@ -48,4 +48,5 @@ abstract final class AppColors {
   static Color get toolFlights => Colors.blue.shade700;
   static Color get toolCountry => Colors.green.shade700;
   static Color get toolAirbnb => Colors.pink.shade600;
+  static Color get toolEvents => Colors.purple.shade600;
 }
