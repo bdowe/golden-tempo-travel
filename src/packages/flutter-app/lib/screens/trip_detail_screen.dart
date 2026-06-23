@@ -25,7 +25,6 @@ import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
-import '../widgets/ferry_card.dart';
 import '../widgets/source_links_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
@@ -61,6 +60,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       _homeAirport; // traveler's saved home airport (IATA), for outbound/return flights
   // todo_key -> flight leg, so a transport booking item can open Find Flights prefilled.
   Map<String, ({String origin, String destination, String? date})> _flightLegs =
+      {};
+  // todo_key -> ferry leg (Greek port<->port), so the booking item opens the
+  // Ferryhopper search for that route instead of a flight.
+  Map<String, ({String origin, String destination, String? date})> _ferryLegs =
       {};
   // Per-leg travel timings keyed by the source item's position (the leg leaving
   // that item, to the next item in itinerary order). Empty until computed and on
@@ -183,6 +186,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final todos = <Map<String, dynamic>>[];
     final legs =
         <String, ({String origin, String destination, String? date})>{};
+    final ferryLegs =
+        <String, ({String origin, String destination, String? date})>{};
     var pos = 0;
     final home = _homeAirport;
     final hasHome = home != null && home.isNotEmpty && ranges.isNotEmpty;
@@ -206,6 +211,37 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         'passengers': 1,
       });
       legs[key] = (origin: origin, destination: destination, date: date);
+    }
+
+    // Adds a transport (ferry) todo for a Greek port<->port leg and records it so
+    // the booking item opens the Ferryhopper search for that route.
+    void addFerry(String origin, String destination, DateTime? when) {
+      final date = when == null ? null : _fmt(when);
+      final key =
+          'transport:${origin.toLowerCase()}>>${destination.toLowerCase()}';
+      todos.add({
+        'kind': 'transport',
+        'todo_key': key,
+        'title': '$origin → $destination',
+        if (when != null) 'subtitle': _fmtShortDt(when),
+        'provider': 'ferry',
+        'position': pos++,
+        'origin': origin,
+        'destination': destination,
+        if (date != null) 'depart_date': date,
+        'passengers': 1,
+      });
+      ferryLegs[key] = (origin: origin, destination: destination, date: date);
+    }
+
+    // A leg between two Greek ports/islands (incl. Athens/Piraeus) is a ferry;
+    // the long-haul home<->Greece legs stay flights.
+    void addLeg(String origin, String destination, DateTime? when) {
+      if (_isGreekIsland(origin) && _isGreekIsland(destination)) {
+        addFerry(origin, destination, when);
+      } else {
+        addFlight(origin, destination, when);
+      }
     }
 
     // Outbound: home airport -> first city, on the trip's start date.
@@ -232,7 +268,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         'guests': 1,
       });
       if (i < ranges.length - 1) {
-        addFlight(label, ranges[i + 1].label, r.end);
+        addLeg(label, ranges[i + 1].label, r.end);
       }
     }
 
@@ -242,6 +278,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
 
     _flightLegs = legs;
+    _ferryLegs = ferryLegs;
     return todos;
   }
 
@@ -901,52 +938,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return false;
   }
 
-  /// Ferry connector between two consecutive Greek-island groups. Renders
-  /// nothing unless both stops are Greek islands. The lookup is keyed by route +
-  /// the next stop's start date.
-  Widget _ferrySliver(
-      String fromLabel, String toLabel, DateTime? toStart, ThemeData theme) {
-    if (!_isGreekIsland(fromLabel) || !_isGreekIsland(toLabel)) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
-    final query = FerryQuery(
-      origin: fromLabel,
-      destination: toLabel,
-      date: toStart == null ? null : _fmt(toStart),
-    );
-    return SliverToBoxAdapter(
-      child: Consumer(builder: (context, ref, _) {
-        final options = ref.watch(ferriesByRouteProvider(query)).valueOrNull;
-        if (options == null || options.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                  top: AppSpacing.sm, bottom: AppSpacing.xs),
-              child: Row(
-                children: [
-                  Icon(Icons.directions_boat,
-                      size: 16, color: AppColors.toolFerries),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Ferry to $toLabel',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.toolFerries,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            FerryCard(option: options.first),
-          ],
-        );
-      }),
-    );
-  }
 
   /// Compact booking rows for a city group's slot: arrival flight + stay when
   /// [departureOnly] is false, the return-home flight when true.
@@ -962,8 +953,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             todo: todo,
             onBookedChanged: (v) => _setBooked(todo, v),
             onOpen: _openCallbackFor(todo),
-            openLabelOverride:
-                _flightLegs.containsKey(todo.todoKey) ? 'Find flights' : null,
+            openLabelOverride: _ferryLegs.containsKey(todo.todoKey)
+                ? 'Find ferries'
+                : _flightLegs.containsKey(todo.todoKey)
+                    ? 'Find flights'
+                    : null,
           ),
     ];
   }
@@ -1763,19 +1757,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               group.label,
                                               groupRanges[group.label],
                                               theme),
-                                        // Island-hopping connector: a ferry
-                                        // suggestion to the next stop when both
-                                        // this and the next group are Greek
-                                        // islands, dated at the next stop's start.
-                                        if (_itemFilter == 'all' &&
-                                            gi < groups.length - 1)
-                                          _ferrySliver(
-                                            group.label,
-                                            groups[gi + 1].label,
-                                            groupRanges[groups[gi + 1].label]
-                                                ?.start,
-                                            theme,
-                                          ),
                                         if (_itemFilter == 'all' &&
                                             gi == groups.length - 1 &&
                                             gi < grouped.slots.length)
@@ -1923,18 +1904,43 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// leg opens the in-app Find Flights screen prefilled; everything else falls
   /// back to its external provider search link.
   VoidCallback? _openCallbackFor(BookingTodo todo) {
-    final leg = todo.kind == 'transport' ? _flightLegs[todo.todoKey] : null;
-    if (leg != null) {
-      return () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => FlightSearchScreen(
-              prefillOrigin: leg.origin,
-              prefillDestination: leg.destination,
-              prefillDepartDate: leg.date,
-            ),
-          ));
+    if (todo.kind == 'transport') {
+      final ferry = _ferryLegs[todo.todoKey];
+      if (ferry != null) return () => _openFerry(ferry);
+      final leg = _flightLegs[todo.todoKey];
+      if (leg != null) {
+        return () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => FlightSearchScreen(
+                prefillOrigin: leg.origin,
+                prefillDestination: leg.destination,
+                prefillDepartDate: leg.date,
+              ),
+            ));
+      }
     }
     if (todo.searchUrl != null) return () => _launch(todo.searchUrl!);
     return null;
+  }
+
+  /// Opens the Ferryhopper search for a ferry leg. The booking URL (with the
+  /// correct port codes) is built server-side, so we fetch it on tap — a single
+  /// quick GET — keeping the port-code map a single source of truth in the API.
+  Future<void> _openFerry(
+      ({String origin, String destination, String? date}) leg) async {
+    try {
+      final options = await ref.read(ferryApiServiceProvider).searchFerries(
+            leg.origin,
+            leg.destination,
+            date: leg.date,
+          );
+      if (options.isNotEmpty && options.first.bookingUrl.isNotEmpty) {
+        await _launch(options.first.bookingUrl);
+        return;
+      }
+    } catch (_) {
+      // fall through to the generic failure snack
+    }
+    _showSnack('Could not open ferry search');
   }
 
   Future<void> _launch(String url) async {
