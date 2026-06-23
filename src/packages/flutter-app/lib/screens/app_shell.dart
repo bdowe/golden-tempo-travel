@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../constants/app_info.dart';
 import '../navigation/app_nav.dart';
-import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
+import '../widgets/brand_logo.dart';
 import 'home_screen.dart';
 import 'agent_screen.dart';
 import 'trips_list_screen.dart';
@@ -104,36 +103,19 @@ const List<Widget> _tabRoots = [
   TripsListScreen(),
 ];
 
-/// The Wayfare brand mark for the top of the rail — the persistent Site ID
-/// (Krug). A compact icon badge + wordmark so it fits the narrow rail.
+/// The Golden Tempo Travel brand mark for the top of the rail — the persistent
+/// Site ID (Krug). The metronome mark on a light badge so it fits the narrow
+/// rail and the black/gold artwork reads on the surface.
 class _RailBrand extends StatelessWidget {
   const _RailBrand();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.sm),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: AppColors.brand.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Icon(Icons.flight_takeoff, color: AppColors.brand, size: 22),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          const Text(
-            AppInfo.name,
-            style: TextStyle(
-              fontFamily: 'Playfair Display',
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.sm),
+      child: BrandBadge(
+        padding: EdgeInsets.all(AppSpacing.sm),
+        child: BrandLogo.mark(size: 26),
       ),
     );
   }

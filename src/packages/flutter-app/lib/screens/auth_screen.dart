@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/brand_logo.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   /// Whether the form opens in sign-in (true) or create-account (false) mode.
@@ -65,8 +66,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.travel_explore,
-                      size: 64, color: theme.colorScheme.primary),
+                  const BrandLogo.mark(size: 72),
                   const SizedBox(height: 16),
                   Text(
                     _isLogin ? 'Welcome back' : 'Create your account',

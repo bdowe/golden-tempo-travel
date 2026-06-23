@@ -9,6 +9,7 @@ import '../navigation/app_nav.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
 import 'route_optimizer_screen.dart';
@@ -45,16 +46,31 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: GradientAppBar(
         centerTitle: false,
-        // Wordmark: bundled Playfair Display so the logo reads as a brand,
-        // not a screen title.
-        title: const Text(
-          AppInfo.name,
-          style: TextStyle(
-            fontFamily: 'Playfair Display',
-            fontWeight: FontWeight.w600,
-            fontSize: 24,
-            letterSpacing: 0.5,
-          ),
+        // Brand mark on a light badge (so the black/gold logo reads on the teal
+        // app bar) next to the wordmark in white.
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            BrandBadge(
+              padding: EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+              child: BrandLogo.mark(size: 28),
+            ),
+            SizedBox(width: AppSpacing.sm),
+            Flexible(
+              child: Text(
+                AppInfo.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Playfair Display',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                  letterSpacing: 0.5,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ),
         actions: const [AccountMenu()],
       ),
