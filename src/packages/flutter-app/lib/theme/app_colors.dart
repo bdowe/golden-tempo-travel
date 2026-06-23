@@ -46,7 +46,6 @@ abstract final class AppColors {
   // Planning-toolkit tool accents (Home screen).
   static Color get toolRoute => Colors.deepOrange.shade600;
   static Color get toolFlights => Colors.blue.shade700;
-  static Color get toolCountry => Colors.green.shade700;
   static Color get toolAirbnb => Colors.pink.shade600;
   static Color get toolEvents => Colors.purple.shade600;
 }

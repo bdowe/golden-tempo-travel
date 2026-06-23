@@ -190,133 +190,6 @@ func optimizeRouteHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// optimizeCountriesHandler handles country route optimization requests
-func optimizeCountriesHandler(w http.ResponseWriter, r *http.Request) {
-	var request CountryRouteRequest
-
-	// Parse JSON request body
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{
-			Message: fmt.Sprintf("Invalid JSON: %v", err),
-			Status:  "error",
-		})
-		return
-	}
-
-	// Validate input
-	if len(request.Countries) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{
-			Message: "At least one country is required",
-			Status:  "error",
-		})
-		return
-	}
-
-	if len(request.Countries) > 20 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{
-			Message: "Maximum 20 countries supported",
-			Status:  "error",
-		})
-		return
-	}
-
-	// Validate country data
-	for i, country := range request.Countries {
-		if country.Code == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{
-				Message: fmt.Sprintf("Country %d missing required 'code' field", i),
-				Status:  "error",
-			})
-			return
-		}
-		if country.Name == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{
-				Message: fmt.Sprintf("Country %d missing required 'name' field", i),
-				Status:  "error",
-			})
-			return
-		}
-		if country.Latitude < -90 || country.Latitude > 90 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{
-				Message: fmt.Sprintf("Country %d has invalid latitude: %f", i, country.Latitude),
-				Status:  "error",
-			})
-			return
-		}
-		if country.Longitude < -180 || country.Longitude > 180 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{
-				Message: fmt.Sprintf("Country %d has invalid longitude: %f", i, country.Longitude),
-				Status:  "error",
-			})
-			return
-		}
-		if country.MinStayDays <= 0 {
-			// Set default minimum stay
-			request.Countries[i].MinStayDays = 3
-		}
-	}
-
-	// Validate optimization focus
-	validOptimizations := map[string]bool{
-		"distance": true,
-		"season":   true,
-		"balanced": true,
-		"":         true, // Empty defaults to balanced
-	}
-	if !validOptimizations[strings.ToLower(request.OptimizeFor)] {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{
-			Message: "optimize_for must be one of: 'distance', 'season', 'balanced'",
-			Status:  "error",
-		})
-		return
-	}
-
-	// Validate start country if provided
-	if request.StartCountry != nil {
-		found := false
-		for _, country := range request.Countries {
-			if country.Code == *request.StartCountry {
-				found = true
-				break
-			}
-		}
-		if !found {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{
-				Message: fmt.Sprintf("Start country '%s' not found in countries list", *request.StartCountry),
-				Status:  "error",
-			})
-			return
-		}
-	}
-
-	// Create optimizer and process request
-	optimizer := NewCountryOptimizer(request.Countries)
-	result := optimizer.optimizeCountryRoute(request)
-
-	// Return result
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
-}
-
 // placesSearchHandler handles place search requests
 func placesSearchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -645,7 +518,6 @@ func main() {
 	api.HandleFunc("/hello", helloHandler).Methods("GET")
 	api.HandleFunc("/health", healthHandler).Methods("GET")
 	api.HandleFunc("/optimize-route", optimizeRouteHandler).Methods("POST")
-	api.HandleFunc("/optimize-countries", optimizeCountriesHandler).Methods("POST")
 	api.HandleFunc("/places/search", placesSearchHandler).Methods("GET")
 	api.HandleFunc("/places/autocomplete", placesAutocompleteHandler).Methods("GET")
 	api.HandleFunc("/places/details", placesDetailsHandler).Methods("GET")
@@ -697,7 +569,6 @@ func main() {
 	log.Printf("  GET /api/v1/hello            - Hello World (v1)")
 	log.Printf("  GET /api/v1/health           - Health Check (v1)")
 	log.Printf("  POST /api/v1/optimize-route     - Route Optimization")
-	log.Printf("  POST /api/v1/optimize-countries - Country Route Optimization")
 	log.Printf("  GET  /api/v1/places/search      - Search Places")
 	log.Printf("  GET  /api/v1/places/autocomplete - Place Autocomplete")
 	log.Printf("  GET  /api/v1/places/details     - Place Details")

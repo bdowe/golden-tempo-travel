@@ -12,16 +12,6 @@ A beautiful Flutter mobile app that consumes the Travel Route Planner Go API to 
 - **Time-Aware Planning**: Schedule routes with start times and dates
 - **Beautiful Results**: Visual timeline showing optimized route with arrival/departure times
 
-### 🌍 **Country Planner**  
-- **Multi-Country Trip Planning**: Plan complex international itineraries
-- **Seasonal Intelligence**: Optimize visits based on ideal travel seasons and weather
-- **Three Optimization Strategies**:
-  - **Distance**: Minimize travel distances between countries
-  - **Season**: Prioritize ideal travel times and weather
-  - **Balanced**: Perfect mix of distance and seasonal optimization
-- **Comprehensive Metrics**: Distance, seasonal scores, and overall trip optimization
-- **Flexible Parameters**: Set trip duration, start dates, and minimum stay requirements
-
 ## Screenshots
 
 > Note: This is a functional demo app. In a production version, you would add screenshots here showing the beautiful UI.
@@ -49,7 +39,7 @@ A beautiful Flutter mobile app that consumes the Travel Route Planner Go API to 
 3. **Start the Go API server** (in another terminal):
    ```bash
    cd ../api
-   go run main.go route_optimizer.go country_optimizer.go
+   go run .
    ```
 
 4. **Run the app**:
@@ -76,24 +66,18 @@ lib/
 ├── main.dart                    # App entry point
 ├── models/                      # Data models (matching Go API structs)
 │   ├── location.dart           # Location and operating hours models
-│   ├── route_request.dart      # Route optimization request/response
-│   ├── country.dart            # Country and season models  
-│   └── country_route_request.dart # Country optimization request/response
+│   └── route_request.dart      # Route optimization request/response
 ├── services/
 │   └── api_client.dart         # HTTP client for API communication
 ├── providers/                  # Riverpod state providers
-│   ├── route_provider.dart     # Route optimization state
-│   └── country_provider.dart   # Country optimization state
+│   └── route_provider.dart     # Route optimization state
 ├── screens/                    # Main app screens
 │   ├── home_screen.dart        # Navigation hub
-│   ├── route_optimizer_screen.dart
-│   └── country_optimizer_screen.dart
+│   └── route_optimizer_screen.dart
 └── widgets/                    # Reusable UI components
     ├── location_input_dialog.dart
-    ├── country_input_dialog.dart
     ├── optimization_params_widget.dart
-    ├── route_results_widget.dart
-    └── country_results_widget.dart
+    └── route_results_widget.dart
 ```
 
 ### Key Features
@@ -113,13 +97,6 @@ POST /api/v1/optimize-route
 ```
 **Request**: List of locations with coordinates, categories, operating hours
 **Response**: Optimized route with timing details and distance metrics
-
-### Country Optimization  
-```
-POST /api/v1/optimize-countries
-```
-**Request**: List of countries with seasonal data and trip parameters
-**Response**: Optimized itinerary with seasonal scores and travel metrics
 
 ### Health Check
 ```

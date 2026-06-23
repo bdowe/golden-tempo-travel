@@ -87,13 +87,6 @@ class LandingScreen extends StatelessWidget {
                       'Map the smartest path between your stops in a city.',
                 ),
                 _FeatureCard(
-                  icon: MdiIcons.earth,
-                  color: AppColors.toolCountry,
-                  title: 'Country Planner',
-                  description:
-                      'Order countries around the best weather and seasons.',
-                ),
-                _FeatureCard(
                   icon: MdiIcons.airplane,
                   color: AppColors.toolFlights,
                   title: 'Find Flights',

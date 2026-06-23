@@ -12,7 +12,6 @@ import '../widgets/account_menu.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
 import 'route_optimizer_screen.dart';
-import 'country_optimizer_screen.dart';
 import 'airbnb_parser_screen.dart';
 import 'flight_search_screen.dart';
 import 'trip_detail_screen.dart';
@@ -144,20 +143,6 @@ class HomeScreen extends ConsumerWidget {
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const FlightSearchScreen()),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _ToolRow(
-                          icon: MdiIcons.earth,
-                          color: AppColors.toolCountry,
-                          title: 'Country Planner',
-                          description:
-                              'Order your countries around the best weather and seasons',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const CountryOptimizerScreen()),
                           ),
                         ),
                       ),

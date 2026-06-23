@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// flightWeights are the per-factor weights for each optimization preset. They
-// mirror the optimize_for contract used by the country optimizer: an empty
-// value defaults to "balanced".
+// flightWeights are the per-factor weights for each optimization preset. The
+// optimize_for contract follows the same convention as the route optimizer: an
+// empty value defaults to "balanced".
 type flightWeights struct {
 	price    float64
 	duration float64

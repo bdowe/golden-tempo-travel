@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/route_request.dart';
 import '../models/route_response.dart';
-import '../models/country_route_request.dart';
-import '../models/country_route_response.dart';
 
 class ApiClient {
   /// Default for local `flutter run` without Docker gateway.
@@ -66,41 +64,6 @@ class ApiClient {
         statusCode: 0,
         message: 'Network error: ${e.toString()}',
         endpoint: 'optimize-route',
-      );
-    }
-  }
-
-  /// Optimize a route for countries
-  Future<CountryRouteResponse> optimizeCountries(
-      CountryRouteRequest request) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/optimize-countries'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(request.toJson()),
-          )
-          .timeout(_timeout);
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonData = jsonDecode(response.body);
-        return CountryRouteResponse.fromJson(jsonData);
-      } else {
-        throw ApiException(
-          statusCode: response.statusCode,
-          message: 'Failed to optimize countries: ${response.body}',
-          endpoint: 'optimize-countries',
-        );
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(
-        statusCode: 0,
-        message: 'Network error: ${e.toString()}',
-        endpoint: 'optimize-countries',
       );
     }
   }
