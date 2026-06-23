@@ -4,7 +4,7 @@ import '../models/booking_todo.dart';
 IconData _kindIcon(BookingTodo todo) {
   switch (todo.kind) {
     case 'transport':
-      return Icons.flight;
+      return todo.provider == 'ferry' ? Icons.directions_boat : Icons.flight;
     case 'stay':
       return Icons.hotel;
     default:
@@ -21,6 +21,8 @@ String _providerOpenLabel(BookingTodo todo, String? override) {
       return 'Open in Booking.com';
     case 'google_flights':
       return 'Open in Google Flights';
+    case 'ferry':
+      return 'Open in Ferryhopper';
     case 'kayak':
       return 'Open in Kayak';
     case 'rome2rio':
