@@ -1,0 +1,60 @@
+-- name: CreateTripCollaborator :exec
+-- Idempotent join: the partial unique index makes a second redeem a no-op.
+INSERT INTO trip_collaborators (chat_id, owner_id, user_id, role)
+VALUES ($1, $2, $3, 'editor')
+ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL DO NOTHING;
+
+-- name: ListCollaboratorsByOwnerAndChat :many
+SELECT c.user_id, c.created_at, u.email,
+       COALESCE(u.display_name, '')::text AS display_name
+FROM trip_collaborators c
+JOIN users u ON u.id = c.user_id
+WHERE c.owner_id = $1 AND c.chat_id = $2 AND c.revoked_at IS NULL
+ORDER BY c.created_at ASC;
+
+-- name: RevokeTripCollaborator :execrows
+UPDATE trip_collaborators SET revoked_at = now()
+WHERE owner_id = $1 AND chat_id = $2 AND user_id = $3 AND revoked_at IS NULL;
+
+-- name: GetEditableTripByID :one
+-- The trip row when the caller may edit it: owner, or active editor
+-- collaborator on the row's lineage. chat_id = NULL (legacy trips) never
+-- matches a collaborator row, which is correct — they were never joinable.
+SELECT t.* FROM trips t
+WHERE t.id = $1
+  AND (t.user_id = $2 OR EXISTS (
+        SELECT 1 FROM trip_collaborators c
+        WHERE c.user_id = $2 AND c.role = 'editor' AND c.revoked_at IS NULL
+          AND c.owner_id = t.user_id AND c.chat_id = t.chat_id));
+
+-- name: ListLatestCollaboratedTripsForUser :many
+-- "Shared with you": one row per collaborated lineage (latest version), same
+-- shape as ListLatestTripsByOwner plus the owner's display name.
+SELECT latest.id, latest.user_id, latest.created_at, latest.updated_at,
+       latest.title, latest.start_date, latest.end_date, latest.status,
+       latest.chat_id, latest.version_count,
+       COALESCE(c2.cities, ARRAY[]::text[])::text[] AS cities,
+       COALESCE(u.display_name, '')::text AS owner_name
+FROM (
+  SELECT DISTINCT ON (t.chat_id)
+         t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date,
+         t.end_date, t.status, t.chat_id,
+         count(*) OVER (PARTITION BY t.chat_id) AS version_count
+  FROM trips t
+  JOIN trip_collaborators c ON c.owner_id = t.user_id AND c.chat_id = t.chat_id
+  WHERE c.user_id = $1 AND c.revoked_at IS NULL
+  ORDER BY t.chat_id, t.created_at DESC
+) latest
+JOIN users u ON u.id = latest.user_id
+LEFT JOIN LATERAL (
+  SELECT array_agg(hub.city ORDER BY hub.first_pos) AS cities
+  FROM (
+    SELECT COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, '')) AS city,
+           MIN(ii.position) AS first_pos
+    FROM itinerary_items ii
+    WHERE ii.trip_id = latest.id
+      AND COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, '')) IS NOT NULL
+    GROUP BY COALESCE(NULLIF(ii.day_trip_from, ''), NULLIF(ii.city, ''))
+  ) hub
+) c2 ON true
+ORDER BY latest.created_at DESC;

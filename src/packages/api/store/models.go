@@ -174,6 +174,16 @@ type Trip struct {
 	Summary   *string     `json:"summary"`
 }
 
+type TripCollaborator struct {
+	ID        uuid.UUID          `json:"id"`
+	ChatID    string             `json:"chat_id"`
+	OwnerID   uuid.UUID          `json:"owner_id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Role      string             `json:"role"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type TripSegment struct {
 	ID          uuid.UUID   `json:"id"`
 	TripID      uuid.UUID   `json:"trip_id"`

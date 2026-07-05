@@ -78,10 +78,11 @@ func transportLinksHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var req AddSegmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -127,10 +128,11 @@ func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteSegmentHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	segID, err := uuid.Parse(mux.Vars(r)["segmentId"])
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "segment not found")

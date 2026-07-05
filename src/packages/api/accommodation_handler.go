@@ -69,28 +69,17 @@ func accommodationLinksHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, links)
 }
 
-// ownedTrip resolves the {id} path var and confirms the caller owns it.
-// Returns the trip id and true, or writes a 404/401 and returns false.
-func ownedTrip(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	user, _ := userFromContext(r.Context())
-	tripID, ok := tripIDFromPath(r)
-	if !ok {
-		writeJSONError(w, http.StatusNotFound, "trip not found")
-		return uuid.UUID{}, false
-	}
-	if _, err := store.New(dbPool).GetTripByIDAndOwner(r.Context(),
-		store.GetTripByIDAndOwnerParams{ID: tripID, UserID: user.ID}); err != nil {
-		writeJSONError(w, http.StatusNotFound, "trip not found")
-		return uuid.UUID{}, false
-	}
-	return tripID, true
-}
+// Trip mutations authorize via editableTrip (collaborator_handler.go): the
+// owner or an active editor-collaborator on the trip's lineage. The former
+// owner-only helper (ownedTrip) was retired when collaborative editing
+// arrived; owner-only operations use GetTripByIDAndOwner directly.
 
 func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var req AddAccommodationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -131,10 +120,11 @@ func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteAccommodationHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	accID, err := uuid.Parse(mux.Vars(r)["accId"])
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "accommodation not found")

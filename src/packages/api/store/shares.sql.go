@@ -46,7 +46,7 @@ func (q *Queries) CreateTripShare(ctx context.Context, arg CreateTripShareParams
 
 const getActiveShareByOwnerAndChat = `-- name: GetActiveShareByOwnerAndChat :one
 SELECT id, chat_id, owner_id, token, role, created_at, revoked_at FROM trip_shares
-WHERE owner_id = $1 AND chat_id = $2 AND role = 'viewer' AND revoked_at IS NULL
+WHERE owner_id = $1 AND chat_id = $2 AND role = $3 AND revoked_at IS NULL
 ORDER BY created_at DESC
 LIMIT 1
 `
@@ -54,12 +54,14 @@ LIMIT 1
 type GetActiveShareByOwnerAndChatParams struct {
 	OwnerID uuid.UUID `json:"owner_id"`
 	ChatID  string    `json:"chat_id"`
+	Role    string    `json:"role"`
 }
 
-// The owner's current (unrevoked) viewer link for a chat lineage, if any —
-// share creation is idempotent per lineage.
+// The owner's current (unrevoked) link of a given role for a chat lineage —
+// share creation is idempotent per (lineage, role), so viewer and editor
+// links coexist.
 func (q *Queries) GetActiveShareByOwnerAndChat(ctx context.Context, arg GetActiveShareByOwnerAndChatParams) (TripShare, error) {
-	row := q.db.QueryRow(ctx, getActiveShareByOwnerAndChat, arg.OwnerID, arg.ChatID)
+	row := q.db.QueryRow(ctx, getActiveShareByOwnerAndChat, arg.OwnerID, arg.ChatID, arg.Role)
 	var i TripShare
 	err := row.Scan(
 		&i.ID,

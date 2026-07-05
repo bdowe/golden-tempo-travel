@@ -55,6 +55,10 @@ type TripResponse struct {
 	Accommodations []AccommodationResponse `json:"accommodations,omitempty"`
 	Segments       []SegmentResponse       `json:"segments,omitempty"`
 	BookingTodos   []BookingTodoResponse   `json:"booking_todos,omitempty"`
+	// Access is "owner" or "editor" (collaborator). Absent on responses
+	// that predate collaboration; clients treat missing as owner.
+	Access    string  `json:"access,omitempty"`
+	OwnerName *string `json:"owner_name,omitempty"` // set when access == "editor"
 }
 
 type PatchTripRequest struct {
@@ -271,17 +275,13 @@ func listTripVersionsHandler(w http.ResponseWriter, r *http.Request) {
 
 func getTripHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	id, ok := tripIDFromPath(r)
+	// Owner or editor-collaborator may read; v1 has no viewer membership, so
+	// editable == viewable.
+	trip, ok := editableTrip(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusNotFound, "trip not found")
 		return
 	}
 	q := store.New(dbPool)
-	trip, err := q.GetTripByIDAndOwner(r.Context(), store.GetTripByIDAndOwnerParams{ID: id, UserID: user.ID})
-	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "trip not found")
-		return
-	}
 	items, err := q.GetItineraryItemsByTrip(r.Context(), trip.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
@@ -302,7 +302,17 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load booking todos")
 		return
 	}
-	writeJSON(w, http.StatusOK, toTripResponse(trip, items, accommodations, segments, bookingTodos))
+	resp := toTripResponse(trip, items, accommodations, segments, bookingTodos)
+	if trip.UserID == user.ID {
+		resp.Access = "owner"
+	} else {
+		resp.Access = "editor"
+		if owner, err := q.GetUserByID(r.Context(), trip.UserID); err == nil &&
+			owner.DisplayName != nil && *owner.DisplayName != "" {
+			resp.OwnerName = owner.DisplayName
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // refineTripHandler returns the chat_id to reopen a saved trip in the AI agent,
@@ -344,12 +354,13 @@ func refineTripHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func patchTripHandler(w http.ResponseWriter, r *http.Request) {
-	user, _ := userFromContext(r.Context())
-	id, ok := tripIDFromPath(r)
+	// Editors may adjust title/dates/status too. UpdateTrip's WHERE user_id
+	// stays owner-scoped — satisfied by the OWNER's id off the authorized row.
+	authorized, ok := editableTrip(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusNotFound, "trip not found")
 		return
 	}
+	id := authorized.ID
 	var req PatchTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -383,7 +394,7 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 		EndDate:   end,
 		Status:    req.Status,
 		ID:        id,
-		UserID:    user.ID,
+		UserID:    authorized.UserID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "trip not found")
