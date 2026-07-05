@@ -38,7 +38,12 @@ String buildOnboardingProfileNotes({String? companions, required String tripsInM
 /// question is optional and Skip is always available; this screen must only be
 /// shown to brand-new users (it replaces profile notes wholesale).
 class OnboardingQuizScreen extends ConsumerStatefulWidget {
-  const OnboardingQuizScreen({super.key});
+  /// When true the quiz was pushed as a profile "retake" (account menu)
+  /// rather than shown by AuthGate at signup: finishing pops back instead of
+  /// relying on AuthGate to swap the screen, and Skip just leaves.
+  final bool retake;
+
+  const OnboardingQuizScreen({super.key, this.retake = false});
 
   @override
   ConsumerState<OnboardingQuizScreen> createState() => _OnboardingQuizScreenState();
@@ -85,6 +90,10 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
   }
 
   Future<void> _skip() async {
+    if (widget.retake) {
+      Navigator.of(context).pop();
+      return;
+    }
     if (_submitting) return;
     setState(() => _submitting = true);
     await ref.read(authProvider.notifier).completeOnboarding();
@@ -112,6 +121,14 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not save your answers — try again, or skip for now.')),
+      );
+      return;
+    }
+    if (widget.retake) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Travel profile updated')),
       );
       return;
     }
