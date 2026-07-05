@@ -602,6 +602,11 @@ func main() {
 	api.HandleFunc("/airbnb/debug", airbnbDebugHandler).Methods("POST")
 	api.Handle("/auth/register", strict(http.HandlerFunc(registerHandler))).Methods("POST")
 	api.Handle("/auth/login", strict(http.HandlerFunc(loginHandler))).Methods("POST")
+	// Reset/verify are unauthenticated and trigger email sends — strict tier.
+	api.Handle("/auth/request-password-reset", strict(http.HandlerFunc(requestPasswordResetHandler))).Methods("POST")
+	api.Handle("/auth/reset-password", strict(http.HandlerFunc(resetPasswordHandler))).Methods("POST")
+	api.HandleFunc("/auth/verify-email", verifyEmailHandler).Methods("GET", "POST")
+	api.Handle("/auth/request-verification", authMiddleware(http.HandlerFunc(requestVerificationHandler))).Methods("POST")
 	api.Handle("/auth/logout", authMiddleware(http.HandlerFunc(logoutHandler))).Methods("POST")
 	api.Handle("/auth/me", authMiddleware(http.HandlerFunc(meHandler))).Methods("GET")
 	api.Handle("/auth/onboarding-complete", authMiddleware(http.HandlerFunc(completeOnboardingHandler))).Methods("POST")

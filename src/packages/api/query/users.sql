@@ -13,3 +13,10 @@ SELECT * FROM users WHERE id = $1;
 UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
 WHERE id = $1
 RETURNING *;
+
+-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $2 WHERE id = $1;
+
+-- name: MarkUserEmailVerified :exec
+UPDATE users SET email_verified_at = COALESCE(email_verified_at, now())
+WHERE id = $1;

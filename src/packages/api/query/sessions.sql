@@ -16,3 +16,7 @@ DELETE FROM sessions WHERE id = $1;
 
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at < now();
+
+-- name: DeleteSessionsByUser :exec
+-- Used after a password reset so stolen sessions die with the old password.
+DELETE FROM sessions WHERE user_id = $1;

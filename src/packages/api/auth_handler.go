@@ -207,6 +207,9 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not start session")
 		return
 	}
+	// Fire-and-forget, like the profile distiller: registration never blocks
+	// or fails on email delivery.
+	go sendVerificationEmail(user)
 	writeJSON(w, http.StatusCreated, AuthResponse{User: toUserResponse(user), Token: session.ID})
 }
 
