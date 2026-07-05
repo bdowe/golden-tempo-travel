@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/airport.dart';
 import '../models/flight_search_request.dart';
+import '../providers/auth_provider.dart';
 import '../providers/flights_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../widgets/airport_field.dart';
+import '../widgets/create_alert_sheet.dart';
 import '../widgets/flight_offer_card.dart';
 import '../widgets/gradient_app_bar.dart';
 
@@ -362,6 +364,38 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
             ),
           ),
           const Divider(height: 1),
+          // Watch-this-route entry (specs/price-alerts): only over a real
+          // result set and only signed in — alerts need an email to notify.
+          if (state.hasSearched &&
+              state.offers.isNotEmpty &&
+              ref.watch(authProvider).isSignedIn &&
+              _canSearch)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: TextButton.icon(
+                  icon: const Icon(Icons.notifications_none, size: 18),
+                  label: const Text('Watch this route — email me on a drop'),
+                  onPressed: () {
+                    final cheapest = state.offers
+                        .reduce((a, b) => a.price <= b.price ? a : b);
+                    CreateAlertSheet.show(
+                      context,
+                      CreateAlertSheet(
+                        origin: _origin!.iataCode,
+                        destination: _destination!.iataCode,
+                        departDate: _fmtDate(_departDate!),
+                        adults: _adults,
+                        cabinClass: _cabinClass,
+                        currentPrice: cheapest.price,
+                        currency: cheapest.currency,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
           // Results
           Expanded(child: _Results(state: state)),
         ],

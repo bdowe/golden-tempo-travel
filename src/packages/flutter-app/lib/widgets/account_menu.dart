@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
+import '../screens/alerts_screen.dart';
 import '../screens/preferences_screen.dart';
 import '../screens/local_admin_screen.dart';
 import '../theme/app_colors.dart';
@@ -19,6 +20,8 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
   } else if (value == 'preferences') {
     // Push onto the active tab's navigator so the rail/bar stays put.
     pushOnActiveTab(ref, const PreferencesScreen());
+  } else if (value == 'alerts') {
+    pushOnActiveTab(ref, const AlertsScreen());
   } else if (value == 'local_admin') {
     pushOnActiveTab(ref, const LocalAdminScreen());
   }
@@ -90,6 +93,17 @@ List<PopupMenuEntry<String>> _items(
           Icon(Icons.tune, size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
           const Text('Travel profile'),
+        ],
+      ),
+    ),
+    PopupMenuItem<String>(
+      value: 'alerts',
+      child: Row(
+        children: [
+          Icon(Icons.notifications_none,
+              size: 20, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.md),
+          const Text('Price alerts'),
         ],
       ),
     ),
