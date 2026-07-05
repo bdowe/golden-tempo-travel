@@ -213,6 +213,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				"depart_date":  map[string]any{"type": "string", "description": "YYYY-MM-DD"},
 				"return_date":  map[string]any{"type": "string", "description": "Optional YYYY-MM-DD for round trips"},
 				"adults":       map[string]any{"type": "integer", "description": "Optional, defaults to 1"},
+				"child_ages":   map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Optional ages of child travelers (one per child, 0-17) — include when the traveler mentions kids"},
+				"cabin_class":  map[string]any{"type": "string", "enum": []string{"economy", "premium_economy", "business", "first"}, "description": "Optional cabin, defaults to economy — set when the traveler asks for a specific class"},
 				"optimize_for": map[string]any{"type": "string", "enum": []string{"cost", "time", "balanced"}, "description": "Ranking emphasis"},
 			},
 			Required: []string{"origin", "destination", "depart_date"},
@@ -568,6 +570,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 					DepartDate  string `json:"depart_date"`
 					ReturnDate  string `json:"return_date"`
 					Adults      int    `json:"adults"`
+					ChildAges   []int  `json:"child_ages"`
+					CabinClass  string `json:"cabin_class"`
 					OptimizeFor string `json:"optimize_for"`
 				}
 				json.Unmarshal(variant.Input, &in)
@@ -587,7 +591,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				offers, err := duffelService.SearchFlightOffers(ctx, FlightSearchRequest{
 					Origin: originIata, Destination: destIata, DepartDate: in.DepartDate,
-					ReturnDate: in.ReturnDate, Adults: adults, OptimizeFor: in.OptimizeFor,
+					ReturnDate: in.ReturnDate, Adults: adults, ChildAges: in.ChildAges,
+					CabinClass: in.CabinClass, OptimizeFor: in.OptimizeFor,
 				})
 				if err != nil {
 					sendSSE(w, "tool_result", map[string]string{"name": "search_flights"})
