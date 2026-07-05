@@ -538,7 +538,13 @@ func main() {
 		log.Println("Connected to database; migrations applied")
 	}
 
-	// Create a new router
+	startServer(buildRouter())
+}
+
+// buildRouter wires all routes and middleware. It reads only package globals
+// (dbPool, service singletons), so main() and the integration tests construct
+// identical routers.
+func buildRouter() *mux.Router {
 	router := mux.NewRouter()
 
 	// mux skips router.Use middleware when the request method matches no
@@ -658,6 +664,12 @@ func main() {
 	api.HandleFunc("/local/guides", localGuidesHandler).Methods("GET")
 	api.HandleFunc("/local/guides/{id}", localGuideDetailHandler).Methods("GET")
 
+	return router
+}
+
+// startServer configures and runs the HTTP server; split from main() so the
+// boot sequence reads env → DB → buildRouter → serve.
+func startServer(router *mux.Router) {
 	// Server configuration
 	port := os.Getenv("PORT")
 	if port == "" {
