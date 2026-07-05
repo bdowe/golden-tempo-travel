@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -602,6 +603,36 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   void _showSnack(String msg) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  /// Mints (or reuses) the trip's share link and copies it to the clipboard.
+  /// Flutter web uses hash URLs, so the shareable form is origin + /#/share/….
+  Future<void> _shareLink() async {
+    try {
+      final token = await ref
+          .read(tripsApiServiceProvider)
+          .createShareLink(widget.tripId);
+      String origin;
+      try {
+        origin = Uri.base.origin;
+      } catch (_) {
+        origin = ''; // non-http platform; copy a relative link
+      }
+      final url = '$origin/#/share/$token';
+      await Clipboard.setData(ClipboardData(text: url));
+      _showSnack('Share link copied to clipboard');
+    } catch (e) {
+      _showSnack('Could not create share link: $e');
+    }
+  }
+
+  Future<void> _revokeLink() async {
+    try {
+      await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
+      _showSnack('Sharing turned off — old links no longer work');
+    } catch (e) {
+      _showSnack('Could not turn off sharing: $e');
     }
   }
 
@@ -1810,6 +1841,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       appBar: GradientAppBar(
         title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
+          if (trip != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Share trip',
+              onSelected: (v) => v == 'copy' ? _shareLink() : _revokeLink(),
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'copy', child: Text('Copy share link')),
+                PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
+              ],
+            ),
           if (trip != null)
             IconButton(
               icon: const Icon(Icons.delete_outline),

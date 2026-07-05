@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../models/itinerary_item.dart';
+import '../models/shared_trip.dart';
 import '../models/trip.dart';
 import 'api_client.dart';
 
@@ -98,6 +99,52 @@ class TripsApiService {
       return Trip.fromJson(jsonDecode(res.body));
     }
     throw Exception('Failed to add place (${res.statusCode})');
+  }
+
+  /// Mints (or returns the existing) share link token for a trip. Idempotent.
+  Future<String> createShareLink(String tripId) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),
+      headers: _headers(json: true),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return (jsonDecode(res.body) as Map<String, dynamic>)['token'] as String;
+    }
+    throw Exception('Failed to create share link (${res.statusCode})');
+  }
+
+  Future<void> revokeShareLink(String tripId) async {
+    final res = await apiClient.httpClient.delete(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),
+      headers: _headers(),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to revoke share link (${res.statusCode})');
+    }
+  }
+
+  /// Public read of a shared trip — works without a session.
+  Future<SharedTrip> getSharedTrip(String token) async {
+    final res = await apiClient.httpClient.get(
+      Uri.parse('${apiClient.baseUrl}/shared/$token'),
+      headers: _headers(),
+    );
+    if (res.statusCode == 200) {
+      return SharedTrip.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Shared trip not found (${res.statusCode})');
+  }
+
+  /// Copies a shared trip into the signed-in caller's trips (status draft).
+  Future<Trip> duplicateSharedTrip(String token) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/shared/$token/duplicate'),
+      headers: _headers(json: true),
+    );
+    if (res.statusCode == 201) {
+      return Trip.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Failed to save a copy (${res.statusCode})');
   }
 
   /// Partial update of one itinerary item; absent fields keep their value.

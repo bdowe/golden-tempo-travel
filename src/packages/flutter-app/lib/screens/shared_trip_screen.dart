@@ -1,0 +1,232 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/itinerary_item.dart';
+import '../models/shared_trip.dart';
+import '../models/trip.dart';
+import '../navigation/app_nav.dart';
+import '../providers/auth_provider.dart';
+import '../providers/shared_trip_provider.dart';
+import '../providers/trips_provider.dart';
+import '../theme/spacing.dart';
+import '../utils/trip_format.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/gradient_app_bar.dart';
+import '../widgets/trip_map.dart';
+import 'auth_screen.dart';
+
+/// Public read-only view of a shared trip, reachable at /#/share/<token>
+/// without an account. Signed-in viewers can save a copy to their own trips.
+class SharedTripScreen extends ConsumerWidget {
+  final String token;
+  const SharedTripScreen({super.key, required this.token});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shared = ref.watch(sharedTripProvider(token));
+    return Scaffold(
+      appBar: GradientAppBar(
+        title: shared.maybeWhen(
+          data: (s) => Text(s.trip.title),
+          orElse: () => const Text('Shared trip'),
+        ),
+      ),
+      body: shared.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => const EmptyState(
+          icon: Icons.link_off,
+          title: 'This link isn\'t available',
+          message:
+              'The trip may have been unshared, or the link is incorrect.',
+        ),
+        data: (s) => _SharedTripBody(shared: s, token: token),
+      ),
+    );
+  }
+}
+
+class _SharedTripBody extends ConsumerStatefulWidget {
+  final SharedTrip shared;
+  final String token;
+  const _SharedTripBody({required this.shared, required this.token});
+
+  @override
+  ConsumerState<_SharedTripBody> createState() => _SharedTripBodyState();
+}
+
+class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
+  bool _saving = false;
+  int? _selectedPosition;
+
+  Trip get _trip => widget.shared.trip;
+
+  /// Groups items by hub city (day_trip_from ?? city) in itinerary order —
+  /// the same locality rule the owner's trip detail uses.
+  List<({String label, List<ItineraryItem> items})> _groups() {
+    final items = _trip.items ?? const <ItineraryItem>[];
+    final groups = <({String label, List<ItineraryItem> items})>[];
+    for (final it in items) {
+      final hub = (it.dayTripFrom?.trim().isNotEmpty ?? false)
+          ? it.dayTripFrom!.trim()
+          : (it.city?.trim().isNotEmpty ?? false)
+              ? it.city!.trim()
+              : 'Places';
+      if (groups.isEmpty || groups.last.label != hub) {
+        groups.add((label: hub, items: <ItineraryItem>[]));
+      }
+      groups.last.items.add(it);
+    }
+    return groups;
+  }
+
+  Future<void> _saveCopy() async {
+    final auth = ref.read(authProvider);
+    if (!auth.isSignedIn) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+      );
+      if (!ref.read(authProvider).isSignedIn) return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .duplicateSharedTrip(widget.token);
+      if (!mounted) return;
+      // Land the viewer on their Trips tab, where the copy now lives.
+      ref.read(navIndexProvider.notifier).state = AppTab.trips.index;
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil('/', (route) => false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save a copy: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trip = _trip;
+    final items = trip.items ?? const <ItineraryItem>[];
+    final dates = tripDateRange(trip.startDate, trip.endDate);
+    final hasCoords = items.any((i) => i.latitude != 0 || i.longitude != 0);
+
+    return Stack(
+      children: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 96),
+          children: [
+            Text(trip.title, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Shared by ${widget.shared.ownerName}'
+              '${dates != null ? ' · $dates' : ''}',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (trip.summary != null && trip.summary!.trim().isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(trip.summary!, style: theme.textTheme.bodyMedium),
+            ],
+            if (hasCoords) ...[
+              const SizedBox(height: AppSpacing.lg),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: SizedBox(
+                  height: 240,
+                  child: TripMap(
+                    items: items,
+                    selectedPosition: _selectedPosition,
+                    onPinTap: (pos) =>
+                        setState(() => _selectedPosition = pos),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.lg),
+            if (items.isEmpty)
+              const EmptyState(
+                icon: Icons.place_outlined,
+                title: 'No places yet',
+                message: 'This trip doesn\'t have an itinerary yet.',
+              )
+            else
+              for (final group in _groups()) ...[
+                Padding(
+                  padding: const EdgeInsets.only(
+                      top: AppSpacing.md, bottom: AppSpacing.xs),
+                  child: Text(
+                    group.label,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(color: theme.colorScheme.primary),
+                  ),
+                ),
+                for (final it in group.items)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      radius: 14,
+                      backgroundColor:
+                          theme.colorScheme.primary.withValues(alpha: 0.12),
+                      child: Text(
+                        '${it.position + 1}',
+                        style: theme.textTheme.labelSmall
+                            ?.copyWith(color: theme.colorScheme.primary),
+                      ),
+                    ),
+                    title: Text(it.name),
+                    subtitle: it.address != null ? Text(it.address!) : null,
+                    trailing: it.day != null
+                        ? Chip(
+                            label: Text('Day ${it.day}'),
+                            visualDensity: VisualDensity.compact,
+                          )
+                        : null,
+                    selected: _selectedPosition == it.position,
+                    onTap: () =>
+                        setState(() => _selectedPosition = it.position),
+                  ),
+              ],
+            if ((trip.accommodations ?? const []).isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              Text('Stays', style: theme.textTheme.titleMedium),
+              for (final a in trip.accommodations!)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.hotel_outlined),
+                  title: Text(a.name),
+                  subtitle: a.address != null ? Text(a.address!) : null,
+                ),
+            ],
+          ],
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            color: theme.scaffoldBackgroundColor,
+            child: SafeArea(
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveCopy,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.library_add_outlined),
+                label: const Text('Save a copy to my trips'),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
