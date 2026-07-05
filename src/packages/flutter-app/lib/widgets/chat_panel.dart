@@ -128,10 +128,20 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                     itemCount: messages.length + 1,
                     itemBuilder: (context, i) {
                       if (i < messages.length) {
+                        final msg = messages[i];
+                        // Labeled messages (e.g. the machine-built refine
+                        // seed) collapse to a context chip; the full content
+                        // still went to the server history.
+                        if (msg.displayLabel != null) {
+                          return _SeedContextChip(
+                            key: ValueKey('msg-$i'),
+                            label: msg.displayLabel!,
+                          );
+                        }
                         // Append-only list, so index keys are stable.
                         return ChatMessageBubble(
                           key: ValueKey('msg-$i'),
-                          message: messages[i],
+                          message: msg,
                         );
                       }
                       return _ChatTail(
@@ -181,6 +191,7 @@ class _ChatTail extends StatelessWidget {
         _StreamingBubble(state: state),
         _ActiveToolChips(state: state),
         _ProfileNoteChip(state: state),
+        _ItineraryUpdatedChip(state: state),
         _ResultChips(state: state, notifier: notifier, onViewTrip: onViewTrip),
         if (footerBuilder != null)
           _ChatFooter(state: state, footerBuilder: footerBuilder!),
@@ -274,6 +285,62 @@ class _ProfileNoteChip extends ConsumerWidget {
                 size: 16, color: theme.colorScheme.primary),
             label: const Text('Noted — travel profile updated'),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Transient acknowledgment that the current turn patched the bound trip
+/// (server `trip_updated` event — only fires in refine sessions). Cleared at
+/// the start of the next send, mirroring the profile-note chip lifecycle.
+class _ItineraryUpdatedChip extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+
+  const _ItineraryUpdatedChip({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final updated = ref.watch(state.select((s) => s.tripUpdatedThisTurn));
+    if (!updated) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Chip(
+          avatar: Icon(Icons.check_circle_outline,
+              size: 16, color: theme.colorScheme.primary),
+          label: const Text('Itinerary updated'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centered session marker rendered in place of a machine-built message (the
+/// refine seed) — keeps the conversation readable without hiding that a new
+/// refinement session started here.
+class _SeedContextChip extends StatelessWidget {
+  final String label;
+
+  const _SeedContextChip({super.key, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Chip(
+          avatar: Icon(Icons.auto_awesome,
+              size: 14, color: theme.colorScheme.onSurfaceVariant),
+          label: Text(label),
+          labelStyle: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          visualDensity: VisualDensity.compact,
+          side: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
       ),
     );
