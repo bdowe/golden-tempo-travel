@@ -40,6 +40,11 @@ class PlanState {
   /// (server `trip_updated` event); listeners reload the trip when it grows.
   final int tripUpdateCount;
 
+  /// Whether the current/most recent turn patched the trip — drives the
+  /// transient "Itinerary updated" chip. Reset at the start of each send;
+  /// unlike [tripUpdateCount] it is not monotonic.
+  final bool tripUpdatedThisTurn;
+
   const PlanState({
     this.messages = const [],
     this.isStreaming = false,
@@ -61,6 +66,7 @@ class PlanState {
     this.error,
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
+    this.tripUpdatedThisTurn = false,
   });
 
   PlanState copyWith({
@@ -84,6 +90,7 @@ class PlanState {
     Object? error = _sentinel,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
+    bool? tripUpdatedThisTurn,
   }) {
     return PlanState(
       messages: messages ?? this.messages,
@@ -109,6 +116,7 @@ class PlanState {
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
       tripUpdateCount: tripUpdateCount ?? this.tripUpdateCount,
+      tripUpdatedThisTurn: tripUpdatedThisTurn ?? this.tripUpdatedThisTurn,
     );
   }
 }
@@ -189,12 +197,13 @@ class PlanNotifier extends StateNotifier<PlanState> {
     }).toList();
   }
 
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(String text, {String? displayLabel}) async {
     if (state.isStreaming) return;
 
     _chatId ??= _newChatId();
 
-    final userMessage = PlanMessage(role: MessageRole.user, content: text);
+    final userMessage = PlanMessage(
+        role: MessageRole.user, content: text, displayLabel: displayLabel);
     final updatedMessages = [...state.messages, userMessage];
 
     state = state.copyWith(
@@ -214,6 +223,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
       localRecsCity: null,
       error: null,
       profileUpdateNote: null,
+      tripUpdatedThisTurn: false,
     );
 
     final history = updatedMessages
@@ -255,7 +265,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
             );
 
           case 'trip_updated':
-            state = state.copyWith(tripUpdateCount: state.tripUpdateCount + 1);
+            state = state.copyWith(
+              tripUpdateCount: state.tripUpdateCount + 1,
+              tripUpdatedThisTurn: true,
+            );
 
           case 'profile_updated':
             state = state.copyWith(
@@ -378,9 +391,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
   /// clears any prior conversation and sends the seed describing the targeted
   /// section. Requires [tripId]; the server patches that trip directly, so no
   /// chat-group binding is needed.
-  void beginSectionRefinement(String seedMessage) {
+  void beginSectionRefinement(String seedMessage, {String? displayLabel}) {
     reset();
-    sendMessage(seedMessage);
+    sendMessage(seedMessage, displayLabel: displayLabel);
   }
 }
 

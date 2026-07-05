@@ -108,11 +108,18 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    // Silent mode refreshes an already-displayed trip in place — no
+    // full-screen spinner, no error page — so the refine panel (and the
+    // conversation streaming inside it) stays mounted. First load always
+    // takes the loud path.
+    final quiet = silent && _trip != null;
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final trip =
           await ref.read(tripsApiServiceProvider).getTrip(widget.tripId);
@@ -138,10 +145,38 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         await _computeTravelTimes(trip);
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // Quiet failures keep showing the stale trip; the next refresh or a
+      // loud load will surface a persistent problem.
+      if (mounted && !quiet) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !quiet) setState(() => _loading = false);
     }
+  }
+
+  bool _refreshQueued = false;
+  Future<void>? _refreshFuture;
+
+  /// Silent in-place reload with trailing coalescing. The server can emit
+  /// several `trip_updated` events in one streaming turn; a bump that lands
+  /// mid-fetch queues exactly one more pass so the final state always
+  /// reflects the last patch. Concurrent user-driven `_load()` calls
+  /// (add/edit/delete flows) are a pre-existing last-write-wins race and are
+  /// not handled here.
+  Future<void> _refresh() {
+    final inFlight = _refreshFuture;
+    if (inFlight != null) {
+      _refreshQueued = true;
+      return inFlight;
+    }
+    final future = () async {
+      do {
+        _refreshQueued = false;
+        await _load(silent: true);
+      } while (mounted && _refreshQueued);
+      _refreshFuture = null;
+    }();
+    _refreshFuture = future;
+    return future;
   }
 
   /// Pushes the itinerary-derived booking checklist to the server, which upserts
@@ -501,7 +536,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
     ref
         .read(tripRefineProvider(widget.tripId).notifier)
-        .beginSectionRefinement(_buildSectionSeed(trip, target));
+        .beginSectionRefinement(_buildSectionSeed(trip, target),
+            displayLabel: 'Refining ${target.label}');
     setState(() {
       _panelOpen = true;
       _refineTarget = target;
@@ -2349,7 +2385,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       // Pull-to-refresh: with async co-editing, this is how a
                       // user picks up a collaborator's latest changes.
                       final refreshable = RefreshIndicator(
-                        onRefresh: _load,
+                        onRefresh: _refresh,
                         child: scrollView,
                       );
 
@@ -2360,7 +2396,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         tripId: widget.tripId,
                         target: _refineTarget!,
                         onClose: () => setState(() => _panelOpen = false),
-                        onTripUpdated: _load,
+                        onTripUpdated: _refresh,
                       );
                       if (constraints.maxWidth >= 900) {
                         // Wide: dock the chat beside the itinerary.

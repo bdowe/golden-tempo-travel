@@ -24,6 +24,28 @@ class _FakePlanService extends PlanService {
   }
 }
 
+/// Captures the history payload and replays a canned event list, so tests can
+/// assert what the server would receive and how events mutate state.
+class _ScriptedPlanService extends PlanService {
+  final List<PlanEvent> events;
+  List<Map<String, String>>? lastHistory;
+
+  _ScriptedPlanService(this.events) : super('http://unused');
+
+  @override
+  Stream<PlanEvent> streamPlan(
+    List<Map<String, String>> messages, {
+    String? bearerToken,
+    String? chatId,
+    String? tripId,
+  }) async* {
+    lastHistory = messages;
+    for (final e in events) {
+      yield e;
+    }
+  }
+}
+
 void main() {
   test('text deltas are coalesced into far fewer state emissions', () async {
     const deltas = 60;
@@ -54,5 +76,43 @@ void main() {
     // A late flush timer must not resurrect a ghost streaming bubble.
     await Future<void>.delayed(const Duration(milliseconds: 80));
     expect(notifier.state.streamingText, isNull);
+  });
+
+  test('trip_updated bumps the counter and flags the turn, reset on next send',
+      () async {
+    final service = _ScriptedPlanService([
+      const PlanEvent(type: 'trip_updated', data: {}),
+      const PlanEvent(type: 'trip_updated', data: {}),
+      const PlanEvent(type: 'text_delta', data: {'text': 'Swapped it out.'}),
+    ]);
+    final notifier = PlanNotifier(service, ApiClient(), tripId: 't1');
+
+    await notifier.sendMessage('replace the museum');
+    expect(notifier.state.tripUpdateCount, 2);
+    expect(notifier.state.tripUpdatedThisTurn, isTrue);
+
+    // The flag is per-turn; the monotonic counter is not.
+    service.events.clear();
+    await notifier.sendMessage('thanks');
+    expect(notifier.state.tripUpdatedThisTurn, isFalse);
+    expect(notifier.state.tripUpdateCount, 2);
+  });
+
+  test('displayLabel collapses the bubble but the full content reaches history',
+      () async {
+    final service = _ScriptedPlanService([
+      const PlanEvent(type: 'text_delta', data: {'text': 'On it.'}),
+    ]);
+    final notifier = PlanNotifier(service, ApiClient(), tripId: 't1');
+
+    const seed = 'I want to refine my saved trip "Athens" ... - Acropolis '
+        '[attraction] (37.97, 23.72), day 1, morning';
+    await notifier.sendMessage(seed, displayLabel: 'Refining Day 1 — Athens');
+
+    // UI-facing message carries the label; the server history carries the
+    // untouched machine seed.
+    expect(notifier.state.messages.first.displayLabel, 'Refining Day 1 — Athens');
+    expect(notifier.state.messages.first.content, seed);
+    expect(service.lastHistory!.first['content'], seed);
   });
 }
