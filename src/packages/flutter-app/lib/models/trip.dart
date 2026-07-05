@@ -31,6 +31,13 @@ class Trip {
   @JsonKey(name: 'booking_todos')
   final List<BookingTodo>? bookingTodos;
 
+  /// 'owner' or 'editor' (collaborator). Missing on older responses ⇒ owner.
+  final String? access;
+
+  /// The owner's display name, set when access == 'editor'.
+  @JsonKey(name: 'owner_name')
+  final String? ownerName;
+
   const Trip({
     required this.id,
     required this.title,
@@ -47,7 +54,13 @@ class Trip {
     this.accommodations,
     this.segments,
     this.bookingTodos,
+    this.access,
+    this.ownerName,
   });
+
+  /// True when the current user owns this trip (missing access ⇒ owner,
+  /// for responses that predate collaboration).
+  bool get isOwner => access == null || access == 'owner';
 
   factory Trip.fromJson(Map<String, dynamic> json) => _$TripFromJson(json);
   Map<String, dynamic> toJson() => _$TripToJson(this);

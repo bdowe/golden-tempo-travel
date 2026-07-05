@@ -13,6 +13,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/trip_map.dart';
 import 'auth_screen.dart';
+import 'trip_detail_screen.dart';
 
 /// Public read-only view of a shared trip, reachable at /#/share/<token>
 /// without an account. Signed-in viewers can save a copy to their own trips.
@@ -78,14 +79,17 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     return groups;
   }
 
+  /// Routes through sign-in if needed; true when a session exists after.
+  Future<bool> _ensureSignedIn() async {
+    if (ref.read(authProvider).isSignedIn) return true;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+    );
+    return ref.read(authProvider).isSignedIn;
+  }
+
   Future<void> _saveCopy() async {
-    final auth = ref.read(authProvider);
-    if (!auth.isSignedIn) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AuthScreen()),
-      );
-      if (!ref.read(authProvider).isSignedIn) return;
-    }
+    if (!await _ensureSignedIn()) return;
     setState(() => _saving = true);
     try {
       await ref
@@ -100,6 +104,33 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Could not save a copy: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Editor links: redeem membership, then land in the shared trip itself
+  /// (Trips tab underneath so back lands somewhere sensible).
+  Future<void> _joinAsCoPlanner() async {
+    if (!await _ensureSignedIn()) return;
+    setState(() => _saving = true);
+    try {
+      final tripId =
+          await ref.read(tripsApiServiceProvider).joinSharedTrip(widget.token);
+      if (!mounted) return;
+      ref.read(navIndexProvider.notifier).state = AppTab.trips.index;
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      // Give the shell a frame to mount, then open the trip on the Trips tab.
+      final navKeys = ref.read(tabNavKeysProvider);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navKeys[AppTab.trips.index].currentState?.push(MaterialPageRoute(
+            builder: (_) => TripDetailScreen(tripId: tripId)));
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not join trip: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -212,17 +243,40 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             padding: const EdgeInsets.all(AppSpacing.md),
             color: theme.scaffoldBackgroundColor,
             child: SafeArea(
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _saveCopy,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.library_add_outlined),
-                label: const Text('Save a copy to my trips'),
-              ),
+              child: widget.shared.isEditorLink
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _saving ? null : _joinAsCoPlanner,
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.group_add_outlined),
+                          label: const Text('Join as co-planner'),
+                        ),
+                        TextButton(
+                          onPressed: _saving ? null : _saveCopy,
+                          child: const Text('Or save a separate copy'),
+                        ),
+                      ],
+                    )
+                  : FilledButton.icon(
+                      onPressed: _saving ? null : _saveCopy,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.library_add_outlined),
+                      label: const Text('Save a copy to my trips'),
+                    ),
             ),
           ),
         ),

@@ -488,6 +488,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// with the section's current contents. The session is bound to this trip
   /// server-side, so changes patch the trip in place (no new versions).
   void _openRefine(Trip trip, RefineTarget target) {
+    // AI refine is owner-only (keeps the version lineage single-writer);
+    // the buttons are hidden for editors, this is the belt-and-braces guard.
+    if (!trip.isOwner) {
+      _showSnack('Only the trip owner can refine with AI.');
+      return;
+    }
     final items = trip.items ?? [];
     if (items.isEmpty) {
       _showSnack('Add some places before refining with AI.');
@@ -699,10 +705,43 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _revokeLink() async {
     try {
       await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
-      _showSnack('Sharing turned off — old links no longer work');
+      _showSnack(
+          'Sharing turned off — links no longer work (existing co-planners keep access)');
     } catch (e) {
       _showSnack('Could not turn off sharing: $e');
     }
+  }
+
+  /// Mints an editor link and copies it — the recipient can join as a
+  /// co-planner and edit this trip.
+  Future<void> _inviteCoPlanner() async {
+    try {
+      final token = await ref
+          .read(tripsApiServiceProvider)
+          .createShareLink(widget.tripId, role: 'editor');
+      String origin;
+      try {
+        origin = Uri.base.origin;
+      } catch (_) {
+        origin = '';
+      }
+      final url = '$origin${_appBasePath}share/$token';
+      await Clipboard.setData(ClipboardData(text: url));
+      _showSnack('Co-planner invite copied — anyone with it can edit');
+    } catch (e) {
+      _showSnack('Could not create invite: $e');
+    }
+  }
+
+  /// Owner-only sheet listing active co-planners with per-person removal.
+  Future<void> _manageCoPlanners() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => _CoPlannersSheet(
+        tripId: widget.tripId,
+        onRemoved: () => _showSnack('Co-planner removed'),
+      ),
+    );
   }
 
   String _fmt(DateTime d) =>
@@ -857,16 +896,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               _collapsedDays.add(dayKey);
             }
           });
-        }, () {
-          final trip = _trip;
-          if (trip == null) return;
-          // 'Other places' is a fallback label, not a real hub — omit the city
-          // qualifier so the server matches on the day alone.
-          _openRefine(
-              trip,
-              RefineTarget.day(day,
-                  city: cityKey == 'Other places' ? null : cityKey));
-        });
+        },
+            // Refine is owner-only; editors get no per-day refine icon.
+            (_trip?.isOwner ?? true)
+                ? () {
+                    final trip = _trip;
+                    if (trip == null) return;
+                    // 'Other places' is a fallback label, not a real hub —
+                    // omit the city qualifier so the server matches on the
+                    // day alone.
+                    _openRefine(
+                        trip,
+                        RefineTarget.day(day,
+                            city: cityKey == 'Other places' ? null : cityKey));
+                  }
+                : null);
         slivers.add(MultiSliver(
           pushPinnedChildren: true,
           children: [
@@ -935,7 +979,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                     ),
                   ],
                   // 'Other places' has no hub the section tool can target.
-                  if (group.label != 'Other places')
+                  if (group.label != 'Other places' && trip.isOwner)
                     IconButton(
                       icon: const Icon(Icons.auto_awesome, size: 16),
                       tooltip: 'Refine ${group.label}',
@@ -1347,7 +1391,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       bool collapsed,
       int travelMin,
       VoidCallback onTap,
-      VoidCallback onRefine) {
+      VoidCallback? onRefine) {
     final label = tripStart != null
         ? _fmtDayHeader(tripStart.add(Duration(days: day - 1)))
         : 'Day $day';
@@ -1380,13 +1424,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 ),
                 const SizedBox(width: 8),
               ],
-              IconButton(
-                icon: const Icon(Icons.auto_awesome, size: 16),
-                tooltip: 'Refine this day',
-                visualDensity: VisualDensity.compact,
-                color: theme.colorScheme.primary,
-                onPressed: onRefine,
-              ),
+              if (onRefine != null)
+                IconButton(
+                  icon: const Icon(Icons.auto_awesome, size: 16),
+                  tooltip: 'Refine this day',
+                  visualDensity: VisualDensity.compact,
+                  color: theme.colorScheme.primary,
+                  onPressed: onRefine,
+                ),
               Icon(
                 collapsed ? Icons.chevron_right : Icons.expand_more,
                 size: 18,
@@ -1916,14 +1961,32 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: () => _openRefine(trip, const RefineTarget.trip()),
-                icon: const Icon(Icons.auto_awesome),
-                label: const Text('Refine with AI'),
+            if (!trip.isOwner)
+              Row(
+                children: [
+                  Icon(Icons.group_outlined,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      trip.ownerName != null
+                          ? 'Co-planning with ${trip.ownerName} — your changes save for everyone.'
+                          : 'Co-planning a shared trip — your changes save for everyone.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () => _openRefine(trip, const RefineTarget.trip()),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Refine with AI'),
+                ),
               ),
-            ),
             if (overview != null) ...[
               const SizedBox(height: 16),
               Text(
@@ -1971,17 +2034,28 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       appBar: GradientAppBar(
         title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
-          if (trip != null)
+          // Sharing and deletion are owner-only surfaces; editors see neither.
+          if (trip != null && trip.isOwner)
             PopupMenuButton<String>(
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Share trip',
-              onSelected: (v) => v == 'copy' ? _shareLink() : _revokeLink(),
+              onSelected: (v) => switch (v) {
+                'copy' => _shareLink(),
+                'invite' => _inviteCoPlanner(),
+                'manage' => _manageCoPlanners(),
+                _ => _revokeLink(),
+              },
               itemBuilder: (context) => const [
                 PopupMenuItem(value: 'copy', child: Text('Copy share link')),
+                PopupMenuItem(
+                    value: 'invite',
+                    child: Text('Invite co-planner (can edit)')),
+                PopupMenuItem(
+                    value: 'manage', child: Text('Manage co-planners')),
                 PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
               ],
             ),
-          if (trip != null)
+          if (trip != null && trip.isOwner)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete trip',
@@ -2272,8 +2346,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         ],
                       );
 
+                      // Pull-to-refresh: with async co-editing, this is how a
+                      // user picks up a collaborator's latest changes.
+                      final refreshable = RefreshIndicator(
+                        onRefresh: _load,
+                        child: scrollView,
+                      );
+
                       if (!_panelOpen || _refineTarget == null) {
-                        return scrollView;
+                        return refreshable;
                       }
                       final panel = TripRefinePanel(
                         tripId: widget.tripId,
@@ -2285,7 +2366,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         // Wide: dock the chat beside the itinerary.
                         return Row(
                           children: [
-                            Expanded(child: scrollView),
+                            Expanded(child: refreshable),
                             const VerticalDivider(width: 1),
                             SizedBox(width: 400, child: panel),
                           ],
@@ -2295,7 +2376,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       // inset keeps the input above the keyboard.
                       return Stack(
                         children: [
-                          scrollView,
+                          refreshable,
                           DraggableScrollableSheet(
                             initialChildSize: 0.45,
                             minChildSize: 0.15,
@@ -2829,6 +2910,96 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Owner-only bottom sheet: lists active co-planners with per-person removal.
+/// Removal revokes their access immediately; the invite link (if still on)
+/// would let them rejoin, so the empty state reminds the owner of that.
+class _CoPlannersSheet extends ConsumerStatefulWidget {
+  final String tripId;
+  final VoidCallback onRemoved;
+  const _CoPlannersSheet({required this.tripId, required this.onRemoved});
+
+  @override
+  ConsumerState<_CoPlannersSheet> createState() => _CoPlannersSheetState();
+}
+
+class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
+  List<({String userId, String displayName, String email})>? _collaborators;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCollaborators();
+  }
+
+  Future<void> _loadCollaborators() async {
+    try {
+      final list =
+          await ref.read(tripsApiServiceProvider).listCollaborators(widget.tripId);
+      if (mounted) setState(() => _collaborators = list);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _remove(String userId) async {
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .removeCollaborator(widget.tripId, userId);
+      widget.onRemoved();
+      await _loadCollaborators();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final collaborators = _collaborators;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Co-planners', style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.sm),
+            if (_error != null)
+              Text(_error!,
+                  style: TextStyle(color: theme.colorScheme.error))
+            else if (collaborators == null)
+              const Center(child: CircularProgressIndicator())
+            else if (collaborators.isEmpty)
+              Text(
+                'No co-planners yet. Use "Invite co-planner (can edit)" to '
+                'share an invite link.',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              )
+            else
+              for (final c in collaborators)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(child: Icon(Icons.person, size: 18)),
+                  title: Text(
+                      c.displayName.isNotEmpty ? c.displayName : c.email),
+                  subtitle: c.displayName.isNotEmpty ? Text(c.email) : null,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.person_remove_outlined),
+                    tooltip: 'Remove access',
+                    onPressed: () => _remove(c.userId),
+                  ),
+                ),
+          ],
+        ),
       ),
     );
   }

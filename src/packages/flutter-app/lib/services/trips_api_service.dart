@@ -101,16 +101,76 @@ class TripsApiService {
     throw Exception('Failed to add place (${res.statusCode})');
   }
 
-  /// Mints (or returns the existing) share link token for a trip. Idempotent.
-  Future<String> createShareLink(String tripId) async {
+  /// Mints (or returns the existing) share link token for a trip.
+  /// Idempotent per (trip lineage, role); role is 'viewer' or 'editor'.
+  Future<String> createShareLink(String tripId,
+      {String role = 'viewer'}) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),
       headers: _headers(json: true),
+      body: jsonEncode({'role': role}),
     );
     if (res.statusCode == 200 || res.statusCode == 201) {
       return (jsonDecode(res.body) as Map<String, dynamic>)['token'] as String;
     }
     throw Exception('Failed to create share link (${res.statusCode})');
+  }
+
+  /// Redeems an editor-role share token; returns the trip id to open.
+  Future<String> joinSharedTrip(String token) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/shared/$token/join'),
+      headers: _headers(json: true),
+    );
+    if (res.statusCode == 200) {
+      return (jsonDecode(res.body) as Map<String, dynamic>)['trip_id']
+          as String;
+    }
+    throw Exception('Failed to join trip (${res.statusCode})');
+  }
+
+  /// Trips shared with the signed-in user (latest version per lineage).
+  Future<List<Trip>> listSharedWithMe() async {
+    final res = await apiClient.httpClient.get(
+      Uri.parse('${apiClient.baseUrl}/trips/shared-with-me'),
+      headers: _headers(),
+    );
+    if (res.statusCode == 200) {
+      final list = jsonDecode(res.body) as List<dynamic>;
+      return list.map((e) => Trip.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    throw Exception('Failed to load shared trips (${res.statusCode})');
+  }
+
+  /// Owner-only: active co-planners on a trip.
+  Future<List<({String userId, String displayName, String email})>>
+      listCollaborators(String tripId) async {
+    final res = await apiClient.httpClient.get(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators'),
+      headers: _headers(),
+    );
+    if (res.statusCode == 200) {
+      final list = jsonDecode(res.body) as List<dynamic>;
+      return list
+          .map((e) => (
+                userId: e['user_id'] as String,
+                displayName: (e['display_name'] as String?) ?? '',
+                email: (e['email'] as String?) ?? '',
+              ))
+          .toList();
+    }
+    throw Exception('Failed to load co-planners (${res.statusCode})');
+  }
+
+  /// Owner-only: removes a co-planner's access.
+  Future<void> removeCollaborator(String tripId, String userId) async {
+    final res = await apiClient.httpClient.delete(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators/$userId'),
+      headers: _headers(),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to remove co-planner (${res.statusCode})');
+    }
   }
 
   Future<void> revokeShareLink(String tripId) async {
