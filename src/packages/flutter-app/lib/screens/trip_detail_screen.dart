@@ -11,6 +11,9 @@ import '../models/booking_todo.dart';
 import '../models/location.dart';
 import '../models/location_timing.dart';
 import '../models/route_request.dart';
+import '../models/trip_segment.dart';
+import '../providers/accommodations_provider.dart';
+import '../providers/transport_provider.dart';
 import '../providers/trips_provider.dart';
 import '../providers/recent_trip_provider.dart';
 import '../providers/booking_todos_provider.dart';
@@ -25,6 +28,7 @@ import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
+import '../widgets/bookings_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
@@ -603,6 +607,62 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   void _showSnack(String msg) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  Future<void> _addStay() async {
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const AddStaySheet(),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .add(widget.tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not add stay: $e');
+    }
+  }
+
+  Future<void> _deleteStay(Accommodation a) async {
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .delete(widget.tripId, a.id);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not remove stay: $e');
+    }
+  }
+
+  Future<void> _addSegment() async {
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const AddSegmentSheet(),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .addSegment(widget.tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not add transport: $e');
+    }
+  }
+
+  Future<void> _deleteSegment(TripSegment s) async {
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .deleteSegment(widget.tripId, s.id);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not remove transport: $e');
     }
   }
 
@@ -2077,6 +2137,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  const Divider(height: 32),
+                                  // Saved stays & transport: what the user has
+                                  // actually booked, distinct from the derived
+                                  // checklist above.
+                                  BookingsSection(
+                                    trip: trip,
+                                    onAddStay: _addStay,
+                                    onDeleteStay: _deleteStay,
+                                    onAddSegment: _addSegment,
+                                    onDeleteSegment: _deleteSegment,
+                                  ),
                                   // Bookings live embedded in their city groups;
                                   // this section appears only when something
                                   // didn't match a city (custom or stale todos).
