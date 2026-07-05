@@ -22,6 +22,10 @@ type DuffelService struct {
 	BaseURL string
 	Version string
 	Client  *http.Client
+
+	// Airport/city suggestions are stable; cache them to avoid re-billing
+	// repeat lookups. Flight offers are time-sensitive and never cached.
+	placesCache *ttlCache[[]Airport]
 }
 
 // Airport is a normalized airport/city result used for origin/destination
@@ -100,10 +104,11 @@ func NewDuffelService() *DuffelService {
 	}
 
 	return &DuffelService{
-		Token:   token,
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Version: version,
-		Client:  &http.Client{Timeout: 60 * time.Second},
+		Token:       token,
+		BaseURL:     strings.TrimRight(baseURL, "/"),
+		Version:     version,
+		Client:      &http.Client{Timeout: 60 * time.Second},
+		placesCache: newTTLCache[[]Airport](24*time.Hour, 5000),
 	}
 }
 
@@ -169,6 +174,11 @@ func (d *DuffelService) NearbyAirports(ctx context.Context, lat, lng float64) ([
 // placeSuggestions queries Duffel's /places/suggestions with the given params and
 // normalizes the response to []Airport (skipping entries without an IATA code).
 func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values) ([]Airport, error) {
+	cacheKey := params.Encode()
+	if cached, ok := d.placesCache.get(cacheKey); ok {
+		return cached, nil
+	}
+
 	req, err := d.newRequest(ctx, http.MethodGet, "/places/suggestions?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
@@ -204,6 +214,7 @@ func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values)
 			SubType:  p.Type,
 		})
 	}
+	d.placesCache.set(cacheKey, airports)
 	return airports, nil
 }
 
