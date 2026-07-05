@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
@@ -45,6 +48,10 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
+  /// How long the startup session restore may block the splash screen.
+  @visibleForTesting
+  static Duration restoreTimeout = const Duration(seconds: 8);
+
   final AuthService _service;
   final AuthStorage _storage;
   final ApiClient _apiClient;
@@ -62,9 +69,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
     try {
-      final user = await _service.me(token);
+      final user = await _service.me(token).timeout(restoreTimeout);
       _apiClient.authToken = token;
       state = state.copyWith(user: user, initialized: true);
+    } on TimeoutException {
+      // Backend slow/unreachable — fail open as signed out, but KEEP the
+      // stored token so the next launch retries the restore.
+      _apiClient.authToken = null;
+      state = state.copyWith(initialized: true, clearUser: true);
     } catch (_) {
       // Token invalid/expired — clear it and start signed out.
       await _storage.clearToken();

@@ -57,6 +57,35 @@ WHERE trip_id = $1 AND position >= $2;
 -- name: DeleteItineraryItemsByTrip :exec
 DELETE FROM itinerary_items WHERE trip_id = $1;
 
+-- name: UpdateItineraryItem :one
+-- Partial update (COALESCE narg pattern, like UpdateTrip). Attribution columns
+-- (local_source_name, local_recommendation_id) are deliberately not updatable —
+-- they are snapshots written by the agent.
+UPDATE itinerary_items
+SET name        = COALESCE(sqlc.narg('name'), name),
+    place_id    = COALESCE(sqlc.narg('place_id'), place_id),
+    address     = COALESCE(sqlc.narg('address'), address),
+    latitude    = COALESCE(sqlc.narg('latitude'), latitude),
+    longitude   = COALESCE(sqlc.narg('longitude'), longitude),
+    category    = COALESCE(sqlc.narg('category'), category),
+    time_of_day = COALESCE(sqlc.narg('time_of_day'), time_of_day),
+    city        = COALESCE(sqlc.narg('city'), city),
+    day_trip_from = COALESCE(sqlc.narg('day_trip_from'), day_trip_from),
+    day         = COALESCE(sqlc.narg('day'), day)
+WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id')
+RETURNING *;
+
+-- name: DeleteItineraryItem :execrows
+DELETE FROM itinerary_items WHERE id = $1 AND trip_id = $2;
+
+-- name: CloseItineraryItemPositionGap :exec
+-- Compacts positions after a delete (mirror of ShiftItineraryItemPositions).
+UPDATE itinerary_items SET position = position - 1
+WHERE trip_id = $1 AND position > $2;
+
+-- name: SetItineraryItemPosition :exec
+UPDATE itinerary_items SET position = $3 WHERE id = $1 AND trip_id = $2;
+
 -- name: TouchTrip :exec
 -- Itinerary-item writes don't touch the trips row, so bump updated_at by hand.
 UPDATE trips SET updated_at = now() WHERE id = $1;
