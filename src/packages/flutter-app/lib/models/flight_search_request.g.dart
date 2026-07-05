@@ -13,6 +13,10 @@ FlightSearchRequest _$FlightSearchRequestFromJson(Map<String, dynamic> json) =>
       departDate: json['depart_date'] as String,
       returnDate: json['return_date'] as String?,
       adults: (json['adults'] as num?)?.toInt() ?? 1,
+      childAges: (json['child_ages'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
+      cabinClass: json['cabin_class'] as String?,
       optimizeFor: json['optimize_for'] as String? ?? 'balanced',
     );
 
@@ -31,6 +35,8 @@ Map<String, dynamic> _$FlightSearchRequestToJson(FlightSearchRequest instance) {
 
   writeNotNull('return_date', instance.returnDate);
   val['adults'] = instance.adults;
+  writeNotNull('child_ages', instance.childAges);
+  writeNotNull('cabin_class', instance.cabinClass);
   val['optimize_for'] = instance.optimizeFor;
   return val;
 }

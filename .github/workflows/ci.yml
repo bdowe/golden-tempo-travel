@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (fmt, vet, test, sqlc drift)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/packages/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/packages/api/go.mod
+          cache-dependency-path: src/packages/api/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:" && echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: sqlc drift check
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code -- store/
+
+  flutter:
+    name: Flutter (analyze, test, build web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/packages/flutter-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.35.4
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos --fatal-warnings
+
+      - name: flutter test
+        run: flutter test
+
+      - name: flutter build web
+        run: flutter build web --dart-define=API_BASE_URL=/api/v1
+
+  migrations:
+    name: Migrations apply from zero
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/packages/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: travel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/packages/api/go.mod
+          cache-dependency-path: src/packages/api/go.sum
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/travel?sslmode=disable
+        run: go run . migrate

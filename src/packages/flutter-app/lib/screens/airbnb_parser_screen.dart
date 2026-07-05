@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../models/airbnb_listing.dart';
+import '../models/trip.dart';
 import '../providers/airbnb_provider.dart';
+import '../providers/accommodations_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/trips_provider.dart';
+import 'trip_detail_screen.dart';
 
 class AirbnbParserScreen extends ConsumerStatefulWidget {
   const AirbnbParserScreen({super.key});
@@ -107,6 +112,101 @@ class _AirbnbParserScreenState extends ConsumerState<AirbnbParserScreen> {
     );
   }
 
+  bool _attaching = false;
+
+  /// Maps the parsed listing to the accommodations POST body and saves it to
+  /// a trip the user picks. Reuses the existing trips list + add endpoint.
+  Future<void> _attachToTrip(AirbnbListing listing) async {
+    List<Trip> trips;
+    try {
+      trips = await ref.read(tripsApiServiceProvider).listTrips();
+    } catch (e) {
+      _snack('Could not load your trips: $e');
+      return;
+    }
+    if (trips.isEmpty) {
+      _snack('No trips yet — plan one first, then attach this stay.');
+      return;
+    }
+    if (!mounted) return;
+    final trip = await showModalBottomSheet<Trip>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Attach to which trip?',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            for (final t in trips)
+              ListTile(
+                leading: const Icon(Icons.card_travel),
+                title: Text(t.title),
+                subtitle: t.cities != null && t.cities!.isNotEmpty
+                    ? Text(t.cities!.join(' · '))
+                    : null,
+                onTap: () => Navigator.of(context).pop(t),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (trip == null) return;
+
+    setState(() => _attaching = true);
+    try {
+      final loc = listing.location;
+      await ref.read(accommodationsApiServiceProvider).add(trip.id, {
+        'name': listing.title.isNotEmpty ? listing.title : 'Airbnb stay',
+        'provider': 'Airbnb',
+        'url': listing.url,
+        if (loc.city.isNotEmpty)
+          'address': [loc.city, loc.state, loc.country]
+              .where((s) => s.isNotEmpty)
+              .join(', '),
+        if (loc.latitude != 0 || loc.longitude != 0) ...{
+          'latitude': loc.latitude,
+          'longitude': loc.longitude,
+        },
+        if (listing.pricing.hasPricing)
+          'price_note':
+              '${listing.pricing.currency} ${listing.pricing.nightlyRate.toStringAsFixed(0)}/night',
+      });
+      if (!mounted) return;
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Stay attached'),
+          content: Text('Added to "${trip.title}".'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Stay here')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('View trip')),
+          ],
+        ),
+      );
+      if (open == true && mounted) {
+        Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TripDetailScreen(tripId: trip.id)));
+      }
+    } catch (e) {
+      _snack('Could not attach stay: $e');
+    } finally {
+      if (mounted) setState(() => _attaching = false);
+    }
+  }
+
+  void _snack(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   List<Widget> _buildResults(BuildContext context, AirbnbListing listing) {
     return [
       if (listing.photos.isNotEmpty)
@@ -123,6 +223,25 @@ class _AirbnbParserScreenState extends ConsumerState<AirbnbParserScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _TitleSection(listing: listing),
+              const SizedBox(height: 16),
+              // Attach the parsed listing to a saved trip as a stay — the
+              // bridge from "looked it up" to "it's part of my plan".
+              if (ref.watch(authProvider).isSignedIn)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed:
+                        _attaching ? null : () => _attachToTrip(listing),
+                    icon: _attaching
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.luggage_outlined, size: 18),
+                    label: const Text('Attach to trip'),
+                  ),
+                ),
               const SizedBox(height: 16),
               _StatsRow(listing: listing),
               if (listing.host.name.isNotEmpty) ...[

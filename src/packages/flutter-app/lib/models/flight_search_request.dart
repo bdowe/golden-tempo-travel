@@ -11,6 +11,10 @@ class FlightSearchRequest {
   @JsonKey(name: 'return_date', includeIfNull: false)
   final String? returnDate;
   final int adults;
+  @JsonKey(name: 'child_ages', includeIfNull: false)
+  final List<int>? childAges; // one entry per child (0-17)
+  @JsonKey(name: 'cabin_class', includeIfNull: false)
+  final String? cabinClass; // economy | premium_economy | business | first
   @JsonKey(name: 'optimize_for')
   final String optimizeFor; // cost | time | balanced
 
@@ -20,6 +24,8 @@ class FlightSearchRequest {
     required this.departDate,
     this.returnDate,
     this.adults = 1,
+    this.childAges,
+    this.cabinClass,
     this.optimizeFor = 'balanced',
   });
 

@@ -6,6 +6,8 @@ import 'theme/app_theme.dart';
 import 'screens/landing_screen.dart';
 import 'screens/app_shell.dart';
 import 'screens/onboarding_quiz_screen.dart';
+import 'screens/shared_trip_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(
@@ -24,7 +26,23 @@ class TravelRoutePlannerApp extends StatelessWidget {
       title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const AuthGate(),
+      // Route by URL so share links work signed-out (Flutter web hash URLs:
+      // https://host/#/share/<token>). Everything else lands on AuthGate,
+      // preserving the existing splash -> landing/quiz/shell flow.
+      onGenerateRoute: (settings) {
+        final uri = Uri.tryParse(settings.name ?? '/');
+        final segments = uri?.pathSegments ?? const <String>[];
+        if (segments.length == 2 && segments[0] == 'share') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => SharedTripScreen(token: segments[1]),
+          );
+        }
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => const AuthGate(),
+        );
+      },
     );
   }
 }
@@ -38,14 +56,21 @@ class AuthGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
+    final Widget child;
     if (!auth.initialized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      child = const SplashScreen();
+    } else if (!auth.isSignedIn) {
+      child = const LandingScreen();
+    } else {
+      child = auth.user!.needsOnboarding
+          ? const OnboardingQuizScreen()
+          : const AppShell();
     }
-    if (!auth.isSignedIn) return const LandingScreen();
-    return auth.user!.needsOnboarding
-        ? const OnboardingQuizScreen()
-        : const AppShell();
+    // Fade between splash and destination so instant auth resolution isn't a
+    // one-frame hard cut. Branches are distinct types, so no keys needed.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      child: child,
+    );
   }
 }

@@ -13,6 +13,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const closeItineraryItemPositionGap = `-- name: CloseItineraryItemPositionGap :exec
+UPDATE itinerary_items SET position = position - 1
+WHERE trip_id = $1 AND position > $2
+`
+
+type CloseItineraryItemPositionGapParams struct {
+	TripID   uuid.UUID `json:"trip_id"`
+	Position int32     `json:"position"`
+}
+
+// Compacts positions after a delete (mirror of ShiftItineraryItemPositions).
+func (q *Queries) CloseItineraryItemPositionGap(ctx context.Context, arg CloseItineraryItemPositionGapParams) error {
+	_, err := q.db.Exec(ctx, closeItineraryItemPositionGap, arg.TripID, arg.Position)
+	return err
+}
+
 const createItineraryItem = `-- name: CreateItineraryItem :one
 INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -111,6 +127,23 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		&i.Summary,
 	)
 	return i, err
+}
+
+const deleteItineraryItem = `-- name: DeleteItineraryItem :execrows
+DELETE FROM itinerary_items WHERE id = $1 AND trip_id = $2
+`
+
+type DeleteItineraryItemParams struct {
+	ID     uuid.UUID `json:"id"`
+	TripID uuid.UUID `json:"trip_id"`
+}
+
+func (q *Queries) DeleteItineraryItem(ctx context.Context, arg DeleteItineraryItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItineraryItem, arg.ID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteItineraryItemsByTrip = `-- name: DeleteItineraryItemsByTrip :exec
@@ -367,6 +400,21 @@ func (q *Queries) ListTripsByOwner(ctx context.Context, userID uuid.UUID) ([]Tri
 	return items, nil
 }
 
+const setItineraryItemPosition = `-- name: SetItineraryItemPosition :exec
+UPDATE itinerary_items SET position = $3 WHERE id = $1 AND trip_id = $2
+`
+
+type SetItineraryItemPositionParams struct {
+	ID       uuid.UUID `json:"id"`
+	TripID   uuid.UUID `json:"trip_id"`
+	Position int32     `json:"position"`
+}
+
+func (q *Queries) SetItineraryItemPosition(ctx context.Context, arg SetItineraryItemPositionParams) error {
+	_, err := q.db.Exec(ctx, setItineraryItemPosition, arg.ID, arg.TripID, arg.Position)
+	return err
+}
+
 const shiftItineraryItemPositions = `-- name: ShiftItineraryItemPositions :exec
 UPDATE itinerary_items SET position = position + 1
 WHERE trip_id = $1 AND position >= $2
@@ -392,6 +440,77 @@ UPDATE trips SET updated_at = now() WHERE id = $1
 func (q *Queries) TouchTrip(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchTrip, id)
 	return err
+}
+
+const updateItineraryItem = `-- name: UpdateItineraryItem :one
+UPDATE itinerary_items
+SET name        = COALESCE($1, name),
+    place_id    = COALESCE($2, place_id),
+    address     = COALESCE($3, address),
+    latitude    = COALESCE($4, latitude),
+    longitude   = COALESCE($5, longitude),
+    category    = COALESCE($6, category),
+    time_of_day = COALESCE($7, time_of_day),
+    city        = COALESCE($8, city),
+    day_trip_from = COALESCE($9, day_trip_from),
+    day         = COALESCE($10, day)
+WHERE id = $11 AND trip_id = $12
+RETURNING id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id
+`
+
+type UpdateItineraryItemParams struct {
+	Name        *string   `json:"name"`
+	PlaceID     *string   `json:"place_id"`
+	Address     *string   `json:"address"`
+	Latitude    *float64  `json:"latitude"`
+	Longitude   *float64  `json:"longitude"`
+	Category    *string   `json:"category"`
+	TimeOfDay   *string   `json:"time_of_day"`
+	City        *string   `json:"city"`
+	DayTripFrom *string   `json:"day_trip_from"`
+	Day         *int32    `json:"day"`
+	ID          uuid.UUID `json:"id"`
+	TripID      uuid.UUID `json:"trip_id"`
+}
+
+// Partial update (COALESCE narg pattern, like UpdateTrip). Attribution columns
+// (local_source_name, local_recommendation_id) are deliberately not updatable —
+// they are snapshots written by the agent.
+func (q *Queries) UpdateItineraryItem(ctx context.Context, arg UpdateItineraryItemParams) (ItineraryItem, error) {
+	row := q.db.QueryRow(ctx, updateItineraryItem,
+		arg.Name,
+		arg.PlaceID,
+		arg.Address,
+		arg.Latitude,
+		arg.Longitude,
+		arg.Category,
+		arg.TimeOfDay,
+		arg.City,
+		arg.DayTripFrom,
+		arg.Day,
+		arg.ID,
+		arg.TripID,
+	)
+	var i ItineraryItem
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Position,
+		&i.Name,
+		&i.PlaceID,
+		&i.Address,
+		&i.Latitude,
+		&i.Longitude,
+		&i.CreatedAt,
+		&i.Category,
+		&i.TimeOfDay,
+		&i.City,
+		&i.DayTripFrom,
+		&i.Day,
+		&i.LocalSourceName,
+		&i.LocalRecommendationID,
+	)
+	return i, err
 }
 
 const updateTrip = `-- name: UpdateTrip :one

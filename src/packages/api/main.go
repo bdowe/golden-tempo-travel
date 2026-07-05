@@ -43,16 +43,30 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// corsMiddleware adds CORS headers
+// corsMiddleware adds CORS headers for origins listed in ALLOWED_ORIGINS
+// (comma-separated). The production path is same-origin through the nginx
+// gateway, where no CORS headers are needed at all — so an empty/unset
+// ALLOWED_ORIGINS emits none. Local `make flutter-run` development (Flutter on
+// its own port hitting :8080 directly) needs the localhost origins listed.
 func corsMiddleware(next http.Handler) http.Handler {
+	allowed := map[string]bool{}
+	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowed[o] = true
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
-		w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+		origin := r.Header.Get("Origin")
+		if allowed[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+			w.Header().Add("Vary", "Origin")
+		}
 
 		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
@@ -358,6 +372,21 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cc := strings.ToLower(strings.TrimSpace(request.CabinClass)); cc != "" && !allowedCabinClasses[cc] {
+		writeErr("cabin_class must be one of: 'economy', 'premium_economy', 'business', 'first'")
+		return
+	}
+	if len(request.ChildAges) > 8 {
+		writeErr("at most 8 children per search")
+		return
+	}
+	for _, age := range request.ChildAges {
+		if age < 0 || age > 17 {
+			writeErr("child_ages entries must be between 0 and 17")
+			return
+		}
+	}
+
 	offers, err := duffelService.SearchFlightOffers(r.Context(), request)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -521,9 +550,34 @@ func main() {
 	// Create a new router
 	router := mux.NewRouter()
 
-	// Apply middleware
+	// mux skips router.Use middleware when the request method matches no
+	// route, which is exactly how CORS preflights (OPTIONS) arrive — route
+	// them through corsMiddleware so cross-origin dev setups get an answer.
+	router.MethodNotAllowedHandler = corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+
+	// Rate limiting: a general per-IP cap on everything, plus a strict tier
+	// on the endpoints that are expensive (AI streaming) or brute-forceable
+	// (credentials). Health checks stay exempt for container probes.
+	generalLimiter := newIPRateLimiter(60, 30)
+	strictLimiter := newIPRateLimiter(5, 3)
+	strict := rateLimitMiddleware(strictLimiter)
 	router.Use(loggingMiddleware)
 	router.Use(corsMiddleware)
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/health" || r.URL.Path == "/api/v1/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rateLimitMiddleware(generalLimiter)(next).ServeHTTP(w, r)
+		})
+	})
 
 	// Define routes
 	router.HandleFunc("/", helloHandler).Methods("GET")
@@ -543,25 +597,37 @@ func main() {
 	api.HandleFunc("/events/search", eventsSearchHandler).Methods("GET")
 	api.HandleFunc("/ferries/search", ferriesSearchHandler).Methods("GET")
 	api.HandleFunc("/events/greece-links", greeceEventsLinksHandler).Methods("GET")
-	api.HandleFunc("/plan", planHandler).Methods("POST")
+	api.Handle("/plan", strict(http.HandlerFunc(planHandler))).Methods("POST")
 	api.HandleFunc("/airbnb/parse", airbnbParseHandler).Methods("POST")
 	api.HandleFunc("/airbnb/debug", airbnbDebugHandler).Methods("POST")
-	api.HandleFunc("/auth/register", registerHandler).Methods("POST")
-	api.HandleFunc("/auth/login", loginHandler).Methods("POST")
-	api.HandleFunc("/auth/request-password-reset", requestPasswordResetHandler).Methods("POST")
-	api.HandleFunc("/auth/reset-password", resetPasswordHandler).Methods("POST")
+	api.Handle("/auth/register", strict(http.HandlerFunc(registerHandler))).Methods("POST")
+	api.Handle("/auth/login", strict(http.HandlerFunc(loginHandler))).Methods("POST")
+	// Reset/verify are unauthenticated and trigger email sends — strict tier.
+	api.Handle("/auth/request-password-reset", strict(http.HandlerFunc(requestPasswordResetHandler))).Methods("POST")
+	api.Handle("/auth/reset-password", strict(http.HandlerFunc(resetPasswordHandler))).Methods("POST")
 	api.HandleFunc("/auth/verify-email", verifyEmailHandler).Methods("GET", "POST")
 	api.Handle("/auth/request-verification", authMiddleware(http.HandlerFunc(requestVerificationHandler))).Methods("POST")
 	api.Handle("/auth/logout", authMiddleware(http.HandlerFunc(logoutHandler))).Methods("POST")
 	api.Handle("/auth/me", authMiddleware(http.HandlerFunc(meHandler))).Methods("GET")
 	api.Handle("/auth/onboarding-complete", authMiddleware(http.HandlerFunc(completeOnboardingHandler))).Methods("POST")
+	// admin composes the auth + admin gate; used for curation and version-history routes.
+	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
 	api.Handle("/trips", authMiddleware(http.HandlerFunc(listTripsHandler))).Methods("GET")
-	api.Handle("/trips/versions", authMiddleware(http.HandlerFunc(listTripVersionsHandler))).Methods("GET")
+	api.Handle("/trips/versions", admin(listTripVersionsHandler)).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(getTripHandler))).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(patchTripHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(deleteTripHandler))).Methods("DELETE")
-	api.Handle("/trips/{id}/refine", authMiddleware(http.HandlerFunc(refineTripHandler))).Methods("POST")
+	api.Handle("/trips/{id}/refine", strict(authMiddleware(http.HandlerFunc(refineTripHandler)))).Methods("POST")
+	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(createShareHandler))).Methods("POST")
+	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(revokeShareHandler))).Methods("DELETE")
+	// Public share read sits behind the general per-IP limiter like everything
+	// else; it is the one endpoint deliberately open to anonymous strangers.
+	api.HandleFunc("/shared/{token}", sharedTripHandler).Methods("GET")
+	api.Handle("/shared/{token}/duplicate", authMiddleware(http.HandlerFunc(duplicateSharedTripHandler))).Methods("POST")
 	api.Handle("/trips/{id}/items", authMiddleware(http.HandlerFunc(addItineraryItemHandler))).Methods("POST")
+	api.Handle("/trips/{id}/items/order", authMiddleware(http.HandlerFunc(reorderItineraryItemsHandler))).Methods("PUT")
+	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(patchItineraryItemHandler))).Methods("PATCH")
+	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(deleteItineraryItemHandler))).Methods("DELETE")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(putPreferencesHandler))).Methods("PUT")
 	api.HandleFunc("/accommodation-links", accommodationLinksHandler).Methods("GET")
@@ -576,7 +642,6 @@ func main() {
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(deleteBookingTodoHandler))).Methods("DELETE")
 
 	// Local-source content — curation is admin-only (authMiddleware + adminMiddleware).
-	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
 	api.Handle("/admin/local/sources", admin(listLocalSourcesHandler)).Methods("GET")
 	api.Handle("/admin/local/sources", admin(createLocalSourceHandler)).Methods("POST")
 	api.Handle("/admin/local/ingest", admin(ingestLocalHandler)).Methods("POST")
@@ -591,7 +656,10 @@ func main() {
 	api.HandleFunc("/local/guides/{id}", localGuideDetailHandler).Methods("GET")
 
 	// Server configuration
-	port := "8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,

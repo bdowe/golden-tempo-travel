@@ -181,6 +181,16 @@ type TripSegment struct {
 	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
+type TripShare struct {
+	ID        uuid.UUID          `json:"id"`
+	ChatID    string             `json:"chat_id"`
+	OwnerID   uuid.UUID          `json:"owner_id"`
+	Token     string             `json:"token"`
+	Role      string             `json:"role"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type User struct {
 	ID              uuid.UUID          `json:"id"`
 	CreatedAt       time.Time          `json:"created_at"`

@@ -8,12 +8,20 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // GooglePlacesService handles Google Places API interactions
 type GooglePlacesService struct {
 	APIKey string
 	Client *http.Client
+
+	// Every Google call is billable; identical lookups within the TTL are
+	// served from memory. Autocomplete/details cache long (place data is
+	// stable), text search shorter (result sets shift more).
+	searchCache       *ttlCache[[]PlaceSearchResult]
+	autocompleteCache *ttlCache[[]PlaceAutocompleteResult]
+	detailsCache      *ttlCache[*PlaceDetailsResult]
 }
 
 // PlaceSearchResult represents a place from Google Places API
@@ -64,8 +72,11 @@ func NewGooglePlacesService() *GooglePlacesService {
 	}
 
 	return &GooglePlacesService{
-		APIKey: apiKey,
-		Client: &http.Client{},
+		APIKey:            apiKey,
+		Client:            &http.Client{},
+		searchCache:       newTTLCache[[]PlaceSearchResult](1*time.Hour, 2000),
+		autocompleteCache: newTTLCache[[]PlaceAutocompleteResult](24*time.Hour, 5000),
+		detailsCache:      newTTLCache[*PlaceDetailsResult](24*time.Hour, 5000),
 	}
 }
 
@@ -73,6 +84,11 @@ func NewGooglePlacesService() *GooglePlacesService {
 func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
+	}
+
+	cacheKey := strings.ToLower(strings.TrimSpace(query))
+	if cached, ok := gps.searchCache.get(cacheKey); ok {
+		return cached, nil
 	}
 
 	// Use Text Search API
@@ -132,6 +148,7 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 		}
 	}
 
+	gps.searchCache.set(cacheKey, places)
 	return places, nil
 }
 
@@ -139,6 +156,11 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutocompleteResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
+	}
+
+	cacheKey := strings.ToLower(strings.TrimSpace(input))
+	if cached, ok := gps.autocompleteCache.get(cacheKey); ok {
+		return cached, nil
 	}
 
 	baseURL := "https://maps.googleapis.com/maps/api/place/autocomplete/json"
@@ -183,6 +205,7 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 		}
 	}
 
+	gps.autocompleteCache.set(cacheKey, suggestions)
 	return suggestions, nil
 }
 
@@ -190,6 +213,10 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
+	}
+
+	if cached, ok := gps.detailsCache.get(placeID); ok {
+		return cached, nil
 	}
 
 	baseURL := "https://maps.googleapis.com/maps/api/place/details/json"
@@ -252,6 +279,7 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 		PhoneNumber:  result.Result.FormattedPhoneNumber,
 	}
 
+	gps.detailsCache.set(placeID, place)
 	return place, nil
 }
 
