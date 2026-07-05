@@ -50,14 +50,15 @@ func TestSearchFlightOffersPassengerAndCabinPayload(t *testing.T) {
 	if len(passengers) != 4 {
 		t.Fatalf("passengers = %d, want 4 (2 adults + 2 children)", len(passengers))
 	}
-	adults, children := 0, 0
+	adults := 0
+	var childAges []int
 	for _, p := range passengers {
 		pm := p.(map[string]any)
 		switch {
 		case pm["type"] == "adult":
 			adults++
 		case pm["age"] != nil:
-			children++
+			childAges = append(childAges, int(pm["age"].(float64)))
 			if _, hasType := pm["type"]; hasType {
 				t.Fatal("child passenger must not carry a type field")
 			}
@@ -65,8 +66,12 @@ func TestSearchFlightOffersPassengerAndCabinPayload(t *testing.T) {
 			t.Fatalf("unexpected passenger entry: %v", pm)
 		}
 	}
-	if adults != 2 || children != 2 {
-		t.Fatalf("adults=%d children=%d, want 2/2", adults, children)
+	if adults != 2 {
+		t.Fatalf("adults=%d, want 2", adults)
+	}
+	// Each child must carry its own distinct age through to Duffel.
+	if len(childAges) != 2 || childAges[0] != 5 || childAges[1] != 9 {
+		t.Fatalf("child ages = %v, want [5 9]", childAges)
 	}
 }
 
