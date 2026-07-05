@@ -630,6 +630,9 @@ func main() {
 	api.Handle("/shared/{token}/join", strict(authMiddleware(http.HandlerFunc(joinSharedTripHandler)))).Methods("POST")
 	api.Handle("/trips/{id}/collaborators", authMiddleware(http.HandlerFunc(listCollaboratorsHandler))).Methods("GET")
 	api.Handle("/trips/{id}/collaborators/{userId}", authMiddleware(http.HandlerFunc(removeCollaboratorHandler))).Methods("DELETE")
+	// OG link-preview page for crawlers; deployment nginx rewrites bot
+	// requests for /app/share/* here.
+	api.HandleFunc("/share-preview/{token}", sharePreviewHandler).Methods("GET")
 	api.Handle("/trips/{id}/items", authMiddleware(http.HandlerFunc(addItineraryItemHandler))).Methods("POST")
 	api.Handle("/trips/{id}/items/order", authMiddleware(http.HandlerFunc(reorderItineraryItemsHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(patchItineraryItemHandler))).Methods("PATCH")

@@ -2,19 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../constants/app_info.dart';
+import '../models/local_guide.dart';
 import '../providers/auth_provider.dart';
+import '../providers/local_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/recent_trip_provider.dart';
 import '../navigation/app_nav.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_shadows.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
+import '../widgets/section_header.dart';
 import 'route_optimizer_screen.dart';
 import 'airbnb_parser_screen.dart';
 import 'flight_search_screen.dart';
+import 'local_guide_detail_screen.dart';
 import 'trip_detail_screen.dart';
 
 /// Time-of-day greeting for the home header.
@@ -107,6 +112,12 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                 ],
+
+                // Local guides discover row — published narrative guides
+                // across all cities. Renders nothing while loading, on
+                // error, or when there are none, so the section (header
+                // included) only appears when there is something to show.
+                const _LocalGuidesRow(),
 
                 // Remaining manual tools, collapsed by default.
                 Card(
@@ -445,6 +456,159 @@ class _RecentTripCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Horizontal discover row of published local guides across all cities.
+/// Collapses to nothing (header included) while loading, on error, or when
+/// no guides are published yet — the home screen just reads as before.
+class _LocalGuidesRow extends ConsumerWidget {
+  const _LocalGuidesRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final guides = ref.watch(allGuidesProvider).maybeWhen(
+          data: (g) => g,
+          orElse: () => const <LocalGuide>[],
+        );
+    if (guides.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'Local guides'),
+        const SizedBox(height: AppSpacing.md),
+        SizedBox(
+          height: 190,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            // Room below the cards so their drop shadow isn't clipped by
+            // the horizontal viewport.
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            itemCount: guides.length,
+            separatorBuilder: (_, __) =>
+                const SizedBox(width: AppSpacing.md),
+            itemBuilder: (context, i) => _GuideCard(guide: guides[i]),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+      ],
+    );
+  }
+}
+
+/// One tappable guide card in the discover row: hero image (branded fallback
+/// when missing/broken), title, city, and the local's byline.
+class _GuideCard extends StatelessWidget {
+  final LocalGuide guide;
+
+  const _GuideCard({required this.guide});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = AppColors.toolLocal;
+
+    return Container(
+      width: 230,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: AppRadius.mdAll,
+        boxShadow: AppShadows.soft,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LocalGuideDetailScreen(guide: guide),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 88,
+                width: double.infinity,
+                child: guide.heroImageUrl.isNotEmpty
+                    ? Image.network(
+                        guide.heroImageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const _GuideImageFallback(),
+                      )
+                    : const _GuideImageFallback(),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        guide.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      if (guide.city.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          guide.city,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (guide.sourceName.isNotEmpty)
+                        Row(
+                          children: [
+                            Icon(Icons.verified, size: 14, color: accent),
+                            const SizedBox(width: AppSpacing.xs),
+                            Expanded(
+                              child: Text(
+                                'By ${guide.sourceName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: accent,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Branded placeholder for a guide card whose hero image is missing or fails
+/// to load — same treatment as the detail screen's hero fallback.
+class _GuideImageFallback extends StatelessWidget {
+  const _GuideImageFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(gradient: AppColors.brandGradient),
+      alignment: Alignment.center,
+      child: const Icon(Icons.menu_book, size: 28, color: Colors.white70),
     );
   }
 }

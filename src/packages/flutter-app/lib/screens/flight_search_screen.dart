@@ -44,8 +44,14 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   Airport? _destination;
   DateTime? _departDate;
   int _adults = 1;
-  int _children = 0;
+
+  /// One entry per child passenger; the value is the child's age (0–17).
+  /// Duffel prices children by real age, so each child gets its own picker.
+  final List<int> _childAges = [];
   String _cabinClass = 'economy';
+
+  /// Age a newly added child starts at before the traveler adjusts it.
+  static const _defaultChildAge = 8;
   String _optimizeFor = 'balanced';
 
   static const _cabinLabels = {
@@ -199,10 +205,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
           destination: _destination!.iataCode,
           departDate: _fmtDate(_departDate!),
           adults: _adults,
-          // Duffel needs an age per child; without a per-child age picker we
-          // send a mid-range child age for each.
-          childAges:
-              _children > 0 ? List.filled(_children, 8) : null,
+          childAges: _childAges.isEmpty ? null : List.of(_childAges),
           cabinClass: _cabinClass == 'economy' ? null : _cabinClass,
           optimizeFor: _optimizeFor,
         ));
@@ -261,12 +264,52 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                     const SizedBox(width: 8),
                     _PassengerStepper(
                       icon: Icons.child_care_outlined,
-                      count: _children,
+                      count: _childAges.length,
                       min: 0,
-                      onChanged: (v) => setState(() => _children = v),
+                      onChanged: (v) => setState(() {
+                        while (_childAges.length < v) {
+                          _childAges.add(_defaultChildAge);
+                        }
+                        while (_childAges.length > v) {
+                          _childAges.removeLast();
+                        }
+                      }),
                     ),
                   ],
                 ),
+                if (_childAges.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text('Child ages',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant)),
+                        for (var i = 0; i < _childAges.length; i++)
+                          DropdownButton<int>(
+                            value: _childAges[i],
+                            isDense: true,
+                            items: [
+                              for (var age = 0; age <= 17; age++)
+                                DropdownMenuItem(
+                                  value: age,
+                                  child: Text('$age'),
+                                ),
+                            ],
+                            onChanged: (age) {
+                              if (age != null) {
+                                setState(() => _childAges[i] = age);
+                              }
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,

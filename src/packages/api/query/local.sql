@@ -105,6 +105,16 @@ JOIN local_sources s ON s.id = g.source_id
 WHERE g.city ILIKE $1 AND g.status = 'published'
 ORDER BY g.created_at DESC;
 
+-- name: ListPublishedGuides :many
+-- Cross-city discover list (home screen row): newest published guides first,
+-- with the same source attribution join as ListPublishedGuidesByCity.
+SELECT g.*, s.name AS source_name, s.photo_url AS source_photo_url
+FROM local_guides g
+JOIN local_sources s ON s.id = g.source_id
+WHERE g.status = 'published'
+ORDER BY g.created_at DESC
+LIMIT $1;
+
 -- name: LinkGuideRecommendation :exec
 INSERT INTO local_guide_recommendations (guide_id, recommendation_id, position)
 VALUES ($1, $2, $3)
