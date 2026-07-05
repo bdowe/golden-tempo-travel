@@ -538,6 +538,10 @@ func main() {
 		log.Println("Connected to database; migrations applied")
 	}
 
+	// Background price-alert checker (specs/price-alerts); no-ops in
+	// degraded mode or without a Duffel token.
+	startAlertChecker(ctx)
+
 	startServer(buildRouter())
 }
 
@@ -636,6 +640,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(patchItineraryItemHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(deleteItineraryItemHandler))).Methods("DELETE")
 	api.Handle("/events", authMiddleware(http.HandlerFunc(recordClientEventHandler))).Methods("POST")
+	// Price alerts (specs/price-alerts): creation is strict-tier (each alert
+	// commits the server to recurring provider searches).
+	api.Handle("/alerts", strict(authMiddleware(http.HandlerFunc(createPriceAlertHandler)))).Methods("POST")
+	api.Handle("/alerts", authMiddleware(http.HandlerFunc(listPriceAlertsHandler))).Methods("GET")
+	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(patchPriceAlertHandler))).Methods("PATCH")
+	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(deletePriceAlertHandler))).Methods("DELETE")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(putPreferencesHandler))).Methods("PUT")
 	api.HandleFunc("/accommodation-links", accommodationLinksHandler).Methods("GET")
