@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -23,7 +25,12 @@ type ShareResponse struct {
 type SharedTripResponse struct {
 	Trip      TripResponse `json:"trip"`
 	OwnerName string       `json:"owner_name"`
+	// Role of the link used to open this trip: "viewer" (read-only,
+	// save-a-copy) or "editor" (the client offers "Join as co-planner").
+	Role string `json:"role"`
 }
+
+var allowedShareRoles = map[string]bool{"viewer": true, "editor": true}
 
 // shareChatID returns the trip's chat lineage id, assigning one to legacy
 // (NULL chat_id) trips the same way refineTripHandler does.
@@ -45,8 +52,9 @@ func shareChatID(r *http.Request, trip store.Trip) (string, error) {
 	return *updated.ChatID, nil
 }
 
-// createShareHandler mints (or returns the existing) viewer link for a trip.
-// Idempotent per chat lineage: sharing twice reuses the same token.
+// createShareHandler mints (or returns the existing) link for a trip.
+// Optional body {"role": "viewer"|"editor"}; absent defaults to viewer.
+// Idempotent per (chat lineage, role): viewer and editor links coexist.
 func createShareHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	id, ok := tripIDFromPath(r)
@@ -54,6 +62,20 @@ func createShareHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "trip not found")
 		return
 	}
+
+	role := "viewer"
+	// The original endpoint took no body; keep an empty/absent body valid.
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Role != "" {
+		role = strings.ToLower(strings.TrimSpace(req.Role))
+		if !allowedShareRoles[role] {
+			writeJSONError(w, http.StatusBadRequest, "role must be 'viewer' or 'editor'")
+			return
+		}
+	}
+
 	q := store.New(dbPool)
 	trip, err := q.GetTripByIDAndOwner(r.Context(), store.GetTripByIDAndOwnerParams{ID: id, UserID: user.ID})
 	if err != nil {
@@ -66,7 +88,7 @@ func createShareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing, err := q.GetActiveShareByOwnerAndChat(r.Context(), store.GetActiveShareByOwnerAndChatParams{
-		OwnerID: user.ID, ChatID: chatID,
+		OwnerID: user.ID, ChatID: chatID, Role: role,
 	}); err == nil {
 		writeJSON(w, http.StatusOK, ShareResponse{Token: existing.Token, Role: existing.Role, CreatedAt: existing.CreatedAt})
 		return
@@ -77,11 +99,14 @@ func createShareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	share, err := q.CreateTripShare(r.Context(), store.CreateTripShareParams{
-		ChatID: chatID, OwnerID: user.ID, Token: token, Role: "viewer",
+		ChatID: chatID, OwnerID: user.ID, Token: token, Role: role,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not create share link")
 		return
+	}
+	if role == "editor" {
+		go recordEvent(user.ID, "editor_share_created", &trip.ID, nil)
 	}
 	writeJSON(w, http.StatusCreated, ShareResponse{Token: share.Token, Role: share.Role, CreatedAt: share.CreatedAt})
 }
@@ -167,7 +192,7 @@ func sharedTripHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := toTripResponse(trip, items, accommodations, segments, nil)
 	resp.ChatID = nil
-	writeJSON(w, http.StatusOK, SharedTripResponse{Trip: resp, OwnerName: ownerName})
+	writeJSON(w, http.StatusOK, SharedTripResponse{Trip: resp, OwnerName: ownerName, Role: share.Role})
 }
 
 // duplicateSharedTripHandler copies the shared trip's latest version (items,

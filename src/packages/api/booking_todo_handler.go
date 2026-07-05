@@ -138,10 +138,11 @@ func strPtrOrNil(s string) *string {
 // prunes any auto rows whose legs no longer exist, preserving the booked flag
 // across syncs. Returns the full ordered list.
 func syncBookingTodosHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var derived []DerivedBookingTodo
 	if err := json.NewDecoder(r.Body).Decode(&derived); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -218,10 +219,11 @@ type AddBookingTodoRequest struct {
 // search_url may be supplied directly, or built from a destination via the
 // provider link builders.
 func addBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var req AddBookingTodoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -277,10 +279,11 @@ type PatchBookingTodoRequest struct {
 }
 
 func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	todoID, err := uuid.Parse(mux.Vars(r)["todoId"])
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "booking todo not found")
@@ -316,10 +319,11 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	todoID, err := uuid.Parse(mux.Vars(r)["todoId"])
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "booking todo not found")

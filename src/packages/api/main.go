@@ -614,6 +614,8 @@ func main() {
 	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
 	api.Handle("/trips", authMiddleware(http.HandlerFunc(listTripsHandler))).Methods("GET")
 	api.Handle("/trips/versions", admin(listTripVersionsHandler)).Methods("GET")
+	// Literal routes must precede /trips/{id} or mux binds them as an id.
+	api.Handle("/trips/shared-with-me", authMiddleware(http.HandlerFunc(listSharedWithMeHandler))).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(getTripHandler))).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(patchTripHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(deleteTripHandler))).Methods("DELETE")
@@ -624,6 +626,10 @@ func main() {
 	// else; it is the one endpoint deliberately open to anonymous strangers.
 	api.HandleFunc("/shared/{token}", sharedTripHandler).Methods("GET")
 	api.Handle("/shared/{token}/duplicate", authMiddleware(http.HandlerFunc(duplicateSharedTripHandler))).Methods("POST")
+	// Join writes membership — strict tier like refine.
+	api.Handle("/shared/{token}/join", strict(authMiddleware(http.HandlerFunc(joinSharedTripHandler)))).Methods("POST")
+	api.Handle("/trips/{id}/collaborators", authMiddleware(http.HandlerFunc(listCollaboratorsHandler))).Methods("GET")
+	api.Handle("/trips/{id}/collaborators/{userId}", authMiddleware(http.HandlerFunc(removeCollaboratorHandler))).Methods("DELETE")
 	// OG link-preview page for crawlers; deployment nginx rewrites bot
 	// requests for /app/share/* here.
 	api.HandleFunc("/share-preview/{token}", sharePreviewHandler).Methods("GET")

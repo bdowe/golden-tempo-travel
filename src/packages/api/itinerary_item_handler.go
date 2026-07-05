@@ -42,10 +42,11 @@ func insertPositionForDay(items []store.ItineraryItem, day *int) int {
 }
 
 func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var req AddItineraryItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -149,9 +150,10 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := userFromContext(ctx)
+	// Reload keyed to the OWNER's id (trip.UserID), not the caller's — an
+	// editor-collaborator is not the owner and would 404 here post-commit.
 	qr := store.New(dbPool)
-	trip, err := qr.GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: tripID, UserID: user.ID})
+	trip, err = qr.GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: tripID, UserID: trip.UserID})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load trip")
 		return
@@ -189,10 +191,11 @@ type UpdateItineraryItemRequest struct {
 }
 
 func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	itemID, ok := itemIDFromPath(r)
 	if !ok {
 		writeJSONError(w, http.StatusNotFound, "item not found")
@@ -278,10 +281,11 @@ func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	itemID, ok := itemIDFromPath(r)
 	if !ok {
 		writeJSONError(w, http.StatusNotFound, "item not found")
@@ -344,10 +348,11 @@ type ReorderItineraryItemsRequest struct {
 // server accepts any full-trip permutation (the UI only submits within-day
 // moves today, but the contract is future-proof).
 func reorderItineraryItemsHandler(w http.ResponseWriter, r *http.Request) {
-	tripID, ok := ownedTrip(w, r)
+	trip, ok := editableTrip(w, r)
 	if !ok {
 		return
 	}
+	tripID := trip.ID
 	var req ReorderItineraryItemsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")

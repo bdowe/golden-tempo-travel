@@ -4,10 +4,11 @@ VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetActiveShareByOwnerAndChat :one
--- The owner's current (unrevoked) viewer link for a chat lineage, if any —
--- share creation is idempotent per lineage.
+-- The owner's current (unrevoked) link of a given role for a chat lineage —
+-- share creation is idempotent per (lineage, role), so viewer and editor
+-- links coexist.
 SELECT * FROM trip_shares
-WHERE owner_id = $1 AND chat_id = $2 AND role = 'viewer' AND revoked_at IS NULL
+WHERE owner_id = $1 AND chat_id = $2 AND role = $3 AND revoked_at IS NULL
 ORDER BY created_at DESC
 LIMIT 1;
 
