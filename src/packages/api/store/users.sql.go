@@ -40,6 +40,18 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at FROM users WHERE email = $1
 `
@@ -100,6 +112,33 @@ RETURNING id, created_at, updated_at, email, password_hash, display_name, is_adm
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, markUserOnboarded, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.IsAdmin,
+		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
+	)
+	return i, err
+}
+
+const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
+UPDATE users SET display_name = $2 WHERE id = $1
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
+`
+
+type UpdateUserDisplayNameParams struct {
+	ID          uuid.UUID `json:"id"`
+	DisplayName *string   `json:"display_name"`
+}
+
+func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserDisplayName, arg.ID, arg.DisplayName)
 	var i User
 	err := row.Scan(
 		&i.ID,

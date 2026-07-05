@@ -612,6 +612,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/auth/logout", authMiddleware(http.HandlerFunc(logoutHandler))).Methods("POST")
 	api.Handle("/auth/me", authMiddleware(http.HandlerFunc(meHandler))).Methods("GET")
 	api.Handle("/auth/onboarding-complete", authMiddleware(http.HandlerFunc(completeOnboardingHandler))).Methods("POST")
+	// Account self-service (specs/user-accounts follow-ups). Credential and
+	// destructive routes re-verify the password and sit on the strict tier.
+	api.Handle("/auth/account", authMiddleware(http.HandlerFunc(patchAccountHandler))).Methods("PATCH")
+	api.Handle("/auth/account", strict(authMiddleware(http.HandlerFunc(deleteAccountHandler)))).Methods("DELETE")
+	api.Handle("/auth/change-password", strict(authMiddleware(http.HandlerFunc(changePasswordHandler)))).Methods("POST")
+	api.Handle("/auth/logout-all", authMiddleware(http.HandlerFunc(logoutAllHandler))).Methods("POST")
 	// admin composes the auth + admin gate; used for curation and version-history routes.
 	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
 	api.Handle("/trips", authMiddleware(http.HandlerFunc(listTripsHandler))).Methods("GET")

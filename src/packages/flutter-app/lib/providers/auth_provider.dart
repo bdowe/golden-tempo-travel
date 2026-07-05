@@ -142,9 +142,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _service.logout(token);
       } catch (_) {/* best effort */}
     }
+    await signOutLocally();
+  }
+
+  /// Clears local auth state without calling the server — for flows where
+  /// the session is already gone server-side (logout-all, account deletion).
+  Future<void> signOutLocally() async {
     await _storage.clearToken();
     _apiClient.authToken = null;
     state = state.copyWith(clearUser: true, clearError: true);
+  }
+
+  /// Replaces the in-memory user (e.g. after a profile edit).
+  void setUser(UserModel user) {
+    state = state.copyWith(user: user);
+  }
+
+  /// Adopts a fresh session minted by the server (e.g. after a password
+  /// change revoked every other session).
+  Future<void> adoptSession(String token, UserModel user) async {
+    await _storage.saveToken(token);
+    _apiClient.authToken = token;
+    state = state.copyWith(user: user, clearError: true);
   }
 }
 
