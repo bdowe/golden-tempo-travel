@@ -60,9 +60,11 @@ func (q *Queries) CountActivatedSignups(ctx context.Context, createdAt time.Time
 
 const countAnonymousPlanSessions = `-- name: CountAnonymousPlanSessions :one
 SELECT count(*) FROM analytics_events
-WHERE event_type = 'plan_session_started' AND user_id IS NULL AND created_at >= $1
+WHERE event_type = 'plan_session_completed' AND user_id IS NULL AND created_at >= $1
 `
 
+// Counts COMPLETED sessions so the anonymous split shares PlanSessionTotals'
+// denominator (started vs completed would mix event streams).
 func (q *Queries) CountAnonymousPlanSessions(ctx context.Context, createdAt time.Time) (int64, error) {
 	row := q.db.QueryRow(ctx, countAnonymousPlanSessions, createdAt)
 	var count int64
