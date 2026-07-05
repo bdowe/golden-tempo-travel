@@ -2122,7 +2122,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                 padding:
                                     const EdgeInsets.fromLTRB(16, 12, 16, 12),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: AppRadius.lgAll,
                                   child: TripMap(
                                     items: _filtered(trip),
                                     selectedPosition: _selectedPosition,

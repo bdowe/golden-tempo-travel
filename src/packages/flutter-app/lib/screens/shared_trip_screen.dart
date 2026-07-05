@@ -166,7 +166,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             if (hasCoords) ...[
               const SizedBox(height: AppSpacing.lg),
               ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderRadius: AppRadius.lgAll,
                 child: SizedBox(
                   height: 240,
                   child: TripMap(
