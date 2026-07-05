@@ -63,11 +63,22 @@ func TestEvaluateAlertAnyDropMode(t *testing.T) {
 		want   bool
 	}{
 		{"no baseline yet records only", nil, 400, false},
-		{"real drop", func(a *store.PriceAlert) { a.LastCheckedPrice = f64(500) }, 450, true},
-		{"under 5 percent", func(a *store.PriceAlert) { a.LastCheckedPrice = f64(500) }, 480, false},
+		{"real drop", func(a *store.PriceAlert) { a.BaselinePrice = f64(500) }, 450, true},
+		{"under 5 percent", func(a *store.PriceAlert) { a.BaselinePrice = f64(500) }, 480, false},
 		// 4 < $5 absolute even though >= 5% of a small fare.
-		{"under 5 dollars", func(a *store.PriceAlert) { a.LastCheckedPrice = f64(60) }, 56, false},
-		{"jitter up never notifies", func(a *store.PriceAlert) { a.LastCheckedPrice = f64(500) }, 520, false},
+		{"under 5 dollars", func(a *store.PriceAlert) { a.BaselinePrice = f64(60) }, 56, false},
+		{"jitter up never notifies", func(a *store.PriceAlert) { a.BaselinePrice = f64(500) }, 520, false},
+		// The reference is FIXED: a rolling last-checked price must not
+		// mask a slow cumulative decline...
+		{"cumulative decline notifies vs baseline", func(a *store.PriceAlert) {
+			a.BaselinePrice = f64(500)
+			a.LastCheckedPrice = f64(445) // previous check, already lower
+		}, 430, true},
+		// ...and a recorded spike must not turn a revert into a "drop".
+		{"spike then revert never notifies above baseline", func(a *store.PriceAlert) {
+			a.BaselinePrice = f64(600)
+			a.LastCheckedPrice = f64(800) // spike recorded by a prior check
+		}, 640, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

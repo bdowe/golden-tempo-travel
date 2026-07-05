@@ -2,8 +2,8 @@
 INSERT INTO price_alerts (
     user_id, trip_id, origin, destination, depart_date, return_date,
     cabin_class, adults, target_price, currency, last_checked_price,
-    last_checked_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    last_checked_at, baseline_price
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $11)
 RETURNING *;
 
 -- name: ListPriceAlertsByUser :many
@@ -46,10 +46,19 @@ LIMIT $2;
 -- name: MarkPriceAlertChecked :exec
 UPDATE price_alerts
 SET last_checked_price = $2,
+    baseline_price = COALESCE(baseline_price, $2),
     currency = COALESCE(currency, $3),
     last_checked_at = now(),
     updated_at = now()
 WHERE id = $1;
+
+-- name: TouchPriceAlerts :exec
+-- Failed or skipped checks (provider error, currency mismatch) advance only
+-- the timestamp so the alert rotates to the back of the due queue instead of
+-- retrying every tick, and no cross-currency price pollutes the row.
+UPDATE price_alerts
+SET last_checked_at = now(), updated_at = now()
+WHERE id = ANY($1::uuid[]);
 
 -- name: MarkPriceAlertNotified :exec
 UPDATE price_alerts

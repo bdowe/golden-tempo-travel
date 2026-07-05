@@ -63,14 +63,18 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		next.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), requestIDContextKey, id)))
 
-		slog.Info("request",
+		attrs := []any{
 			"request_id", id,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 			"remote", clientIP(r),
-		)
+		}
+		if q := r.URL.RawQuery; q != "" {
+			attrs = append(attrs, "query", q)
+		}
+		slog.Info("request", attrs...)
 	})
 }
 

@@ -147,11 +147,19 @@ func (s *WeatherService) GetTripWeather(ctx context.Context, city, startDate, en
 		return WeatherReport{}, err
 	}
 
+	// Real forecast whenever the range's REMAINING days fit the horizon —
+	// including mid-trip queries whose start date is already past (clamp the
+	// fetch to today). Only ranges ending beyond the horizon (or entirely in
+	// the past) fall back to last year's observations as "typical".
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	fcStart := start
+	if fcStart.Before(today) {
+		fcStart = today
+	}
 	var report WeatherReport
-	if time.Until(end) <= forecastHorizonDays*24*time.Hour && time.Since(start) < 24*time.Hour {
-		report, err = s.fetchForecast(ctx, geo, start, end)
+	if !end.Before(today) && time.Until(end) <= forecastHorizonDays*24*time.Hour {
+		report, err = s.fetchForecast(ctx, geo, fcStart, end)
 	} else {
-		// Out of forecast range: last year's same dates as "typical".
 		report, err = s.fetchArchive(ctx, geo, start.AddDate(-1, 0, 0), end.AddDate(-1, 0, 0))
 	}
 	if err != nil {

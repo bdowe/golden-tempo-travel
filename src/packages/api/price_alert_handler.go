@@ -105,7 +105,9 @@ func validateCreateAlert(req *CreatePriceAlertRequest, today time.Time) error {
 	if err != nil {
 		return fmt.Errorf("depart_date must be YYYY-MM-DD")
 	}
-	if depart.Before(today.Truncate(24 * time.Hour)) {
+	// Compare calendar dates as strings — Truncate(24h) works on UTC epoch
+	// boundaries and misjudges "today" on any non-UTC server.
+	if req.DepartDate < today.Format(dateLayout) {
 		return fmt.Errorf("depart_date must be today or later")
 	}
 	if req.ReturnDate != nil && *req.ReturnDate != "" {
@@ -290,6 +292,13 @@ func patchPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 		ID: id, UserID: user.ID, Status: status, TargetPrice: target,
 	})
 	if err != nil {
+		// Resuming can collide with an identical active alert created while
+		// this one was paused (the unique index only covers active rows).
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeJSONError(w, http.StatusConflict, "you already have an active alert for this exact search — delete one of them")
+			return
+		}
 		writeJSONError(w, http.StatusInternalServerError, "could not update alert")
 		return
 	}

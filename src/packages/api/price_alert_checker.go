@@ -144,13 +144,17 @@ func (c *alertChecker) runOnce(ctx context.Context) {
 			Adults: int(a.Adults), CabinClass: a.CabinClass,
 		})
 		if err != nil {
-			// Deliberately not marked checked: the alert retries next tick.
+			// Touch (timestamp only) so a permanently-failing route rotates
+			// to the back of the due queue instead of retrying every tick
+			// and starving the batch.
 			log.Printf("price alerts: search %s failed: %v", key, err)
+			c.touch(ctx, q, rows)
 			continue
 		}
 		lowest, ok := lowestOffer(offers)
 		if !ok {
 			log.Printf("price alerts: search %s returned no offers", key)
+			c.touch(ctx, q, rows)
 			continue
 		}
 		for _, row := range rows {
@@ -159,11 +163,28 @@ func (c *alertChecker) runOnce(ctx context.Context) {
 	}
 }
 
+func (c *alertChecker) touch(ctx context.Context, q *store.Queries, rows []store.ListDuePriceAlertsRow) {
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.PriceAlert.ID)
+	}
+	if err := q.TouchPriceAlerts(ctx, ids); err != nil {
+		log.Printf("price alerts: touch failed: %v", err)
+	}
+}
+
 // settle applies one search result to one alert: record the check, and
 // notify if the trigger condition is met. MarkPriceAlertNotified runs BEFORE
 // the send so a crashed/retried send can never double-notify.
 func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.ListDuePriceAlertsRow, lowest FlightOffer) {
 	a := row.PriceAlert
+	// A cross-currency offer is unusable: never write its price into the row
+	// (it would display under the wrong currency label and poison the
+	// baseline) — just advance the timestamp.
+	if a.Currency != nil && *a.Currency != "" && *a.Currency != lowest.Currency {
+		c.touch(ctx, q, []store.ListDuePriceAlertsRow{row})
+		return
+	}
 	notify := evaluateAlert(a, lowest.Price, lowest.Currency)
 
 	if err := q.MarkPriceAlertChecked(ctx, store.MarkPriceAlertCheckedParams{
@@ -191,9 +212,9 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 }
 
 // evaluateAlert decides whether the freshly observed lowest price should
-// notify the owner. Pure — the unit-test target.
+// notify the owner. Pure — the unit-test target. Callers must have already
+// excluded cross-currency offers (settle touches those without recording).
 func evaluateAlert(a store.PriceAlert, lowestPrice float64, lowestCurrency string) bool {
-	// Never compare across currencies; just let the check record it.
 	if a.Currency != nil && *a.Currency != "" && *a.Currency != lowestCurrency {
 		return false
 	}
@@ -205,12 +226,19 @@ func evaluateAlert(a store.PriceAlert, lowestPrice float64, lowestCurrency strin
 	if a.TargetPrice != nil {
 		return lowestPrice <= *a.TargetPrice
 	}
-	// Any-drop mode needs a baseline; the first check only records one.
-	if a.LastCheckedPrice == nil {
+	// Any-drop compares against a FIXED reference — the last notified price,
+	// else the creation/first-check baseline — never the rolling last check,
+	// so slow cumulative declines accumulate toward the threshold and a
+	// spike-then-revert can't notify above what the user was watching.
+	ref := a.BaselinePrice
+	if a.LastNotifiedPrice != nil {
+		ref = a.LastNotifiedPrice
+	}
+	if ref == nil {
+		// First check: record the baseline only.
 		return false
 	}
-	base := *a.LastCheckedPrice
-	return lowestPrice <= base-minDropAbs && lowestPrice <= base*(1-minDropFraction)
+	return lowestPrice <= *ref-minDropAbs && lowestPrice <= *ref*(1-minDropFraction)
 }
 
 // alertSearchKey collapses alerts that would issue an identical Duffel
