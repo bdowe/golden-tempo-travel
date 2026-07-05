@@ -7,7 +7,9 @@ import 'theme/app_theme.dart';
 import 'screens/landing_screen.dart';
 import 'screens/app_shell.dart';
 import 'screens/onboarding_quiz_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/shared_trip_screen.dart';
+import 'screens/verify_email_screen.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
@@ -41,6 +43,18 @@ class TravelRoutePlannerApp extends StatelessWidget {
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => SharedTripScreen(token: segments[1]),
+          );
+        }
+        if (segments.length == 2 && segments[0] == 'reset') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => ResetPasswordScreen(token: segments[1]),
+          );
+        }
+        if (segments.length == 2 && segments[0] == 'verify') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => VerifyEmailScreen(token: segments[1]),
           );
         }
         return MaterialPageRoute(
