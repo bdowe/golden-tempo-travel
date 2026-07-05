@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/location.dart';
 import '../models/place_search_result.dart';
-import '../models/place_autocomplete_result.dart';
 import '../providers/places_api_provider.dart';
 
 class PlaceSearchDialog extends ConsumerStatefulWidget {
