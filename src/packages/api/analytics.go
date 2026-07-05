@@ -123,6 +123,8 @@ type MetricsResponse struct {
 	PlanOutputTokens      int64            `json:"plan_output_tokens"`
 	PlanCacheReadTokens   int64            `json:"plan_cache_read_tokens"`
 	PlanCacheCreateTokens int64            `json:"plan_cache_creation_tokens"`
+	AlertsCreated         int64            `json:"alerts_created"`
+	AlertsTriggered       int64            `json:"alerts_triggered"`
 }
 
 // adminMetricsHandler is GET /api/v1/admin/metrics?days= (admin only; gated
@@ -158,6 +160,8 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		TripsRefined:         count("trip_refined"),
 		BookingClicks:        count("booking_link_clicked"),
 		TodosMarkedBooked:    count("booking_marked_booked"),
+		AlertsCreated:        count("alert_created"),
+		AlertsTriggered:      count("alert_triggered"),
 		ClicksByProvider:     map[string]int64{},
 	}
 	if n, err := q.CountActivatedSignups(ctx, since); err == nil {

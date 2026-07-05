@@ -143,6 +143,27 @@ type LocalSourceMaterial struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type PriceAlert struct {
+	ID                uuid.UUID          `json:"id"`
+	UserID            uuid.UUID          `json:"user_id"`
+	TripID            pgtype.UUID        `json:"trip_id"`
+	Origin            string             `json:"origin"`
+	Destination       string             `json:"destination"`
+	DepartDate        pgtype.Date        `json:"depart_date"`
+	ReturnDate        pgtype.Date        `json:"return_date"`
+	CabinClass        string             `json:"cabin_class"`
+	Adults            int32              `json:"adults"`
+	TargetPrice       *float64           `json:"target_price"`
+	Currency          *string            `json:"currency"`
+	LastCheckedPrice  *float64           `json:"last_checked_price"`
+	LastCheckedAt     pgtype.Timestamptz `json:"last_checked_at"`
+	LastNotifiedPrice *float64           `json:"last_notified_price"`
+	LastNotifiedAt    pgtype.Timestamptz `json:"last_notified_at"`
+	Status            string             `json:"status"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+}
+
 type Session struct {
 	ID        string    `json:"id"`
 	UserID    uuid.UUID `json:"user_id"`
