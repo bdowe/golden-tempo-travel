@@ -28,6 +28,16 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
 
   @override
   Future<void> logout() async {}
+
+  @override
+  Future<void> signOutLocally() async {}
+
+  @override
+  void setUser(UserModel user) {}
+
+  @override
+  Future<void> adoptSession(String token, UserModel user) async {}
+
 }
 
 UserModel _user({required bool needsOnboarding}) => UserModel(

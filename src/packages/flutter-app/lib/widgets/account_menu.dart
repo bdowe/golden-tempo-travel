@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
+import '../screens/account_settings_screen.dart';
 import '../screens/admin_metrics_screen.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/onboarding_quiz_screen.dart';
@@ -26,6 +27,8 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
     pushOnActiveTab(ref, const AlertsScreen());
   } else if (value == 'retake_quiz') {
     pushOnActiveTab(ref, const OnboardingQuizScreen(retake: true));
+  } else if (value == 'account_settings') {
+    pushOnActiveTab(ref, const AccountSettingsScreen());
   } else if (value == 'local_admin') {
     pushOnActiveTab(ref, const LocalAdminScreen());
   } else if (value == 'admin_metrics') {
@@ -121,6 +124,17 @@ List<PopupMenuEntry<String>> _items(
               size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
           const Text('Retake travel quiz'),
+        ],
+      ),
+    ),
+    PopupMenuItem<String>(
+      value: 'account_settings',
+      child: Row(
+        children: [
+          Icon(Icons.manage_accounts_outlined,
+              size: 20, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.md),
+          const Text('Account settings'),
         ],
       ),
     ),
