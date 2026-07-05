@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'constants/app_info.dart';
 import 'providers/auth_provider.dart';
 import 'theme/app_theme.dart';
@@ -10,6 +11,10 @@ import 'screens/shared_trip_screen.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
+  // Path-style URLs on web (https://host/app/share/x instead of /#/share/x).
+  // The engine strips the base href before routing, so onGenerateRoute sees
+  // clean paths in both dev (/) and deployment (/app/). No-op off web.
+  usePathUrlStrategy();
   runApp(
     const ProviderScope(
       child: TravelRoutePlannerApp(),
@@ -26,9 +31,9 @@ class TravelRoutePlannerApp extends StatelessWidget {
       title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      // Route by URL so share links work signed-out (Flutter web hash URLs:
-      // https://host/#/share/<token>). Everything else lands on AuthGate,
-      // preserving the existing splash -> landing/quiz/shell flow.
+      // Route by URL so share links work signed-out. Everything else lands
+      // on AuthGate, preserving the existing splash -> landing/quiz/shell
+      // flow. Legacy /#/share links are rewritten by the index.html shim.
       onGenerateRoute: (settings) {
         final uri = Uri.tryParse(settings.name ?? '/');
         final segments = uri?.pathSegments ?? const <String>[];
