@@ -25,6 +25,12 @@ final localGuidesByCityProvider =
   return service.guides(city.trim());
 });
 
+/// Newest published guides across all cities (home-screen discover row).
+final allGuidesProvider = FutureProvider<List<LocalGuide>>((ref) async {
+  final service = ref.watch(localApiServiceProvider);
+  return service.guides();
+});
+
 /// One published guide plus its ordered pins, keyed by guide id.
 final localGuideDetailProvider = FutureProvider.family<
     ({LocalGuide guide, List<LocalRecommendation> recommendations}),

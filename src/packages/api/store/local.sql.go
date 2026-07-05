@@ -433,6 +433,65 @@ func (q *Queries) ListLocalSources(ctx context.Context) ([]LocalSource, error) {
 	return items, nil
 }
 
+const listPublishedGuides = `-- name: ListPublishedGuides :many
+SELECT g.id, g.source_id, g.title, g.city, g.neighborhood, g.body, g.hero_image_url, g.status, g.created_at, g.updated_at, s.name AS source_name, s.photo_url AS source_photo_url
+FROM local_guides g
+JOIN local_sources s ON s.id = g.source_id
+WHERE g.status = 'published'
+ORDER BY g.created_at DESC
+LIMIT $1
+`
+
+type ListPublishedGuidesRow struct {
+	ID             uuid.UUID `json:"id"`
+	SourceID       uuid.UUID `json:"source_id"`
+	Title          string    `json:"title"`
+	City           string    `json:"city"`
+	Neighborhood   *string   `json:"neighborhood"`
+	Body           string    `json:"body"`
+	HeroImageUrl   *string   `json:"hero_image_url"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	SourceName     string    `json:"source_name"`
+	SourcePhotoUrl *string   `json:"source_photo_url"`
+}
+
+// Cross-city discover list (home screen row): newest published guides first,
+// with the same source attribution join as ListPublishedGuidesByCity.
+func (q *Queries) ListPublishedGuides(ctx context.Context, limit int32) ([]ListPublishedGuidesRow, error) {
+	rows, err := q.db.Query(ctx, listPublishedGuides, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPublishedGuidesRow
+	for rows.Next() {
+		var i ListPublishedGuidesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Title,
+			&i.City,
+			&i.Neighborhood,
+			&i.Body,
+			&i.HeroImageUrl,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SourceName,
+			&i.SourcePhotoUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPublishedGuidesByCity = `-- name: ListPublishedGuidesByCity :many
 SELECT g.id, g.source_id, g.title, g.city, g.neighborhood, g.body, g.hero_image_url, g.status, g.created_at, g.updated_at, s.name AS source_name, s.photo_url AS source_photo_url
 FROM local_guides g

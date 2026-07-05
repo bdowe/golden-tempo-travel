@@ -30,7 +30,13 @@ func localRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"city": city, "recommendations": recs})
 }
 
+// maxDiscoverGuides caps the cross-city guide list served when no ?city=
+// filter is given (the home-screen discover row).
+const maxDiscoverGuides = 20
+
 // GET /api/v1/local/guides?city=
+// city is optional: when present, returns that city's published guides; when
+// blank, returns the newest published guides across all cities (capped).
 func localGuidesHandler(w http.ResponseWriter, r *http.Request) {
 	if dbPool == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"city": "", "guides": []any{}})
@@ -38,7 +44,15 @@ func localGuidesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	city := strings.TrimSpace(r.URL.Query().Get("city"))
 	if city == "" {
-		writeJSONError(w, http.StatusBadRequest, "city is required")
+		guides, err := store.New(dbPool).ListPublishedGuides(r.Context(), maxDiscoverGuides)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not load guides")
+			return
+		}
+		if guides == nil {
+			guides = []store.ListPublishedGuidesRow{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"city": "", "guides": guides})
 		return
 	}
 	guides, err := store.New(dbPool).ListPublishedGuidesByCity(r.Context(), city)

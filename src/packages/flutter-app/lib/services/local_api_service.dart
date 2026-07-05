@@ -47,10 +47,14 @@ class LocalApiService {
     );
   }
 
-  /// Published narrative guides for [city].
-  Future<List<LocalGuide>> guides(String city) async {
-    final uri = Uri.parse('${apiClient.baseUrl}/local/guides')
-        .replace(queryParameters: {'city': city});
+  /// Published narrative guides. With a [city] this returns that city's
+  /// guides; with none (null/blank) the server returns the newest published
+  /// guides across all cities (the home-screen discover row).
+  Future<List<LocalGuide>> guides([String? city]) async {
+    var uri = Uri.parse('${apiClient.baseUrl}/local/guides');
+    if (city != null && city.trim().isNotEmpty) {
+      uri = uri.replace(queryParameters: {'city': city.trim()});
+    }
     final res = await apiClient.httpClient.get(uri, headers: _headers());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
