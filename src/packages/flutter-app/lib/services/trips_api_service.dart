@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../models/itinerary_item.dart';
 import '../models/trip.dart';
 import 'api_client.dart';
 
@@ -97,6 +98,43 @@ class TripsApiService {
       return Trip.fromJson(jsonDecode(res.body));
     }
     throw Exception('Failed to add place (${res.statusCode})');
+  }
+
+  /// Partial update of one itinerary item; absent fields keep their value.
+  Future<ItineraryItem> updateItineraryItem(
+      String tripId, String itemId, Map<String, dynamic> body) async {
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/$itemId'),
+      headers: _headers(json: true),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return ItineraryItem.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Failed to update place (${res.statusCode})');
+  }
+
+  Future<void> deleteItineraryItem(String tripId, String itemId) async {
+    final res = await apiClient.httpClient.delete(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/$itemId'),
+      headers: _headers(),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to delete place (${res.statusCode})');
+    }
+  }
+
+  /// Submits the full-trip item ordering (every item id, new order). The
+  /// server 409s if the list doesn't exactly match its current item set.
+  Future<void> reorderItineraryItems(String tripId, List<String> itemIds) async {
+    final res = await apiClient.httpClient.put(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/order'),
+      headers: _headers(json: true),
+      body: jsonEncode({'item_ids': itemIds}),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to reorder itinerary (${res.statusCode})');
+    }
   }
 
   Future<void> deleteTrip(String id) async {
