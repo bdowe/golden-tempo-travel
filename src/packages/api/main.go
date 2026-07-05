@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -26,21 +27,6 @@ type HealthResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 	Service   string    `json:"service"`
 	Database  string    `json:"database"`
-}
-
-// loggingMiddleware logs incoming requests
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf(
-			"%s %s %s %v",
-			r.Method,
-			r.RequestURI,
-			r.RemoteAddr,
-			time.Since(start),
-		)
-	})
 }
 
 // corsMiddleware adds CORS headers for origins listed in ALLOWED_ORIGINS
@@ -511,6 +497,11 @@ func summarizeStructure(node interface{}, depth int) interface{} {
 }
 
 func main() {
+	// slog is the canonical logger; SetDefault also routes the stdlib log
+	// package through the same handler, so existing log.Printf call sites
+	// keep working and share the format.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 
@@ -567,7 +558,8 @@ func main() {
 	generalLimiter := newIPRateLimiter(60, 30)
 	strictLimiter := newIPRateLimiter(5, 3)
 	strict := rateLimitMiddleware(strictLimiter)
-	router.Use(loggingMiddleware)
+	router.Use(requestIDMiddleware)
+	router.Use(recoveryMiddleware)
 	router.Use(corsMiddleware)
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

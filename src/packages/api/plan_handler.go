@@ -17,6 +17,12 @@ import (
 	"travel-route-planner/store"
 )
 
+// planMaxIterations bounds the agent tool loop. A rich session (local recs +
+// several place searches + flights/events/stays + one create_itinerary) runs
+// 8–11 iterations; parallel tool calls share an iteration. Hitting the cap
+// ends the stream gracefully instead of letting a pathological loop burn cost.
+const planMaxIterations = 15
+
 type PlanRequest struct {
 	Messages []PlanChatMessage `json:"messages"`
 	ChatID   string            `json:"chat_id"`
@@ -65,22 +71,32 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	// preference-writing tool; signed-in sessions get both.
 	uid, authed := userIDFromRequest(r)
 
-	// Session-level instrumentation (signed-in only; anonymous stays untracked).
-	// Completion carries token usage and tool-call count so AI cost per user
-	// can be summed. Deferred so it records however the stream ends.
+	// Session-level instrumentation for every caller — anonymous sessions
+	// carry a null user id, so total AI spend and the authed/anonymous split
+	// are both measurable. Completion carries token usage, tool calls, cache
+	// hits and cap state. Deferred so it records however the stream ends.
 	var planTokensIn, planTokensOut int64
-	var planToolCalls int
+	var planCacheRead, planCacheWrite int64
+	var planToolCalls, planIterations int
+	var planCapHit bool
 	var planTripID *uuid.UUID
+	var planUID *uuid.UUID
 	if authed {
-		go recordEvent(uid, "plan_session_started", nil, nil)
-		defer func() {
-			recordEvent(uid, "plan_session_completed", planTripID, map[string]any{
-				"input_tokens":  planTokensIn,
-				"output_tokens": planTokensOut,
-				"tool_calls":    planToolCalls,
-			})
-		}()
+		planUID = &uid
 	}
+	go recordEventOpt(planUID, "plan_session_started", nil, map[string]any{"authenticated": authed})
+	defer func() {
+		recordEventOpt(planUID, "plan_session_completed", planTripID, map[string]any{
+			"authenticated":         authed,
+			"input_tokens":          planTokensIn,
+			"output_tokens":         planTokensOut,
+			"tool_calls":            planToolCalls,
+			"iterations":            planIterations,
+			"max_iterations_hit":    planCapHit,
+			"cache_read_tokens":     planCacheRead,
+			"cache_creation_tokens": planCacheWrite,
+		})
+	}()
 
 	// A trip-bound session must verifiably own the trip before anything streams;
 	// failing closed here guarantees a refine panel can never fall back to the
@@ -346,10 +362,22 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		systemPrompt += "\n\nYou are refining an existing saved trip in place. The conversation's first message describes the current itinerary and which section the traveler wants to change. Apply changes by calling update_itinerary_section with the targeted scope and the COMPLETE updated list of places for that section — include unchanged places with their existing coordinates, city, day, time_of_day and category tags so they aren't lost. Use search_places to find real coordinates for any new place before adding it. Only change the section the traveler asked about unless they broaden the request."
 	}
 
+	// prevCacheMarker tracks the conversation cache breakpoint set on the
+	// newest tool-results message; it must be cleared before setting the next
+	// one (the API allows at most 4 breakpoints per request).
+	var prevCacheMarker *anthropic.CacheControlEphemeralParam
+
 	for {
+		planIterations++
+		if planIterations > planMaxIterations {
+			planCapHit = true
+			sendSSE(w, "error", map[string]string{"message": "This planning session hit its step limit. Send another message to continue from where we left off."})
+			return
+		}
+
 		params := anthropic.MessageNewParams{
 			Model:     anthropic.ModelClaudeSonnet4_6,
-			MaxTokens: 4096,
+			MaxTokens: 8192,
 			System: []anthropic.TextBlockParam{
 				{
 					Text:         systemPrompt,
@@ -379,7 +407,16 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		planTokensIn += resp.Usage.InputTokens
 		planTokensOut += resp.Usage.OutputTokens
+		planCacheRead += resp.Usage.CacheReadInputTokens
+		planCacheWrite += resp.Usage.CacheCreationInputTokens
 
+		// A max_tokens stop mid-tool-call means truncated tool input JSON —
+		// previously this failed silently and produced an empty itinerary.
+		// Surface it instead of continuing with garbage.
+		if resp.StopReason == anthropic.StopReasonMaxTokens {
+			sendSSE(w, "error", map[string]string{"message": "The response was cut off before it finished. Try asking for a shorter plan or fewer places at once."})
+			return
+		}
 		if resp.StopReason != anthropic.StopReasonToolUse {
 			break
 		}
@@ -705,6 +742,22 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		messages = append(messages, anthropic.NewUserMessage(toolResults...))
+
+		// Move the conversation cache breakpoint onto the newest tool-results
+		// message so each iteration re-reads the growing history from cache
+		// instead of paying full input cost for it. The system-prompt
+		// breakpoint (above) covers tools + system; this one covers the turn
+		// transcript.
+		if prevCacheMarker != nil {
+			*prevCacheMarker = anthropic.CacheControlEphemeralParam{}
+			prevCacheMarker = nil
+		}
+		if blocks := messages[len(messages)-1].Content; len(blocks) > 0 {
+			if cc := blocks[len(blocks)-1].GetCacheControl(); cc != nil {
+				*cc = anthropic.NewCacheControlEphemeralParam()
+				prevCacheMarker = cc
+			}
+		}
 
 		select {
 		case <-ctx.Done():

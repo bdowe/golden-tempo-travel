@@ -29,7 +29,7 @@ type Accommodation struct {
 
 type AnalyticsEvent struct {
 	ID        uuid.UUID   `json:"id"`
-	UserID    uuid.UUID   `json:"user_id"`
+	UserID    pgtype.UUID `json:"user_id"`
 	EventType string      `json:"event_type"`
 	TripID    pgtype.UUID `json:"trip_id"`
 	Metadata  []byte      `json:"metadata"`
