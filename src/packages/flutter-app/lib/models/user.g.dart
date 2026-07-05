@@ -11,6 +11,7 @@ UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(
       email: json['email'] as String,
       displayName: json['display_name'] as String,
       isAdmin: json['is_admin'] as bool? ?? false,
+      needsOnboarding: json['needs_onboarding'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
 
@@ -19,6 +20,7 @@ Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
       'email': instance.email,
       'display_name': instance.displayName,
       'is_admin': instance.isAdmin,
+      'needs_onboarding': instance.needsOnboarding,
       'created_at': instance.createdAt.toIso8601String(),
     };
 

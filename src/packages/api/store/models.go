@@ -172,11 +172,12 @@ type TripSegment struct {
 }
 
 type User struct {
-	ID           uuid.UUID `json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
-	DisplayName  *string   `json:"display_name"`
-	IsAdmin      bool      `json:"is_admin"`
+	ID           uuid.UUID          `json:"id"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at"`
+	Email        string             `json:"email"`
+	PasswordHash string             `json:"password_hash"`
+	DisplayName  *string            `json:"display_name"`
+	IsAdmin      bool               `json:"is_admin"`
+	OnboardedAt  pgtype.Timestamptz `json:"onboarded_at"`
 }

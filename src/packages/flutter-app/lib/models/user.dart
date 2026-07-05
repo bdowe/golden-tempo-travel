@@ -10,6 +10,8 @@ class UserModel {
   final String displayName;
   @JsonKey(name: 'is_admin')
   final bool isAdmin;
+  @JsonKey(name: 'needs_onboarding')
+  final bool needsOnboarding;
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
 
@@ -18,6 +20,7 @@ class UserModel {
     required this.email,
     required this.displayName,
     this.isAdmin = false,
+    this.needsOnboarding = false,
     required this.createdAt,
   });
 

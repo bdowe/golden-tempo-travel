@@ -8,3 +8,8 @@ SELECT * FROM users WHERE email = $1;
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
+
+-- name: MarkUserOnboarded :one
+UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
+WHERE id = $1
+RETURNING *;

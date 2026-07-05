@@ -57,7 +57,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id string) error {
 const getSessionWithUser = `-- name: GetSessionWithUser :one
 SELECT
     sessions.id, sessions.user_id, sessions.expires_at, sessions.created_at,
-    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin
+    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin, users.onboarded_at
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.id = $1
@@ -83,6 +83,7 @@ func (q *Queries) GetSessionWithUser(ctx context.Context, id string) (GetSession
 		&i.User.PasswordHash,
 		&i.User.DisplayName,
 		&i.User.IsAdmin,
+		&i.User.OnboardedAt,
 	)
 	return i, err
 }

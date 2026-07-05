@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name)
 VALUES ($1, $2, $3)
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at
 `
 
 type CreateUserParams struct {
@@ -34,12 +34,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.IsAdmin,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin FROM users WHERE email = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -53,12 +54,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.IsAdmin,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin FROM users WHERE id = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -72,6 +74,29 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.IsAdmin,
+		&i.OnboardedAt,
+	)
+	return i, err
+}
+
+const markUserOnboarded = `-- name: MarkUserOnboarded :one
+UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
+WHERE id = $1
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at
+`
+
+func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, markUserOnboarded, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.IsAdmin,
+		&i.OnboardedAt,
 	)
 	return i, err
 }

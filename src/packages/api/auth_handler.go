@@ -28,11 +28,12 @@ type LoginRequest struct {
 }
 
 type UserResponse struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	IsAdmin     bool      `json:"is_admin"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Email           string    `json:"email"`
+	DisplayName     string    `json:"display_name"`
+	IsAdmin         bool      `json:"is_admin"`
+	NeedsOnboarding bool      `json:"needs_onboarding"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type AuthResponse struct {
@@ -46,11 +47,12 @@ func toUserResponse(u store.User) UserResponse {
 		name = *u.DisplayName
 	}
 	return UserResponse{
-		ID:          u.ID.String(),
-		Email:       u.Email,
-		DisplayName: name,
-		IsAdmin:     u.IsAdmin,
-		CreatedAt:   u.CreatedAt,
+		ID:              u.ID.String(),
+		Email:           u.Email,
+		DisplayName:     name,
+		IsAdmin:         u.IsAdmin,
+		NeedsOnboarding: !u.OnboardedAt.Valid,
+		CreatedAt:       u.CreatedAt,
 	}
 }
 
@@ -258,4 +260,20 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserResponse(user))
+}
+
+// completeOnboardingHandler marks the signup quiz as done (or skipped).
+// Idempotent: repeat calls keep the original onboarded_at.
+func completeOnboardingHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	updated, err := store.New(dbPool).MarkUserOnboarded(r.Context(), user.ID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not complete onboarding")
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserResponse(updated))
 }

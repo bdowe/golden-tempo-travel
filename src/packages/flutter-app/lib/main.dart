@@ -5,6 +5,7 @@ import 'providers/auth_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/landing_screen.dart';
 import 'screens/app_shell.dart';
+import 'screens/onboarding_quiz_screen.dart';
 
 void main() {
   runApp(
@@ -29,7 +30,8 @@ class TravelRoutePlannerApp extends StatelessWidget {
 }
 
 /// Shows a loading splash until the stored session is checked, then routes to
-/// the landing page (signed out) or the home screen (signed in).
+/// the landing page (signed out), the one-time signup quiz (signed in but not
+/// yet onboarded), or the home screen.
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
@@ -41,6 +43,9 @@ class AuthGate extends ConsumerWidget {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return auth.isSignedIn ? const AppShell() : const LandingScreen();
+    if (!auth.isSignedIn) return const LandingScreen();
+    return auth.user!.needsOnboarding
+        ? const OnboardingQuizScreen()
+        : const AppShell();
   }
 }
