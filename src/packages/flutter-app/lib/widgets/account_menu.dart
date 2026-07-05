@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
 import '../screens/preferences_screen.dart';
+import '../screens/local_admin_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 
@@ -18,6 +19,8 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
   } else if (value == 'preferences') {
     // Push onto the active tab's navigator so the rail/bar stays put.
     pushOnActiveTab(ref, const PreferencesScreen());
+  } else if (value == 'local_admin') {
+    pushOnActiveTab(ref, const LocalAdminScreen());
   }
 }
 
@@ -26,8 +29,9 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
 List<PopupMenuEntry<String>> _items(
   ThemeData theme,
   String? displayName,
-  String? email,
-) {
+  String? email, {
+  bool isAdmin = false,
+}) {
   return [
     if (displayName != null) ...[
       // Identity, not an action — styled explicitly so the disabled item
@@ -89,6 +93,19 @@ List<PopupMenuEntry<String>> _items(
         ],
       ),
     ),
+    if (isAdmin) ...[
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'local_admin',
+        child: Row(
+          children: [
+            Icon(Icons.verified, size: 20, color: AppColors.toolLocal),
+            const SizedBox(width: AppSpacing.md),
+            const Text('Local intel admin'),
+          ],
+        ),
+      ),
+    ],
     const PopupMenuDivider(),
     PopupMenuItem<String>(
       value: 'logout',
@@ -139,7 +156,8 @@ class AccountMenu extends ConsumerWidget {
             )
           : const Icon(Icons.account_circle),
       onSelected: (v) => _onSelected(context, ref, v),
-      itemBuilder: (_) => _items(theme, user?.displayName, user?.email),
+      itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
+          isAdmin: user?.isAdmin ?? false),
     );
   }
 }
@@ -171,7 +189,8 @@ class RailAccountButton extends ConsumerWidget {
         ),
       ),
       onSelected: (v) => _onSelected(context, ref, v),
-      itemBuilder: (_) => _items(theme, user?.displayName, user?.email),
+      itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
+          isAdmin: user?.isAdmin ?? false),
     );
   }
 }

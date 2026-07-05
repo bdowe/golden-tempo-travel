@@ -129,6 +129,24 @@ func authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// adminMiddleware runs after authMiddleware's token→user resolution and rejects
+// non-admin users with 403. Wrap admin-only routes as
+// authMiddleware(adminMiddleware(handler)).
+func adminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := userFromContext(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if !user.IsAdmin {
+			writeJSONError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(r.Context()))
+	})
+}
+
 // --- handlers ---
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {

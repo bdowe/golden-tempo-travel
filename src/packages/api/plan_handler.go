@@ -235,6 +235,20 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	searchLocalRecsTool := anthropic.ToolParam{
+		Name: "search_local_recommendations",
+		Description: anthropic.String("Find hand-curated recommendations from real locals for a city — vetted spots you can't get by googling. " +
+			"ALWAYS call this FIRST for each city, before search_places. Prefer these picks over generic search results, and when you use one, cite the local by name in your reply (their name is in 'source_name'). " +
+			"When you pass a local pick into create_itinerary, copy its 'id' into local_recommendation_id and its 'source_name' into local_source_name so the saved trip credits them."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"city":     map[string]any{"type": "string", "description": "City name, e.g. 'Lisbon'"},
+				"category": map[string]any{"type": "string", "enum": []string{"attraction", "restaurant"}, "description": "Optional filter to only sights or only places to eat"},
+			},
+			Required: []string{"city"},
+		},
+	}
+
 	updateSectionTool := anthropic.ToolParam{
 		Name:        "update_itinerary_section",
 		Description: anthropic.String("Replace one section of the traveler's saved itinerary in place. Pass the COMPLETE updated list of places for the targeted section, in visit order — places you omit are removed from that section. Places outside the section are untouched. Use scope 'day' for a single trip day, 'city' for one city/hub and its day trips, or 'trip' for the whole itinerary."),
@@ -270,6 +284,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		{OfTool: &suggestFerriesTool},
 		{OfTool: &searchFlightsTool},
 		{OfTool: &searchEventsTool},
+		{OfTool: &searchLocalRecsTool},
 	}
 	// Trip-bound sessions get the in-place section tool instead of
 	// create_itinerary, so a refinement can never spawn a new trip version.
@@ -292,7 +307,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	today := time.Now()
-	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. Use search_places to find real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Be conversational and helpful — ask clarifying questions if needed before searching."
+	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. For each city, ALWAYS call search_local_recommendations FIRST — these are hand-curated picks from real locals, the legit info you can't get by googling. Prefer them over generic results, build the itinerary around them where they fit the traveler, and cite the local by name in your reply (e.g. 'Ana, a Lisbon chef, swears by…'). When a local pick becomes an itinerary place, carry its id into local_recommendation_id and its source_name into local_source_name. Then use search_places to fill gaps and find any other real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Be conversational and helpful — ask clarifying questions if needed before searching."
 
 	placesService := NewGooglePlacesService()
 	ctx := r.Context()
@@ -633,6 +648,24 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 				sendSSE(w, "tool_result", map[string]string{"name": "search_events"})
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summary, err != nil && len(events) == 0 && !isGreekLocation(in.City)))
+
+			case "search_local_recommendations":
+				var in struct {
+					City     string `json:"city"`
+					Category string `json:"category"`
+				}
+				json.Unmarshal(variant.Input, &in)
+
+				recs, err := localRecsService.SearchByCity(ctx, in.City, in.Category)
+				if len(recs) > 0 {
+					sendSSE(w, "local_recs", map[string]any{"city": in.City, "recommendations": recs})
+				}
+				summary := summarizeLocalRecs(in.City, recs)
+				if err != nil {
+					summary = fmt.Sprintf("Error searching local recommendations: %v", err)
+				}
+				sendSSE(w, "tool_result", map[string]string{"name": "search_local_recommendations"})
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(variant.ID, summary, err != nil))
 			}
 		}
 

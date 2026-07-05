@@ -18,6 +18,7 @@ import '../providers/api_client_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/ferries_provider.dart';
+import '../providers/local_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
@@ -25,6 +26,7 @@ import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
+import '../widgets/local_rec_card.dart';
 import '../widgets/source_links_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
@@ -856,6 +858,45 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Curated, locally-sourced recommendations for a city group — vetted picks
+  /// from real locals. Renders nothing when there is no coverage for the city
+  /// (empty list) or on error, so it never shows a broken/empty section.
+  Widget _localIntelSliver(String label, ThemeData theme) {
+    if (label == 'Other places') {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    return SliverToBoxAdapter(
+      child: Consumer(builder: (context, ref, _) {
+        final recs =
+            ref.watch(localRecsByCityProvider(label)).valueOrNull ?? [];
+        if (recs.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                  top: AppSpacing.sm, bottom: AppSpacing.xs),
+              child: Row(
+                children: [
+                  Icon(Icons.verified, size: 16, color: AppColors.toolLocal),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Local intel',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.toolLocal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final r in recs.take(6)) LocalRecCard(rec: r),
+          ],
+        );
+      }),
     );
   }
 
@@ -1794,6 +1835,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               departureOnly: false)),
                                         ..._buildGroupItemSlivers(group.label,
                                             group.items, theme, tripStart),
+                                        // Curated local recommendations for this
+                                        // city — the "legit info you can't
+                                        // google" surface. Leads the events
+                                        // section; only in the unfiltered view.
+                                        if (_itemFilter == 'all')
+                                          _localIntelSliver(group.label, theme),
                                         // Local events for this city's dates —
                                         // only in the unfiltered view, where
                                         // group labels map 1:1 to date ranges.

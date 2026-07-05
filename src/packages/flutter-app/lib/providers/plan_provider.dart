@@ -6,6 +6,7 @@ import '../models/flight_offer.dart';
 import '../models/event.dart';
 import '../models/ferry_option.dart';
 import '../models/source_link.dart';
+import '../models/local_recommendation.dart';
 import '../services/api_client.dart';
 import '../services/plan_service.dart';
 import 'api_client_provider.dart';
@@ -26,6 +27,8 @@ class PlanState {
   final String? ferryRouteLabel;
   final List<SourceLink>? eventLinks;
   final String? eventLinksCity;
+  final List<LocalRecommendation>? localRecs;
+  final String? localRecsCity;
   final String? error;
 
   /// Short excerpt of profile notes the agent just saved (server
@@ -52,6 +55,8 @@ class PlanState {
     this.ferryRouteLabel,
     this.eventLinks,
     this.eventLinksCity,
+    this.localRecs,
+    this.localRecsCity,
     this.error,
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
@@ -73,6 +78,8 @@ class PlanState {
     Object? ferryRouteLabel = _sentinel,
     Object? eventLinks = _sentinel,
     Object? eventLinksCity = _sentinel,
+    Object? localRecs = _sentinel,
+    Object? localRecsCity = _sentinel,
     Object? error = _sentinel,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
@@ -95,6 +102,8 @@ class PlanState {
       ferryRouteLabel: ferryRouteLabel == _sentinel ? this.ferryRouteLabel : ferryRouteLabel as String?,
       eventLinks: eventLinks == _sentinel ? this.eventLinks : eventLinks as List<SourceLink>?,
       eventLinksCity: eventLinksCity == _sentinel ? this.eventLinksCity : eventLinksCity as String?,
+      localRecs: localRecs == _sentinel ? this.localRecs : localRecs as List<LocalRecommendation>?,
+      localRecsCity: localRecsCity == _sentinel ? this.localRecsCity : localRecsCity as String?,
       error: error == _sentinel ? this.error : error as String?,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
@@ -166,6 +175,8 @@ class PlanNotifier extends StateNotifier<PlanState> {
       ferryRouteLabel: null,
       eventLinks: null,
       eventLinksCity: null,
+      localRecs: null,
+      localRecsCity: null,
       error: null,
       profileUpdateNote: null,
     );
@@ -252,6 +263,17 @@ class PlanNotifier extends StateNotifier<PlanState> {
             state = state.copyWith(
               eventLinks: links,
               eventLinksCity: event.data['city'] as String?,
+            );
+
+          case 'local_recs':
+            final raw = event.data['recommendations'] as List<dynamic>? ?? [];
+            final recs = raw
+                .map((e) =>
+                    LocalRecommendation.fromJson(e as Map<String, dynamic>))
+                .toList();
+            state = state.copyWith(
+              localRecs: recs,
+              localRecsCity: event.data['city'] as String?,
             );
 
           case 'error':

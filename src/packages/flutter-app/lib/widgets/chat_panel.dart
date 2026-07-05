@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/flight_offer.dart';
 import '../models/event.dart';
 import '../models/ferry_option.dart';
+import '../models/local_recommendation.dart';
 import '../models/plan_message.dart';
 import '../providers/plan_provider.dart';
 import '../theme/app_colors.dart';
 import 'flight_offer_card.dart';
 import 'event_card.dart';
 import 'ferry_card.dart';
+import 'local_rec_card.dart';
 import 'source_links_card.dart';
 
 /// The plan-agent chat surface (messages, tool chips, flight cards, input bar)
@@ -164,6 +166,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                         _FlightOptions(
                           routeLabel: planState.flightRouteLabel,
                           offers: planState.flightOffers!,
+                        ),
+                      if (planState.localRecs != null && planState.localRecs!.isNotEmpty)
+                        _LocalRecsSection(
+                          cityLabel: planState.localRecsCity,
+                          recs: planState.localRecs!,
                         ),
                       if (planState.eventResults != null && planState.eventResults!.isNotEmpty)
                         _EventOptions(
@@ -388,6 +395,55 @@ class _EventOptions extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (final e in events) EventCard(event: e),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inline curated local recommendations in the chat — the "legit info you can't
+/// google" surface, shown as attributed LocalRecCards under a tinted header.
+class _LocalRecsSection extends StatelessWidget {
+  final String? cityLabel;
+  final List<LocalRecommendation> recs;
+
+  const _LocalRecsSection({required this.cityLabel, required this.recs});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = AppColors.toolLocal;
+    final label = (cityLabel == null || cityLabel!.trim().isEmpty)
+        ? 'Local intel'
+        : 'Local intel · $cityLabel';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final r in recs) LocalRecCard(rec: r),
         ],
       ),
     );

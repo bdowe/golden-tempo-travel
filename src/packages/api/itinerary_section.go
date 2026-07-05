@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"travel-route-planner/store"
 )
@@ -43,6 +44,14 @@ var itineraryLocationSchema = map[string]any{
 		"day": map[string]any{
 			"type":        "integer",
 			"description": "The trip day this place belongs to, starting at 1 and increasing chronologically across the whole trip; all places on the same day share the same number (e.g. days 1–3 in Paris, then day 4 onward in Rome). Combined with time_of_day this makes each day read as a sequential schedule.",
+		},
+		"local_source_name": map[string]any{
+			"type":        "string",
+			"description": "If this place came from a search_local_recommendations result, the name of the local who recommended it (the 'source_name' field). Carry it through so the saved trip credits them.",
+		},
+		"local_recommendation_id": map[string]any{
+			"type":        "string",
+			"description": "If this place came from a search_local_recommendations result, its 'id' field. Links the itinerary item back to the local pin.",
 		},
 	},
 	"required": []string{"name", "latitude", "longitude"},
@@ -240,6 +249,18 @@ func itemParamsFromLocation(tripID uuid.UUID, position int32, loc map[string]any
 	if v, ok := loc["day"].(float64); ok && v >= 1 {
 		d := int32(v)
 		params.Day = &d
+	}
+	// Local-source attribution: snapshot the local's name so a saved trip still
+	// credits them even if the underlying pin is later archived.
+	if s, ok := loc["local_source_name"].(string); ok {
+		if n := strings.TrimSpace(s); n != "" {
+			params.LocalSourceName = &n
+		}
+	}
+	if s, ok := loc["local_recommendation_id"].(string); ok {
+		if id, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
+			params.LocalRecommendationID = pgtype.UUID{Bytes: id, Valid: true}
+		}
 	}
 	return params
 }

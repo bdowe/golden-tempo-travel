@@ -570,6 +570,21 @@ func main() {
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(patchBookingTodoHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(deleteBookingTodoHandler))).Methods("DELETE")
 
+	// Local-source content — curation is admin-only (authMiddleware + adminMiddleware).
+	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
+	api.Handle("/admin/local/sources", admin(listLocalSourcesHandler)).Methods("GET")
+	api.Handle("/admin/local/sources", admin(createLocalSourceHandler)).Methods("POST")
+	api.Handle("/admin/local/ingest", admin(ingestLocalHandler)).Methods("POST")
+	api.Handle("/admin/local/recommendations", admin(listRecommendationsByStatusHandler)).Methods("GET")
+	api.Handle("/admin/local/recommendations/{id}", admin(updateRecommendationHandler)).Methods("PATCH")
+	api.Handle("/admin/local/recommendations/{id}/publish", admin(publishRecommendationHandler)).Methods("POST")
+	api.Handle("/admin/local/coverage", admin(localCoverageHandler)).Methods("GET")
+
+	// Public browse endpoints for published local-sourced content.
+	api.HandleFunc("/local/recommendations", localRecommendationsHandler).Methods("GET")
+	api.HandleFunc("/local/guides", localGuidesHandler).Methods("GET")
+	api.HandleFunc("/local/guides/{id}", localGuideDetailHandler).Methods("GET")
+
 	// Server configuration
 	port := "8080"
 	server := &http.Server{
