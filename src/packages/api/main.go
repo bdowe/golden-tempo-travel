@@ -628,6 +628,7 @@ func main() {
 	api.Handle("/trips/{id}/items/order", authMiddleware(http.HandlerFunc(reorderItineraryItemsHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(patchItineraryItemHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(deleteItineraryItemHandler))).Methods("DELETE")
+	api.Handle("/events", authMiddleware(http.HandlerFunc(recordClientEventHandler))).Methods("POST")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(putPreferencesHandler))).Methods("PUT")
 	api.HandleFunc("/accommodation-links", accommodationLinksHandler).Methods("GET")
@@ -649,6 +650,7 @@ func main() {
 	api.Handle("/admin/local/recommendations/{id}", admin(updateRecommendationHandler)).Methods("PATCH")
 	api.Handle("/admin/local/recommendations/{id}/publish", admin(publishRecommendationHandler)).Methods("POST")
 	api.Handle("/admin/local/coverage", admin(localCoverageHandler)).Methods("GET")
+	api.Handle("/admin/metrics", admin(adminMetricsHandler)).Methods("GET")
 
 	// Public browse endpoints for published local-sourced content.
 	api.HandleFunc("/local/recommendations", localRecommendationsHandler).Methods("GET")

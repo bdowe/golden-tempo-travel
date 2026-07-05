@@ -65,6 +65,23 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	// preference-writing tool; signed-in sessions get both.
 	uid, authed := userIDFromRequest(r)
 
+	// Session-level instrumentation (signed-in only; anonymous stays untracked).
+	// Completion carries token usage and tool-call count so AI cost per user
+	// can be summed. Deferred so it records however the stream ends.
+	var planTokensIn, planTokensOut int64
+	var planToolCalls int
+	var planTripID *uuid.UUID
+	if authed {
+		go recordEvent(uid, "plan_session_started", nil, nil)
+		defer func() {
+			recordEvent(uid, "plan_session_completed", planTripID, map[string]any{
+				"input_tokens":  planTokensIn,
+				"output_tokens": planTokensOut,
+				"tool_calls":    planToolCalls,
+			})
+		}()
+	}
+
 	// A trip-bound session must verifiably own the trip before anything streams;
 	// failing closed here guarantees a refine panel can never fall back to the
 	// version-creating create_itinerary flow.
@@ -360,6 +377,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			sendSSE(w, "error", map[string]string{"message": err.Error()})
 			return
 		}
+		planTokensIn += resp.Usage.InputTokens
+		planTokensOut += resp.Usage.OutputTokens
 
 		if resp.StopReason != anthropic.StopReasonToolUse {
 			break
@@ -374,6 +393,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			sendSSE(w, "tool_call", map[string]string{"name": variant.Name})
+			planToolCalls++
 
 			switch variant.Name {
 			case "search_places":
@@ -415,6 +435,12 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID
+						if parsed, err := uuid.Parse(tripID); err == nil {
+							planTripID = &parsed
+							go recordEvent(uid, "trip_created", &parsed, map[string]any{
+								"item_count": len(in.Locations),
+							})
+						}
 						// Distill what this conversation revealed about the traveler
 						// in the background — it must never delay or fail the trip.
 						// context.Background(): the request ctx dies with the handler.
@@ -448,6 +474,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 						msg = fmt.Sprintf("Could not update the section: %v", err)
 					} else {
 						sendSSE(w, "trip_updated", map[string]string{"trip_id": boundTripID.String()})
+						planTripID = boundTripID
+						go recordEvent(uid, "trip_refined", boundTripID, map[string]any{
+							"scope": in.Scope,
+						})
 					}
 				}
 				sendSSE(w, "tool_result", map[string]string{"name": "update_itinerary_section"})
