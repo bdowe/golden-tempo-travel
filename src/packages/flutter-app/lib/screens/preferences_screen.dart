@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/airport.dart';
 import '../widgets/airport_field.dart';
+import '../widgets/choice_chip_row.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../providers/preferences_provider.dart';
 
@@ -100,7 +101,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
               children: [
                 Text('Budget', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                _ChoiceRow(
+                ChoiceChipRow(
                   options: _budgets,
                   selected: _budget,
                   onSelected: (v) => setState(() => _budget = v),
@@ -108,7 +109,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                 const SizedBox(height: 24),
                 Text('Pace', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                _ChoiceRow(
+                ChoiceChipRow(
                   options: _paces,
                   selected: _pace,
                   onSelected: (v) => setState(() => _pace = v),
@@ -192,28 +193,6 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _ChoiceRow extends StatelessWidget {
-  final List<String> options;
-  final String? selected;
-  final ValueChanged<String?> onSelected;
-
-  const _ChoiceRow({required this.options, required this.selected, required this.onSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: options.map((o) {
-        return ChoiceChip(
-          label: Text(o),
-          selected: selected == o,
-          onSelected: (sel) => onSelected(sel ? o : null),
-        );
-      }).toList(),
     );
   }
 }

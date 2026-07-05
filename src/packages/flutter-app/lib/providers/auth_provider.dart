@@ -96,6 +96,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Marks onboarding done (quiz finished or skipped). On failure, unlocks
+  /// locally anyway so the user is never trapped in the quiz — it simply
+  /// reappears next session because the flag was never persisted.
+  Future<void> completeOnboarding() async {
+    try {
+      final token = await _storage.loadToken();
+      if (token != null) {
+        final user = await _service.completeOnboarding(token);
+        state = state.copyWith(user: user);
+        return;
+      }
+    } catch (_) {/* fall through to local unlock */}
+    final u = state.user;
+    if (u != null) {
+      state = state.copyWith(
+        user: UserModel(
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          isAdmin: u.isAdmin,
+          needsOnboarding: false,
+          createdAt: u.createdAt,
+        ),
+      );
+    }
+  }
+
   Future<void> logout() async {
     final token = await _storage.loadToken();
     if (token != null) {

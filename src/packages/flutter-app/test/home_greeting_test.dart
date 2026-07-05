@@ -23,6 +23,9 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
       false;
 
   @override
+  Future<void> completeOnboarding() async {}
+
+  @override
   Future<void> logout() async {}
 }
 

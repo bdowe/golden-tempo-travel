@@ -55,6 +55,18 @@ class AuthService {
     throw _error(res);
   }
 
+  /// Marks the signup onboarding quiz as completed (or skipped).
+  Future<UserModel> completeOnboarding(String token) async {
+    final res = await httpClient.post(
+      Uri.parse('$baseUrl/auth/onboarding-complete'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode == 200) {
+      return UserModel.fromJson(jsonDecode(res.body));
+    }
+    throw _error(res);
+  }
+
   Future<void> logout(String token) async {
     await httpClient.post(
       Uri.parse('$baseUrl/auth/logout'),
