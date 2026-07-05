@@ -46,20 +46,82 @@ type BookingTodo struct {
 }
 
 type ItineraryItem struct {
+	ID                    uuid.UUID   `json:"id"`
+	TripID                uuid.UUID   `json:"trip_id"`
+	Position              int32       `json:"position"`
+	Name                  string      `json:"name"`
+	PlaceID               *string     `json:"place_id"`
+	Address               *string     `json:"address"`
+	Latitude              float64     `json:"latitude"`
+	Longitude             float64     `json:"longitude"`
+	CreatedAt             time.Time   `json:"created_at"`
+	Category              *string     `json:"category"`
+	TimeOfDay             *string     `json:"time_of_day"`
+	City                  *string     `json:"city"`
+	DayTripFrom           *string     `json:"day_trip_from"`
+	Day                   *int32      `json:"day"`
+	LocalSourceName       *string     `json:"local_source_name"`
+	LocalRecommendationID pgtype.UUID `json:"local_recommendation_id"`
+}
+
+type LocalGuide struct {
+	ID           uuid.UUID `json:"id"`
+	SourceID     uuid.UUID `json:"source_id"`
+	Title        string    `json:"title"`
+	City         string    `json:"city"`
+	Neighborhood *string   `json:"neighborhood"`
+	Body         string    `json:"body"`
+	HeroImageUrl *string   `json:"hero_image_url"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type LocalGuideRecommendation struct {
+	GuideID          uuid.UUID `json:"guide_id"`
+	RecommendationID uuid.UUID `json:"recommendation_id"`
+	Position         int32     `json:"position"`
+}
+
+type LocalRecommendation struct {
+	ID            uuid.UUID `json:"id"`
+	SourceID      uuid.UUID `json:"source_id"`
+	City          string    `json:"city"`
+	Neighborhood  *string   `json:"neighborhood"`
+	Name          string    `json:"name"`
+	PlaceID       *string   `json:"place_id"`
+	Address       *string   `json:"address"`
+	Latitude      *float64  `json:"latitude"`
+	Longitude     *float64  `json:"longitude"`
+	Category      *string   `json:"category"`
+	Tip           *string   `json:"tip"`
+	Quote         *string   `json:"quote"`
+	Tags          []string  `json:"tags"`
+	Status        string    `json:"status"`
+	PlaceVerified bool      `json:"place_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type LocalSource struct {
 	ID          uuid.UUID `json:"id"`
-	TripID      uuid.UUID `json:"trip_id"`
-	Position    int32     `json:"position"`
 	Name        string    `json:"name"`
-	PlaceID     *string   `json:"place_id"`
-	Address     *string   `json:"address"`
-	Latitude    float64   `json:"latitude"`
-	Longitude   float64   `json:"longitude"`
+	Bio         *string   `json:"bio"`
+	PhotoUrl    *string   `json:"photo_url"`
+	Location    *string   `json:"location"`
+	Expertise   *string   `json:"expertise"`
+	Credibility *string   `json:"credibility"`
+	ConsentRef  *string   `json:"consent_ref"`
 	CreatedAt   time.Time `json:"created_at"`
-	Category    *string   `json:"category"`
-	TimeOfDay   *string   `json:"time_of_day"`
-	City        *string   `json:"city"`
-	DayTripFrom *string   `json:"day_trip_from"`
-	Day         *int32    `json:"day"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type LocalSourceMaterial struct {
+	ID        uuid.UUID `json:"id"`
+	SourceID  uuid.UUID `json:"source_id"`
+	Kind      string    `json:"kind"`
+	RawText   string    `json:"raw_text"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Session struct {

@@ -14,24 +14,26 @@ import (
 )
 
 const createItineraryItem = `-- name: CreateItineraryItem :one
-INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day
+INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id
 `
 
 type CreateItineraryItemParams struct {
-	TripID      uuid.UUID `json:"trip_id"`
-	Position    int32     `json:"position"`
-	Name        string    `json:"name"`
-	PlaceID     *string   `json:"place_id"`
-	Address     *string   `json:"address"`
-	Latitude    float64   `json:"latitude"`
-	Longitude   float64   `json:"longitude"`
-	Category    *string   `json:"category"`
-	TimeOfDay   *string   `json:"time_of_day"`
-	City        *string   `json:"city"`
-	DayTripFrom *string   `json:"day_trip_from"`
-	Day         *int32    `json:"day"`
+	TripID                uuid.UUID   `json:"trip_id"`
+	Position              int32       `json:"position"`
+	Name                  string      `json:"name"`
+	PlaceID               *string     `json:"place_id"`
+	Address               *string     `json:"address"`
+	Latitude              float64     `json:"latitude"`
+	Longitude             float64     `json:"longitude"`
+	Category              *string     `json:"category"`
+	TimeOfDay             *string     `json:"time_of_day"`
+	City                  *string     `json:"city"`
+	DayTripFrom           *string     `json:"day_trip_from"`
+	Day                   *int32      `json:"day"`
+	LocalSourceName       *string     `json:"local_source_name"`
+	LocalRecommendationID pgtype.UUID `json:"local_recommendation_id"`
 }
 
 func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryItemParams) (ItineraryItem, error) {
@@ -48,6 +50,8 @@ func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryIt
 		arg.City,
 		arg.DayTripFrom,
 		arg.Day,
+		arg.LocalSourceName,
+		arg.LocalRecommendationID,
 	)
 	var i ItineraryItem
 	err := row.Scan(
@@ -65,6 +69,8 @@ func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryIt
 		&i.City,
 		&i.DayTripFrom,
 		&i.Day,
+		&i.LocalSourceName,
+		&i.LocalRecommendationID,
 	)
 	return i, err
 }
@@ -144,7 +150,7 @@ func (q *Queries) DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, 
 }
 
 const getItineraryItemsByTrip = `-- name: GetItineraryItemsByTrip :many
-SELECT id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day FROM itinerary_items WHERE trip_id = $1 ORDER BY position ASC
+SELECT id, trip_id, position, name, place_id, address, latitude, longitude, created_at, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id FROM itinerary_items WHERE trip_id = $1 ORDER BY position ASC
 `
 
 func (q *Queries) GetItineraryItemsByTrip(ctx context.Context, tripID uuid.UUID) ([]ItineraryItem, error) {
@@ -171,6 +177,8 @@ func (q *Queries) GetItineraryItemsByTrip(ctx context.Context, tripID uuid.UUID)
 			&i.City,
 			&i.DayTripFrom,
 			&i.Day,
+			&i.LocalSourceName,
+			&i.LocalRecommendationID,
 		); err != nil {
 			return nil, err
 		}

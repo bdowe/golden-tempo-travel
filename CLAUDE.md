@@ -106,7 +106,13 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 | POST | `/api/v1/flights/search` | Duffel flight offers, ranked by `optimize_for` (`cost`/`time`/`balanced`) |
 | GET | `/api/v1/events/search?city=&start_date=&end_date=` | Ticketmaster Discovery events in a city for a date window (optional `category`) |
 | GET | `/api/v1/ferries/search?origin=&destination=&date=` | Ferryhopper ferry booking link for a route (Greek island-hopping); returns `FerryOption[]` |
-| POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 with `search_places` tool |
+| GET | `/api/v1/local/recommendations?city=` | Published, locally-sourced recommendations for a city (optional `category`); returns `LocalRec[]` with attribution |
+| GET | `/api/v1/local/guides?city=` | Published narrative guides for a city; `GET /api/v1/local/guides/{id}` returns the guide + its ordered pins |
+| POST | `/api/v1/admin/local/ingest` | **Admin.** AI-extract draft recommendations from raw research text (source_id, city, kind, raw_text); verifies places via Google |
+| GET/POST | `/api/v1/admin/local/sources` | **Admin.** List / create local sources (the named people content is attributed to) |
+| GET | `/api/v1/admin/local/recommendations?status=` | **Admin.** Curation queue; `POST .../{id}/publish` publishes (blocked without coordinates), `PATCH .../{id}` edits |
+| GET | `/api/v1/admin/local/coverage` | **Admin.** Per-city published/draft counts |
+| POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 with `search_places` + `search_local_recommendations` tools |
 
 ## Key Constraints
 
@@ -119,4 +125,5 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 - **Greece** has two dedicated provider helpers (deep-links, no API yet):
   - **Ferries** (`ferry_service.go`, `ferryService` singleton, optional `FERRYHOPPER_AFFILIATE_ID`): builds a **Ferryhopper** route-page deep link from island/port names. Exposed via `GET /api/v1/ferries/search` and the `/plan` agent's `suggest_ferries` tool. The `FerryOption` type carries structured fields (operator/time/price) that stay empty in link mode — designed so the **FerryhAPI** B2B upgrade fills the same shape without touching callers.
   - **Greek events** (`greece_events_service.go`): Ticketmaster is empty for Greece, so `search_events` falls back to curated source links (more.com/Viva.gr, visitgreece.gr, seasonal Athens-Epidaurus) when the structured lookup is empty **and** `isGreekLocation(city)` is true (hardcoded Greek city/island set). Surfaced as an `event_links` SSE event.
+- **Local-sourced content** (the "legit info you can't google" layer) is **persisted**, unlike the live-lookup providers. Tables `local_sources`, `local_recommendations` (place pins), `local_guides` (+ ordered join), `local_source_material` (ingestion provenance). Pipeline: an **admin** posts raw research text to `/api/v1/admin/local/ingest`; `local_extraction_service.go` (forced-tool Claude extraction, same pattern as `profile_distiller.go`) drafts pins, then each is verified against Google `SearchPlaces` to fill coordinates — **publish is blocked while coordinates are null** (anti-hallucination gate). The `/plan` agent calls `search_local_recommendations` **first** per city and cites the local by name; chosen pins carry `local_source_name`/`local_recommendation_id` snapshots onto `itinerary_items` (nullable, no FK — survives pin archival). `local_recs_service.go` (stateless `localRecsService` singleton) serves both the agent and the public `/api/v1/local/*` browse endpoints. Admin routes sit behind `authMiddleware` + `adminMiddleware` (`is_admin`). Flutter: `LocalRecCard`/`local_admin_screen.dart`, `AppColors.toolLocal`.
 - Persistence uses **pgx + sqlc + goose** (Postgres). The `store/` package is sqlc-generated — run `make api-sqlc` after editing `query/*.sql` or the schema; never hand-edit it. UUID primary keys; migrations run on boot and via `make api-migrate`.
