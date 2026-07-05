@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
+import '../screens/admin_metrics_screen.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/preferences_screen.dart';
 import '../screens/local_admin_screen.dart';
@@ -24,6 +25,8 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
     pushOnActiveTab(ref, const AlertsScreen());
   } else if (value == 'local_admin') {
     pushOnActiveTab(ref, const LocalAdminScreen());
+  } else if (value == 'admin_metrics') {
+    pushOnActiveTab(ref, const AdminMetricsScreen());
   }
 }
 
@@ -116,6 +119,17 @@ List<PopupMenuEntry<String>> _items(
             Icon(Icons.verified, size: 20, color: AppColors.toolLocal),
             const SizedBox(width: AppSpacing.md),
             const Text('Local intel admin'),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'admin_metrics',
+        child: Row(
+          children: [
+            Icon(Icons.insights,
+                size: 20, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: AppSpacing.md),
+            const Text('Metrics'),
           ],
         ),
       ),
