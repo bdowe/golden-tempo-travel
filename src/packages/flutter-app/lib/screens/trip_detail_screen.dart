@@ -1557,6 +1557,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             _moveItem(item, -1);
           case 'down':
             _moveItem(item, 1);
+          case 'reorder':
+            _reorderSection(item);
           case 'delete':
             _deleteItem(item);
         }
@@ -1588,6 +1590,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               contentPadding: EdgeInsets.zero,
             ),
           ),
+        if (_sectionOf(item).length > 2)
+          const PopupMenuItem(
+            value: 'reorder',
+            child: ListTile(
+              leading: Icon(Icons.drag_indicator),
+              title: Text('Reorder section'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
         const PopupMenuItem(
           value: 'delete',
           child: ListTile(
@@ -1616,6 +1627,57 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       return null;
     }
     return other;
+  }
+
+  /// All items sharing [item]'s day + hub + day-trip batch, in itinerary
+  /// order — the same boundary _moveNeighbor enforces, so drag reordering
+  /// can never move an item across a section either.
+  List<ItineraryItem> _sectionOf(ItineraryItem item) {
+    final items = _trip?.items ?? const <ItineraryItem>[];
+    return [
+      for (final i in items)
+        if (i.day == item.day &&
+            _hubOf(i) == _hubOf(item) &&
+            (i.dayTripFrom ?? '').trim() == (item.dayTripFrom ?? '').trim())
+          i,
+    ];
+  }
+
+  /// Drag-and-drop reorder for one section (specs/itinerary-item-editing
+  /// follow-up). The sheet reorders locally; Save maps the section's new
+  /// order back onto the full item-id permutation and submits it through the
+  /// same PUT /items/order path as Move up/down.
+  Future<void> _reorderSection(ItineraryItem item) async {
+    final trip = _trip;
+    if (trip == null) return;
+    final section = _sectionOf(item);
+    if (section.length < 2) return;
+
+    final newOrder = await showModalBottomSheet<List<ItineraryItem>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _ReorderSectionSheet(items: section),
+    );
+    if (newOrder == null || !mounted) return;
+
+    // Splice the section's new order into the full ordering: walk the trip's
+    // items and replace each section member slot with the next reordered id.
+    final sectionIds = section.map((i) => i.id).toSet();
+    var next = 0;
+    final ids = <String>[
+      for (final i in trip.items ?? const <ItineraryItem>[])
+        if (sectionIds.contains(i.id)) newOrder[next++].id else i.id,
+    ];
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .reorderItineraryItems(trip.id, ids);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not reorder: $e');
+      await _load();
+    }
   }
 
   Future<void> _moveItem(ItineraryItem item, int delta) async {
@@ -3036,6 +3098,93 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                 ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet with a drag-and-drop list for one itinerary section. Pops
+/// with the reordered items on Save, or null on dismiss.
+class _ReorderSectionSheet extends StatefulWidget {
+  final List<ItineraryItem> items;
+  const _ReorderSectionSheet({required this.items});
+
+  @override
+  State<_ReorderSectionSheet> createState() => _ReorderSectionSheetState();
+}
+
+class _ReorderSectionSheetState extends State<_ReorderSectionSheet> {
+  late List<ItineraryItem> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = List.of(widget.items);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Reorder places', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Drag to change the visit order within this section.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Flexible(
+            child: ReorderableListView.builder(
+              shrinkWrap: true,
+              buildDefaultDragHandles: false,
+              itemCount: _items.length,
+              onReorder: (oldIndex, newIndex) {
+                setState(() {
+                  if (newIndex > oldIndex) newIndex--;
+                  final moved = _items.removeAt(oldIndex);
+                  _items.insert(newIndex, moved);
+                });
+              },
+              itemBuilder: (context, i) {
+                final item = _items[i];
+                return ListTile(
+                  key: ValueKey(item.id),
+                  dense: true,
+                  leading: Text('${i + 1}',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant)),
+                  title: Text(item.name,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: ReorderableDragStartListener(
+                    index: i,
+                    child: const Icon(Icons.drag_indicator),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(_items),
+                child: const Text('Save order'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

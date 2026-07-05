@@ -19,6 +19,7 @@ import '../widgets/section_header.dart';
 import 'route_optimizer_screen.dart';
 import 'airbnb_parser_screen.dart';
 import 'flight_search_screen.dart';
+import 'guides_screen.dart';
 import 'local_guide_detail_screen.dart';
 import 'trip_detail_screen.dart';
 
@@ -477,7 +478,15 @@ class _LocalGuidesRow extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader(title: 'Local guides'),
+        SectionHeader(
+          title: 'Local guides',
+          action: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const GuidesScreen()),
+            ),
+            child: const Text('See all'),
+          ),
+        ),
         const SizedBox(height: AppSpacing.md),
         SizedBox(
           height: 190,

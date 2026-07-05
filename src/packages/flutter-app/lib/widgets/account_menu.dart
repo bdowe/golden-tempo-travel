@@ -4,6 +4,7 @@ import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
 import '../screens/admin_metrics_screen.dart';
 import '../screens/alerts_screen.dart';
+import '../screens/onboarding_quiz_screen.dart';
 import '../screens/preferences_screen.dart';
 import '../screens/local_admin_screen.dart';
 import '../theme/app_colors.dart';
@@ -23,6 +24,8 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
     pushOnActiveTab(ref, const PreferencesScreen());
   } else if (value == 'alerts') {
     pushOnActiveTab(ref, const AlertsScreen());
+  } else if (value == 'retake_quiz') {
+    pushOnActiveTab(ref, const OnboardingQuizScreen(retake: true));
   } else if (value == 'local_admin') {
     pushOnActiveTab(ref, const LocalAdminScreen());
   } else if (value == 'admin_metrics') {
@@ -107,6 +110,17 @@ List<PopupMenuEntry<String>> _items(
               size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
           const Text('Price alerts'),
+        ],
+      ),
+    ),
+    PopupMenuItem<String>(
+      value: 'retake_quiz',
+      child: Row(
+        children: [
+          Icon(Icons.refresh,
+              size: 20, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.md),
+          const Text('Retake travel quiz'),
         ],
       ),
     ),
