@@ -10,6 +10,7 @@ import '../models/booking_todo.dart';
 import '../models/location.dart';
 import '../models/location_timing.dart';
 import '../models/route_request.dart';
+import '../providers/analytics_provider.dart';
 import '../providers/trips_provider.dart';
 import '../providers/recent_trip_provider.dart';
 import '../providers/booking_todos_provider.dart';
@@ -1996,23 +1997,47 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// leg opens the in-app Find Flights screen prefilled; everything else falls
   /// back to its external provider search link.
   VoidCallback? _openCallbackFor(BookingTodo todo) {
+    // The attach-rate numerator (specs/instrumentation-events): opening any
+    // booking handoff counts as a click. Fire-and-forget; the action below
+    // proceeds immediately regardless.
+    void track(String provider) =>
+        ref.read(analyticsApiServiceProvider).recordBookingLinkClicked(
+              tripId: widget.tripId,
+              todoKey: todo.todoKey,
+              provider: provider,
+              kind: todo.kind,
+            );
+
     if (todo.kind == 'transport') {
       final ferry = _ferryLegs[todo.todoKey];
-      if (ferry != null) return () => _openFerry(ferry);
+      if (ferry != null) {
+        return () {
+          track('Ferryhopper');
+          _openFerry(ferry);
+        };
+      }
       final leg = _flightLegs[todo.todoKey];
       if (leg != null) {
-        return () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => FlightSearchScreen(
-                prefillOrigin: leg.origin,
-                prefillDestination: leg.destination,
-                prefillDepartDate: leg.date,
-                prefillOriginCoord: leg.originCoord,
-                prefillDestinationCoord: leg.destCoord,
-              ),
-            ));
+        return () {
+          track('Duffel');
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => FlightSearchScreen(
+              prefillOrigin: leg.origin,
+              prefillDestination: leg.destination,
+              prefillDepartDate: leg.date,
+              prefillOriginCoord: leg.originCoord,
+              prefillDestinationCoord: leg.destCoord,
+            ),
+          ));
+        };
       }
     }
-    if (todo.searchUrl != null) return () => _launch(todo.searchUrl!);
+    if (todo.searchUrl != null) {
+      return () {
+        track(todo.provider ?? 'unknown');
+        _launch(todo.searchUrl!);
+      };
+    }
     return null;
   }
 

@@ -207,6 +207,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not start session")
 		return
 	}
+	go recordEvent(user.ID, "user_registered", nil, nil)
 	writeJSON(w, http.StatusCreated, AuthResponse{User: toUserResponse(user), Token: session.ID})
 }
 
@@ -275,5 +276,6 @@ func completeOnboardingHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not complete onboarding")
 		return
 	}
+	go recordEvent(user.ID, "onboarding_completed", nil, nil)
 	writeJSON(w, http.StatusOK, toUserResponse(updated))
 }

@@ -27,6 +27,15 @@ type Accommodation struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+type AnalyticsEvent struct {
+	ID        uuid.UUID   `json:"id"`
+	UserID    uuid.UUID   `json:"user_id"`
+	EventType string      `json:"event_type"`
+	TripID    pgtype.UUID `json:"trip_id"`
+	Metadata  []byte      `json:"metadata"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
 type BookingTodo struct {
 	ID         uuid.UUID   `json:"id"`
 	TripID     uuid.UUID   `json:"trip_id"`

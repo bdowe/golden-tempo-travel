@@ -304,6 +304,14 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "booking todo not found")
 		return
 	}
+	if *req.Booked {
+		user, _ := userFromContext(r.Context())
+		meta := map[string]any{"kind": todo.Kind, "todo_key": todo.TodoKey}
+		if todo.Provider != nil {
+			meta["provider"] = *todo.Provider
+		}
+		go recordEvent(user.ID, "booking_marked_booked", &tripID, meta)
+	}
 	writeJSON(w, http.StatusOK, toBookingTodoResponse(todo))
 }
 
