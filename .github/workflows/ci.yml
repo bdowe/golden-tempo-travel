@@ -16,6 +16,23 @@ jobs:
     defaults:
       run:
         working-directory: src/packages/api
+    services:
+      # Separate database from the migrations job's: this one backs the
+      # integration test suite (TRUNCATE isolation), that one validates the
+      # `go run . migrate` entrypoint against a pristine DB.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: travel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +53,12 @@ jobs:
         run: go vet ./...
 
       - name: go test
-        run: go test ./...
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/travel_test?sslmode=disable
+        run: go test -race ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: sqlc drift check
         run: |
