@@ -54,10 +54,20 @@ func (q *Queries) DeleteSession(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteSessionsByUser = `-- name: DeleteSessionsByUser :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+// Used after a password reset so stolen sessions die with the old password.
+func (q *Queries) DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSessionsByUser, userID)
+	return err
+}
+
 const getSessionWithUser = `-- name: GetSessionWithUser :one
 SELECT
     sessions.id, sessions.user_id, sessions.expires_at, sessions.created_at,
-    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin, users.onboarded_at
+    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin, users.onboarded_at, users.email_verified_at
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.id = $1
@@ -84,6 +94,7 @@ func (q *Queries) GetSessionWithUser(ctx context.Context, id string) (GetSession
 		&i.User.DisplayName,
 		&i.User.IsAdmin,
 		&i.User.OnboardedAt,
+		&i.User.EmailVerifiedAt,
 	)
 	return i, err
 }

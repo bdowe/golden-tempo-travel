@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,10 +8,14 @@ import '../models/trip.dart';
 import '../models/itinerary_item.dart';
 import '../models/accommodation.dart';
 import '../models/booking_todo.dart';
+import '../models/local_guide.dart';
 import '../models/location.dart';
 import '../models/location_timing.dart';
 import '../models/route_request.dart';
+import '../models/trip_segment.dart';
+import '../providers/accommodations_provider.dart';
 import '../providers/analytics_provider.dart';
+import '../providers/transport_provider.dart';
 import '../providers/trips_provider.dart';
 import '../providers/recent_trip_provider.dart';
 import '../providers/booking_todos_provider.dart';
@@ -25,6 +30,7 @@ import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
+import '../widgets/bookings_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
@@ -33,6 +39,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
 import 'flight_search_screen.dart';
+import 'local_guide_detail_screen.dart';
 
 /// A geographic coordinate used to resolve an itinerary place to its nearest
 /// bookable airport when the place name has no IATA match.
@@ -606,6 +613,92 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
   }
 
+  Future<void> _addStay() async {
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const AddStaySheet(),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .add(widget.tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not add stay: $e');
+    }
+  }
+
+  Future<void> _deleteStay(Accommodation a) async {
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .delete(widget.tripId, a.id);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not remove stay: $e');
+    }
+  }
+
+  Future<void> _addSegment() async {
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const AddSegmentSheet(),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .addSegment(widget.tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not add transport: $e');
+    }
+  }
+
+  Future<void> _deleteSegment(TripSegment s) async {
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .deleteSegment(widget.tripId, s.id);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not remove transport: $e');
+    }
+  }
+
+  /// Mints (or reuses) the trip's share link and copies it to the clipboard.
+  /// Flutter web uses hash URLs, so the shareable form is origin + /#/share/….
+  Future<void> _shareLink() async {
+    try {
+      final token = await ref
+          .read(tripsApiServiceProvider)
+          .createShareLink(widget.tripId);
+      String origin;
+      try {
+        origin = Uri.base.origin;
+      } catch (_) {
+        origin = ''; // non-http platform; copy a relative link
+      }
+      final url = '$origin/#/share/$token';
+      await Clipboard.setData(ClipboardData(text: url));
+      _showSnack('Share link copied to clipboard');
+    } catch (e) {
+      _showSnack('Could not create share link: $e');
+    }
+  }
+
+  Future<void> _revokeLink() async {
+    try {
+      await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
+      _showSnack('Sharing turned off — old links no longer work');
+    } catch (e) {
+      _showSnack('Could not turn off sharing: $e');
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -873,7 +966,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       child: Consumer(builder: (context, ref, _) {
         final recs =
             ref.watch(localRecsByCityProvider(label)).valueOrNull ?? [];
-        if (recs.isEmpty) return const SizedBox.shrink();
+        final guides =
+            ref.watch(localGuidesByCityProvider(label)).valueOrNull ?? [];
+        if (recs.isEmpty && guides.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -894,10 +989,69 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 ],
               ),
             ),
+            for (final g in guides) _guideChip(g, theme),
             for (final r in recs.take(6)) LocalRecCard(rec: r),
           ],
         );
       }),
+    );
+  }
+
+  /// A tappable "Local guide" row inside the Local intel section that opens the
+  /// full narrative guide (story + ordered pins + map).
+  Widget _guideChip(LocalGuide guide, ThemeData theme) {
+    final accent = AppColors.toolLocal;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => LocalGuideDetailScreen(guide: guide),
+            )),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(Icons.menu_book, size: 20, color: accent),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Local guide: ${guide.title}',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (guide.sourceName.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'By ${guide.sourceName}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: accent, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Icon(Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1287,6 +1441,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 tooltip: 'Open in Google Maps',
                 onPressed: () => _launch(_mapsUrl(item)),
               ),
+              _itemMenu(item),
             ],
           ),
           selected: _selectedPosition == item.position,
@@ -1296,6 +1451,175 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           onTap: () => setState(() => _selectedPosition = item.position),
         ),
       );
+
+  /// Per-item actions: edit, move within its section, delete (with undo).
+  /// Move targets the neighbor in itinerary order but only within the same
+  /// day + hub + day-trip batch, so an item can never silently jump across a
+  /// section boundary — cross-day moves go through the edit sheet instead.
+  Widget _itemMenu(ItineraryItem item) {
+    final canUp = _moveNeighbor(item, -1) != null;
+    final canDown = _moveNeighbor(item, 1) != null;
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert),
+      tooltip: 'Place actions',
+      onSelected: (action) {
+        switch (action) {
+          case 'edit':
+            _editItem(item);
+          case 'up':
+            _moveItem(item, -1);
+          case 'down':
+            _moveItem(item, 1);
+          case 'delete':
+            _deleteItem(item);
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'edit',
+          child: ListTile(
+            leading: Icon(Icons.edit_outlined),
+            title: Text('Edit'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        if (canUp)
+          const PopupMenuItem(
+            value: 'up',
+            child: ListTile(
+              leading: Icon(Icons.arrow_upward),
+              title: Text('Move up'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        if (canDown)
+          const PopupMenuItem(
+            value: 'down',
+            child: ListTile(
+              leading: Icon(Icons.arrow_downward),
+              title: Text('Move down'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+            leading: Icon(Icons.delete_outline),
+            title: Text('Remove'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The item this one would swap with when moved by [delta] (-1 up, +1 down),
+  /// or null when the move would cross a day/hub/day-trip boundary.
+  ItineraryItem? _moveNeighbor(ItineraryItem item, int delta) {
+    final items = _trip?.items;
+    if (items == null) return null;
+    final idx = items.indexWhere((i) => i.id == item.id);
+    if (idx < 0) return null;
+    final ni = idx + delta;
+    if (ni < 0 || ni >= items.length) return null;
+    final other = items[ni];
+    if (other.day != item.day) return null;
+    if (_hubOf(other) != _hubOf(item)) return null;
+    if ((other.dayTripFrom ?? '').trim() != (item.dayTripFrom ?? '').trim()) {
+      return null;
+    }
+    return other;
+  }
+
+  Future<void> _moveItem(ItineraryItem item, int delta) async {
+    final trip = _trip;
+    final other = _moveNeighbor(item, delta);
+    if (trip == null || other == null) return;
+    final ids = (trip.items ?? const <ItineraryItem>[])
+        .map((i) => i.id)
+        .toList();
+    final a = ids.indexOf(item.id);
+    final b = ids.indexOf(other.id);
+    ids[a] = other.id;
+    ids[b] = item.id;
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .reorderItineraryItems(trip.id, ids);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not reorder: $e');
+      await _load();
+    }
+  }
+
+  Future<void> _deleteItem(ItineraryItem item) async {
+    final trip = _trip;
+    if (trip == null) return;
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .deleteItineraryItem(trip.id, item.id);
+    } catch (e) {
+      _showSnack('Could not remove ${item.name}: $e');
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Removed ${item.name}'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoDelete(trip.id, item),
+        ),
+      ),
+    );
+  }
+
+  /// Undo = re-add through the normal add endpoint; the server slots the item
+  /// back at the end of its day, which is close enough to where it was.
+  Future<void> _undoDelete(String tripId, ItineraryItem item) async {
+    final body = <String, dynamic>{
+      'name': item.name,
+      if (item.placeId != null) 'place_id': item.placeId,
+      if (item.address != null) 'address': item.address,
+      if (item.latitude != 0 || item.longitude != 0) ...{
+        'latitude': item.latitude,
+        'longitude': item.longitude,
+      },
+      if (item.category != null) 'category': item.category,
+      if (item.timeOfDay != null) 'time_of_day': item.timeOfDay,
+      if (item.city != null) 'city': item.city,
+      if (item.dayTripFrom != null) 'day_trip_from': item.dayTripFrom,
+      if (item.day != null) 'day': item.day,
+    };
+    try {
+      await ref.read(tripsApiServiceProvider).addItineraryItem(tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not restore ${item.name}: $e');
+    }
+  }
+
+  Future<void> _editItem(ItineraryItem item) async {
+    final changes = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _EditItineraryItemSheet(item: item),
+    );
+    if (changes == null || changes.isEmpty) return;
+    final trip = _trip;
+    if (trip == null) return;
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .updateItineraryItem(trip.id, item.id, changes);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not update ${item.name}: $e');
+    }
+  }
 
   /// Google Maps deep link for a place: prefer place_id, then coordinates, then a
   /// name/address text search.
@@ -1642,6 +1966,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
           if (trip != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Share trip',
+              onSelected: (v) => v == 'copy' ? _shareLink() : _revokeLink(),
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'copy', child: Text('Copy share link')),
+                PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
+              ],
+            ),
+          if (trip != null)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete trip',
@@ -1867,6 +2201,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  const Divider(height: 32),
+                                  // Saved stays & transport: what the user has
+                                  // actually booked, distinct from the derived
+                                  // checklist above.
+                                  BookingsSection(
+                                    trip: trip,
+                                    onAddStay: _addStay,
+                                    onDeleteStay: _deleteStay,
+                                    onAddSegment: _addSegment,
+                                    onDeleteSegment: _deleteSegment,
+                                  ),
                                   // Bookings live embedded in their city groups;
                                   // this section appears only when something
                                   // didn't match a city (custom or stale todos).
@@ -2323,4 +2668,162 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.height != height ||
       oldDelegate.backgroundColor != backgroundColor ||
       oldDelegate.padding != padding;
+}
+
+/// Bottom sheet for editing one itinerary item. Returns a map of only the
+/// changed fields (the PATCH endpoint is a partial update), or null/empty on
+/// cancel or no changes.
+class _EditItineraryItemSheet extends StatefulWidget {
+  final ItineraryItem item;
+  const _EditItineraryItemSheet({required this.item});
+
+  @override
+  State<_EditItineraryItemSheet> createState() =>
+      _EditItineraryItemSheetState();
+}
+
+class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _city;
+  late final TextEditingController _day;
+  String? _category;
+  String? _timeOfDay;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.item.name);
+    _city = TextEditingController(text: widget.item.city ?? '');
+    _day = TextEditingController(text: widget.item.day?.toString() ?? '');
+    _category = widget.item.category;
+    _timeOfDay = widget.item.timeOfDay;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _city.dispose();
+    _day.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final changes = <String, dynamic>{};
+    final name = _name.text.trim();
+    if (name.isNotEmpty && name != widget.item.name) changes['name'] = name;
+    final city = _city.text.trim();
+    if (city.isNotEmpty && city != (widget.item.city ?? '')) {
+      changes['city'] = city;
+    }
+    final day = int.tryParse(_day.text.trim());
+    if (day != null && day >= 1 && day != widget.item.day) {
+      changes['day'] = day;
+    }
+    if (_category != null && _category != widget.item.category) {
+      changes['category'] = _category;
+    }
+    if (_timeOfDay != null && _timeOfDay != widget.item.timeOfDay) {
+      changes['time_of_day'] = _timeOfDay;
+    }
+    Navigator.of(context).pop(changes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        top: AppSpacing.lg,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Edit place', style: theme.textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _city,
+                  decoration: const InputDecoration(
+                    labelText: 'City',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              SizedBox(
+                width: 90,
+                child: TextField(
+                  controller: _day,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Day',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final c in const [
+                ('attraction', 'Attraction'),
+                ('restaurant', 'Restaurant'),
+              ])
+                ChoiceChip(
+                  label: Text(c.$2),
+                  selected: _category == c.$1,
+                  onSelected: (sel) =>
+                      setState(() => _category = sel ? c.$1 : _category),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final t in const [
+                ('morning', 'Morning'),
+                ('afternoon', 'Afternoon'),
+                ('evening', 'Evening'),
+              ])
+                ChoiceChip(
+                  label: Text(t.$2),
+                  selected: _timeOfDay == t.$1,
+                  onSelected: (sel) =>
+                      setState(() => _timeOfDay = sel ? t.$1 : _timeOfDay),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              FilledButton(onPressed: _save, child: const Text('Save')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -66,6 +66,30 @@ class LocalApiService {
     );
   }
 
+  /// One published guide by [id], plus its ordered pins. The detail endpoint's
+  /// guide row omits the source attribution join, so callers that came from the
+  /// list should keep the list row's source fields for display.
+  Future<({LocalGuide guide, List<LocalRecommendation> recommendations})>
+      guideById(String id) async {
+    final uri = Uri.parse('${apiClient.baseUrl}/local/guides/$id');
+    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final recs = (body['recommendations'] as List<dynamic>? ?? [])
+          .map((e) => LocalRecommendation.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return (
+        guide: LocalGuide.fromJson(body['guide'] as Map<String, dynamic>),
+        recommendations: recs,
+      );
+    }
+    throw ApiException(
+      statusCode: res.statusCode,
+      message: 'Failed to load guide: ${res.body}',
+      endpoint: 'local/guides/$id',
+    );
+  }
+
   // --- admin / curation ------------------------------------------------------
 
   /// Lists the local sources (people) the curator can attribute content to.

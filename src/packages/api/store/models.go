@@ -54,6 +54,16 @@ type BookingTodo struct {
 	UpdatedAt  time.Time   `json:"updated_at"`
 }
 
+type EmailToken struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Purpose   string             `json:"purpose"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
 type ItineraryItem struct {
 	ID                    uuid.UUID   `json:"id"`
 	TripID                uuid.UUID   `json:"trip_id"`
@@ -180,13 +190,24 @@ type TripSegment struct {
 	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
+type TripShare struct {
+	ID        uuid.UUID          `json:"id"`
+	ChatID    string             `json:"chat_id"`
+	OwnerID   uuid.UUID          `json:"owner_id"`
+	Token     string             `json:"token"`
+	Role      string             `json:"role"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type User struct {
-	ID           uuid.UUID          `json:"id"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	DisplayName  *string            `json:"display_name"`
-	IsAdmin      bool               `json:"is_admin"`
-	OnboardedAt  pgtype.Timestamptz `json:"onboarded_at"`
+	ID              uuid.UUID          `json:"id"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	Email           string             `json:"email"`
+	PasswordHash    string             `json:"password_hash"`
+	DisplayName     *string            `json:"display_name"`
+	IsAdmin         bool               `json:"is_admin"`
+	OnboardedAt     pgtype.Timestamptz `json:"onboarded_at"`
+	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 }

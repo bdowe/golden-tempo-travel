@@ -22,6 +22,10 @@ type DuffelService struct {
 	BaseURL string
 	Version string
 	Client  *http.Client
+
+	// Airport/city suggestions are stable; cache them to avoid re-billing
+	// repeat lookups. Flight offers are time-sensitive and never cached.
+	placesCache *ttlCache[[]Airport]
 }
 
 // Airport is a normalized airport/city result used for origin/destination
@@ -74,7 +78,15 @@ type FlightSearchRequest struct {
 	DepartDate  string `json:"depart_date"` // YYYY-MM-DD
 	ReturnDate  string `json:"return_date,omitempty"`
 	Adults      int    `json:"adults"`
+	ChildAges   []int  `json:"child_ages,omitempty"` // one entry per child; Duffel requires an age
+	CabinClass  string `json:"cabin_class,omitempty"`
 	OptimizeFor string `json:"optimize_for"` // "cost" | "time" | "balanced"
+}
+
+// allowedCabinClasses are Duffel's cabin_class values; empty input defaults
+// to economy.
+var allowedCabinClasses = map[string]bool{
+	"economy": true, "premium_economy": true, "business": true, "first": true,
 }
 
 // maxOffers caps how many offers we keep from a Duffel search before ranking,
@@ -100,10 +112,11 @@ func NewDuffelService() *DuffelService {
 	}
 
 	return &DuffelService{
-		Token:   token,
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Version: version,
-		Client:  &http.Client{Timeout: 60 * time.Second},
+		Token:       token,
+		BaseURL:     strings.TrimRight(baseURL, "/"),
+		Version:     version,
+		Client:      &http.Client{Timeout: 60 * time.Second},
+		placesCache: newTTLCache[[]Airport](24*time.Hour, 5000),
 	}
 }
 
@@ -169,6 +182,11 @@ func (d *DuffelService) NearbyAirports(ctx context.Context, lat, lng float64) ([
 // placeSuggestions queries Duffel's /places/suggestions with the given params and
 // normalizes the response to []Airport (skipping entries without an IATA code).
 func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values) ([]Airport, error) {
+	cacheKey := params.Encode()
+	if cached, ok := d.placesCache.get(cacheKey); ok {
+		return cached, nil
+	}
+
 	req, err := d.newRequest(ctx, http.MethodGet, "/places/suggestions?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
@@ -204,6 +222,7 @@ func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values)
 			SubType:  p.Type,
 		})
 	}
+	d.placesCache.set(cacheKey, airports)
 	return airports, nil
 }
 
@@ -223,7 +242,8 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		DepartureDate string `json:"departure_date"`
 	}
 	type passengerReq struct {
-		Type string `json:"type"`
+		Type string `json:"type,omitempty"`
+		Age  *int   `json:"age,omitempty"`
 	}
 	slices := []sliceReq{{
 		Origin:        strings.ToUpper(req.Origin),
@@ -237,15 +257,24 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 			DepartureDate: req.ReturnDate,
 		})
 	}
-	passengers := make([]passengerReq, adults)
-	for i := range passengers {
-		passengers[i] = passengerReq{Type: "adult"}
+	passengers := make([]passengerReq, 0, adults+len(req.ChildAges))
+	for i := 0; i < adults; i++ {
+		passengers = append(passengers, passengerReq{Type: "adult"})
+	}
+	// Duffel identifies non-adult passengers by age, not a type string.
+	for _, age := range req.ChildAges {
+		a := age
+		passengers = append(passengers, passengerReq{Age: &a})
+	}
+	cabin := strings.ToLower(strings.TrimSpace(req.CabinClass))
+	if cabin == "" {
+		cabin = "economy"
 	}
 	payload := map[string]any{
 		"data": map[string]any{
 			"slices":      slices,
 			"passengers":  passengers,
-			"cabin_class": "economy",
+			"cabin_class": cabin,
 		},
 	}
 	buf, err := json.Marshal(payload)

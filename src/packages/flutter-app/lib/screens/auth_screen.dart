@@ -49,6 +49,32 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     setState(() => _isLogin = !_isLogin);
   }
 
+  /// Two-step forgot-password flow: request a reset code by email, then
+  /// enter the code + a new password. No URL routing needed, works on all
+  /// platforms.
+  Future<void> _forgotPassword() async {
+    final requested = await showDialog<bool>(
+      context: context,
+      builder: (_) => _RequestResetDialog(
+        initialEmail: _emailController.text.trim(),
+        onRequest: (email) =>
+            ref.read(authServiceProvider).requestPasswordReset(email),
+      ),
+    );
+    if (requested != true || !mounted) return;
+    final done = await showDialog<bool>(
+      context: context,
+      builder: (_) => _EnterResetCodeDialog(
+        onReset: (code, password) =>
+            ref.read(authServiceProvider).resetPassword(code, password),
+      ),
+    );
+    if (done == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Password updated — sign in with your new password')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -140,12 +166,185 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         ? "Don't have an account? Sign up"
                         : 'Already have an account? Sign in'),
                   ),
+                  if (_isLogin)
+                    TextButton(
+                      onPressed: auth.loading ? null : _forgotPassword,
+                      child: const Text('Forgot password?'),
+                    ),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Step 1 of forgot-password: request the emailed reset code.
+class _RequestResetDialog extends StatefulWidget {
+  final String initialEmail;
+  final Future<void> Function(String email) onRequest;
+  const _RequestResetDialog(
+      {required this.initialEmail, required this.onRequest});
+
+  @override
+  State<_RequestResetDialog> createState() => _RequestResetDialogState();
+}
+
+class _RequestResetDialogState extends State<_RequestResetDialog> {
+  late final TextEditingController _email =
+      TextEditingController(text: widget.initialEmail);
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final email = _email.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Enter a valid email');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      await widget.onRequest(email);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset your password'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+              'We\'ll email you a reset code if this address has an account.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            decoration: InputDecoration(
+              labelText: 'Email',
+              errorText: _error,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _sending ? null : _send,
+          child: Text(_sending ? 'Sending…' : 'Send code'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Step 2 of forgot-password: enter the emailed code and a new password.
+class _EnterResetCodeDialog extends StatefulWidget {
+  final Future<void> Function(String code, String newPassword) onReset;
+  const _EnterResetCodeDialog({required this.onReset});
+
+  @override
+  State<_EnterResetCodeDialog> createState() => _EnterResetCodeDialogState();
+}
+
+class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
+  final _code = TextEditingController();
+  final _password = TextEditingController();
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_code.text.trim().isEmpty) {
+      setState(() => _error = 'Paste the code from the email');
+      return;
+    }
+    if (_password.text.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onReset(_code.text.trim(), _password.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enter your reset code'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Check your inbox for the code we just sent.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _code,
+            autocorrect: false,
+            decoration: const InputDecoration(labelText: 'Reset code'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: 'New password',
+              errorText: _error,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? 'Saving…' : 'Set new password'),
+        ),
+      ],
     );
   }
 }
