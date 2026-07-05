@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/airport.dart';
+import '../models/traveler_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../theme/spacing.dart';
@@ -55,11 +56,39 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
   final _pageController = PageController();
   int _step = 0;
   bool _submitting = false;
+  bool _seededFromPrefs = false;
 
   String? _budget;
   String? _pace;
   final Set<String> _interests = {};
   String? _companions;
+
+  @override
+  void initState() {
+    super.initState();
+    // A retake edits the EXISTING profile: seed the form from saved
+    // preferences so an untouched step keeps its values instead of wiping
+    // them (save() sends interests as provided-including-empty).
+    if (widget.retake) {
+      final prefs = ref.read(preferencesProvider).prefs;
+      if (prefs != null) {
+        _seedFrom(prefs);
+      } else {
+        ref.read(preferencesProvider.notifier).load();
+      }
+    }
+  }
+
+  void _seedFrom(TravelerPreferences prefs) {
+    _seededFromPrefs = true;
+    _budget = prefs.budget;
+    _pace = prefs.pace;
+    _interests.addAll(prefs.interests);
+    final home = prefs.homeAirport;
+    if (home != null && home.isNotEmpty) {
+      _homeAirport = Airport(iataCode: home, name: home);
+    }
+  }
   Airport? _homeAirport;
   final _interestController = TextEditingController();
   final _tripsController = TextEditingController();
@@ -114,7 +143,9 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
           interests: _interests.toList(),
           homeAirport: _homeAirport?.iataCode,
           // null keeps notes untouched (they're empty for a brand-new user).
-          profileNotes: notes.isEmpty ? null : notes,
+          // A retake NEVER writes notes: the accumulated AI-distilled profile
+          // must not be replaced by one or two quiz bullets.
+          profileNotes: widget.retake || notes.isEmpty ? null : notes,
         );
     if (!ok) {
       if (!mounted) return;
@@ -137,6 +168,14 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Retake with preferences still loading at initState: seed once they land.
+    if (widget.retake && !_seededFromPrefs) {
+      ref.listen(preferencesProvider.select((s) => s.prefs), (prev, prefs) {
+        if (prefs != null && !_seededFromPrefs) {
+          setState(() => _seedFrom(prefs));
+        }
+      });
+    }
     final theme = Theme.of(context);
     final isLast = _step == _stepCount - 1;
 

@@ -29,6 +29,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The /alerts email deep link routes here directly, often before the
+    // async session restore finishes — reload once sign-in state arrives.
+    ref.listen(authProvider.select((s) => s.isSignedIn), (prev, signedIn) {
+      if (signedIn && !ref.read(alertsProvider).loaded) {
+        ref.read(alertsProvider.notifier).load();
+      }
+    });
     final auth = ref.watch(authProvider);
     final state = ref.watch(alertsProvider);
 

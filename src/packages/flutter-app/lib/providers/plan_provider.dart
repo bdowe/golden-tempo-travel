@@ -331,10 +331,21 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
           case 'error':
             _endStreamBuffer();
+            // Commit whatever the model already said before the error —
+            // iteration-cap / max_tokens stops arrive mid-turn, and the
+            // streamed reply must not vanish from the transcript.
+            final partial = textBuffer.toString();
             state = state.copyWith(
               isStreaming: false,
               streamingText: null,
               activeTools: [],
+              messages: partial.isEmpty
+                  ? state.messages
+                  : [
+                      ...state.messages,
+                      PlanMessage(
+                          role: MessageRole.assistant, content: partial),
+                    ],
               error: event.data['message'] as String? ?? 'Unknown error',
             );
             return;

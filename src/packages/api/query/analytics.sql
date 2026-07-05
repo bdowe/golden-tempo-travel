@@ -33,8 +33,10 @@ FROM analytics_events
 WHERE event_type = 'plan_session_completed' AND created_at >= $1;
 
 -- name: CountAnonymousPlanSessions :one
+-- Counts COMPLETED sessions so the anonymous split shares PlanSessionTotals'
+-- denominator (started vs completed would mix event streams).
 SELECT count(*) FROM analytics_events
-WHERE event_type = 'plan_session_started' AND user_id IS NULL AND created_at >= $1;
+WHERE event_type = 'plan_session_completed' AND user_id IS NULL AND created_at >= $1;
 
 -- name: CountPlanCapHits :one
 -- Sessions that hit the agent-loop iteration cap (free-tier pressure signal).

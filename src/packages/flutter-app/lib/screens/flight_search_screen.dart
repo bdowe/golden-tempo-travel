@@ -52,6 +52,18 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   final List<int> _childAges = [];
   String _cabinClass = 'economy';
 
+  /// The parameters of the last submitted search (see _search); the alert
+  /// entry point reads these so an edited-but-unsearched form can't mislabel
+  /// a watch.
+  ({
+    String origin,
+    String destination,
+    String departDate,
+    int adults,
+    String cabinClass,
+    bool hasChildren,
+  })? _watched;
+
   /// Age a newly added child starts at before the traveler adjusts it.
   static const _defaultChildAge = 8;
   String _optimizeFor = 'balanced';
@@ -202,6 +214,16 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
 
   void _search() {
     if (!_canSearch) return;
+    // Snapshot what was actually searched: the "Watch this route" alert must
+    // describe these parameters, not whatever the form says later.
+    _watched = (
+      origin: _origin!.iataCode,
+      destination: _destination!.iataCode,
+      departDate: _fmtDate(_departDate!),
+      adults: _adults,
+      cabinClass: _cabinClass,
+      hasChildren: _childAges.isNotEmpty,
+    );
     ref.read(flightsProvider.notifier).search(FlightSearchRequest(
           origin: _origin!.iataCode,
           destination: _destination!.iataCode,
@@ -366,10 +388,14 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
           const Divider(height: 1),
           // Watch-this-route entry (specs/price-alerts): only over a real
           // result set and only signed in — alerts need an email to notify.
+          // Uses the searched snapshot, never the live form (which may have
+          // been edited since), and skips the price baseline when children
+          // were in the search (the checker re-searches adults only, so a
+          // family-priced baseline would read as a fake drop).
           if (state.hasSearched &&
               state.offers.isNotEmpty &&
-              ref.watch(authProvider).isSignedIn &&
-              _canSearch)
+              _watched != null &&
+              ref.watch(authProvider.select((s) => s.isSignedIn)))
             Align(
               alignment: Alignment.centerLeft,
               child: Padding(
@@ -378,18 +404,19 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                   icon: const Icon(Icons.notifications_none, size: 18),
                   label: const Text('Watch this route — email me on a drop'),
                   onPressed: () {
+                    final w = _watched!;
                     final cheapest = state.offers
                         .reduce((a, b) => a.price <= b.price ? a : b);
                     CreateAlertSheet.show(
                       context,
                       CreateAlertSheet(
-                        origin: _origin!.iataCode,
-                        destination: _destination!.iataCode,
-                        departDate: _fmtDate(_departDate!),
-                        adults: _adults,
-                        cabinClass: _cabinClass,
-                        currentPrice: cheapest.price,
-                        currency: cheapest.currency,
+                        origin: w.origin,
+                        destination: w.destination,
+                        departDate: w.departDate,
+                        adults: w.adults,
+                        cabinClass: w.cabinClass,
+                        currentPrice: w.hasChildren ? null : cheapest.price,
+                        currency: w.hasChildren ? null : cheapest.currency,
                       ),
                     );
                   },

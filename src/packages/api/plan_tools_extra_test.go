@@ -95,6 +95,27 @@ func TestGetTripWeatherFallsBackToArchive(t *testing.T) {
 	}
 }
 
+// Mid-trip queries (start date already past) must still use the real
+// forecast for the remaining days, clamped to today — not last year's data.
+func TestGetTripWeatherMidTripUsesForecast(t *testing.T) {
+	s, paths := stubWeather(t)
+	start := time.Now().AddDate(0, 0, -3).Format(dateLayout)
+	end := time.Now().AddDate(0, 0, 4).Format(dateLayout)
+
+	report, err := s.GetTripWeather(context.Background(), "Athens", start, end)
+	if err != nil {
+		t.Fatalf("GetTripWeather: %v", err)
+	}
+	if report.Kind != "forecast" {
+		t.Fatalf("mid-trip kind = %s, want forecast", report.Kind)
+	}
+	for _, p := range *paths {
+		if strings.HasPrefix(p, "/v1/archive") {
+			t.Fatal("mid-trip query hit the archive API")
+		}
+	}
+}
+
 func TestGetTripWeatherCaches(t *testing.T) {
 	s, paths := stubWeather(t)
 	start := time.Now().AddDate(0, 0, 3).Format(dateLayout)
