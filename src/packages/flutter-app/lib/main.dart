@@ -4,6 +4,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'constants/app_info.dart';
 import 'providers/auth_provider.dart';
 import 'theme/app_theme.dart';
+import 'screens/alerts_screen.dart';
 import 'screens/landing_screen.dart';
 import 'screens/app_shell.dart';
 import 'screens/onboarding_quiz_screen.dart';
@@ -55,6 +56,14 @@ class TravelRoutePlannerApp extends StatelessWidget {
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => VerifyEmailScreen(token: segments[1]),
+          );
+        }
+        // Price-alert emails deep-link here; the screen itself handles the
+        // signed-out case with a sign-in prompt.
+        if (segments.length == 1 && segments[0] == 'alerts') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => const AlertsScreen(),
           );
         }
         return MaterialPageRoute(
