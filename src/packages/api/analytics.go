@@ -31,9 +31,15 @@ const maxEventMetadataBytes = 2048
 
 // recordEvent writes one analytics event. Fire-and-forget semantics: errors
 // are logged, never returned — callers must not branch on instrumentation.
-// Uses its own timeout off context.Background() so recording survives handler
-// teardown (several call sites are goroutines or post-stream code).
 func recordEvent(userID uuid.UUID, eventType string, tripID *uuid.UUID, metadata map[string]any) {
+	recordEventOpt(&userID, eventType, tripID, metadata)
+}
+
+// recordEventOpt is recordEvent for flows where the caller may be anonymous
+// (nil userID), e.g. the public /plan endpoint. Uses its own timeout off
+// context.Background() so recording survives handler teardown (several call
+// sites are goroutines or post-stream code).
+func recordEventOpt(userID *uuid.UUID, eventType string, tripID *uuid.UUID, metadata map[string]any) {
 	if dbPool == nil {
 		return
 	}
@@ -53,8 +59,12 @@ func recordEvent(userID uuid.UUID, eventType string, tripID *uuid.UUID, metadata
 	if tripID != nil {
 		tid = pgtype.UUID{Bytes: *tripID, Valid: true}
 	}
+	var uidParam pgtype.UUID
+	if userID != nil {
+		uidParam = pgtype.UUID{Bytes: *userID, Valid: true}
+	}
 	if err := store.New(dbPool).CreateAnalyticsEvent(ctx, store.CreateAnalyticsEventParams{
-		UserID:    userID,
+		UserID:    uidParam,
 		EventType: eventType,
 		TripID:    tid,
 		Metadata:  meta,
@@ -107,8 +117,12 @@ type MetricsResponse struct {
 	TodosMarkedBooked     int64            `json:"todos_marked_booked"`
 	ReturningUsers        int64            `json:"returning_users"`
 	PlanSessions          int64            `json:"plan_sessions"`
+	PlanSessionsAnonymous int64            `json:"plan_sessions_anonymous"`
+	PlanCapHits           int64            `json:"plan_cap_hits"`
 	PlanInputTokens       int64            `json:"plan_input_tokens"`
 	PlanOutputTokens      int64            `json:"plan_output_tokens"`
+	PlanCacheReadTokens   int64            `json:"plan_cache_read_tokens"`
+	PlanCacheCreateTokens int64            `json:"plan_cache_creation_tokens"`
 }
 
 // adminMetricsHandler is GET /api/v1/admin/metrics?days= (admin only; gated
@@ -167,6 +181,14 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.PlanSessions = totals.Sessions
 		resp.PlanInputTokens = totals.InputTokens
 		resp.PlanOutputTokens = totals.OutputTokens
+		resp.PlanCacheReadTokens = totals.CacheReadTokens
+		resp.PlanCacheCreateTokens = totals.CacheCreationTokens
+	}
+	if n, err := q.CountAnonymousPlanSessions(ctx, since); err == nil {
+		resp.PlanSessionsAnonymous = n
+	}
+	if n, err := q.CountPlanCapHits(ctx, since); err == nil {
+		resp.PlanCapHits = n
 	}
 	if n, err := q.CountReturningUsers(ctx, since); err == nil {
 		resp.ReturningUsers = n
