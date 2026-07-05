@@ -326,7 +326,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	today := time.Now()
-	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. For each city, ALWAYS call search_local_recommendations FIRST — these are hand-curated picks from real locals, the legit info you can't get by googling. Prefer them over generic results, build the itinerary around them where they fit the traveler, and cite the local by name in your reply (e.g. 'Ana, a Lisbon chef, swears by…'). When a local pick becomes an itinerary place, carry its id into local_recommendation_id and its source_name into local_source_name. Then use search_places to fill gaps and find any other real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); the ranked options are shown to the traveler as cards, so summarize and help them choose. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Be conversational and helpful — ask clarifying questions if needed before searching."
+	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. For each city, ALWAYS call search_local_recommendations FIRST — these are hand-curated picks from real locals, the legit info you can't get by googling. Prefer them over generic results, build the itinerary around them where they fit the traveler, and cite the local by name in your reply (e.g. 'Ana, a Lisbon chef, swears by…'). When a local pick becomes an itinerary place, carry its id into local_recommendation_id and its source_name into local_source_name. Then use search_places to fill gaps and find any other real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); summarize the top 2-3 options in your own words and help them choose — do not tell the traveler to look at cards or lists in the chat. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Be conversational and helpful — ask clarifying questions if needed before searching. Format replies with light markdown — short paragraphs, **bold** for place names, hyphen lists — no headings or tables."
 
 	placesService := NewGooglePlacesService()
 	ctx := r.Context()
@@ -745,8 +745,8 @@ func isAlpha(s string) bool {
 }
 
 // summarizeOffers builds a compact text summary of ranked offers for the model,
-// so it can describe and compare them without re-sending the full payload (which
-// already reached the UI via the "flights" event).
+// so it can describe and compare them without re-sending the full payload (the
+// UI already received it via the "flights" event, shown as a summary chip).
 func summarizeOffers(origin, dest string, offers []FlightOffer) string {
 	if len(offers) == 0 {
 		return fmt.Sprintf("No flights found from %s to %s for those dates.", origin, dest)
@@ -767,12 +767,13 @@ func summarizeOffers(origin, dest string, offers []FlightOffer) string {
 		fmt.Fprintf(&b, "%d. %s — %s %.0f, %s, %dh%02dm (score %.1f)\n",
 			i+1, airline, o.Currency, o.Price, stops, o.DurationMin/60, o.DurationMin%60, o.Score)
 	}
-	b.WriteString("These option cards are already shown to the traveler; summarize and help them choose.")
+	b.WriteString("Summarize the top 2-3 options in your own words and help the traveler choose; the full ranked list is saved with their trip.")
 	return b.String()
 }
 
 // summarizeEvents renders the events returned for a city into a compact text
-// block for the model (the event cards themselves are streamed to the UI).
+// block for the model (the events themselves are streamed to the UI, shown as
+// a summary chip).
 func summarizeEvents(city string, events []Event) string {
 	if len(events) == 0 {
 		return fmt.Sprintf("No events found in %s for those dates.", city)
@@ -793,7 +794,7 @@ func summarizeEvents(city string, events []Event) string {
 		}
 		b.WriteString(line + "\n")
 	}
-	b.WriteString("These event cards are already shown to the traveler; highlight ones that fit their interests and dates.")
+	b.WriteString("In your reply, highlight the events that fit the traveler's interests and dates; the full list is saved with their trip.")
 	return b.String()
 }
 

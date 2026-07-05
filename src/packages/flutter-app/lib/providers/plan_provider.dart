@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/plan_message.dart';
@@ -129,6 +130,40 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
   PlanNotifier(this._service, this._apiClient, {this.tripId}) : super(const PlanState());
 
+  // Streamed text_deltas arrive faster than a frame; pushing a new state per
+  // token rebuilds the chat per token. Deltas accumulate in [_streamBuffer]
+  // and reach [state] at most once per [_streamFlushInterval].
+  static const _streamFlushInterval = Duration(milliseconds: 48);
+  Timer? _streamFlushTimer;
+  StringBuffer? _streamBuffer;
+
+  void _scheduleStreamFlush() {
+    _streamFlushTimer ??= Timer(_streamFlushInterval, _flushStreamText);
+  }
+
+  void _flushStreamText() {
+    _streamFlushTimer?.cancel();
+    _streamFlushTimer = null;
+    final buffer = _streamBuffer;
+    if (buffer == null || !mounted) return;
+    state = state.copyWith(streamingText: buffer.toString());
+  }
+
+  // Must run before any state change that clears streamingText, or a pending
+  // timer fires afterwards and resurrects a ghost streaming bubble.
+  void _endStreamBuffer() {
+    _streamFlushTimer?.cancel();
+    _streamFlushTimer = null;
+    _streamBuffer = null;
+  }
+
+  @override
+  void dispose() {
+    // Refine-panel family instances can be disposed mid-stream.
+    _endStreamBuffer();
+    super.dispose();
+  }
+
   // 0x7fffffff (not 1 << 32) because on the web target `1 << 32` overflows JS's
   // 32-bit bitwise ops to 0, and Random.nextInt(0) throws RangeError.
   static String _newChatId() =>
@@ -186,14 +221,19 @@ class PlanNotifier extends StateNotifier<PlanState> {
         .toList();
 
     final textBuffer = StringBuffer();
+    _streamBuffer = textBuffer;
 
     try {
       await for (final event in _service.streamPlan(history,
           bearerToken: _apiClient.authToken, chatId: _chatId, tripId: tripId)) {
+        // Keep buffered text ahead of any other state transition so tool chips
+        // and results never appear before the text that introduced them.
+        if (event.type != 'text_delta') _flushStreamText();
+
         switch (event.type) {
           case 'text_delta':
             textBuffer.write(event.data['text'] as String? ?? '');
-            state = state.copyWith(streamingText: textBuffer.toString());
+            _scheduleStreamFlush();
 
           case 'tool_call':
             final name = event.data['name'] as String? ?? '';
@@ -214,7 +254,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
               savedTripId: event.data['trip_id'] as String?,
             );
 
-            case 'trip_updated':
+          case 'trip_updated':
             state = state.copyWith(tripUpdateCount: state.tripUpdateCount + 1);
 
           case 'profile_updated':
@@ -277,6 +317,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
             );
 
           case 'error':
+            _endStreamBuffer();
             state = state.copyWith(
               isStreaming: false,
               streamingText: null,
@@ -286,6 +327,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
             return;
         }
       }
+
+      _endStreamBuffer();
+      if (!mounted) return;
 
       // Commit streamed assistant text as a message
       final assistantText = textBuffer.toString();
@@ -304,6 +348,8 @@ class PlanNotifier extends StateNotifier<PlanState> {
         activeTools: [],
       );
     } catch (e) {
+      _endStreamBuffer();
+      if (!mounted) return;
       state = state.copyWith(
         isStreaming: false,
         streamingText: null,
@@ -315,6 +361,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
   void reset() {
     _chatId = null;
+    _endStreamBuffer();
     state = const PlanState();
   }
 

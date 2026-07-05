@@ -56,15 +56,23 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     );
   }
 
+  void _openTrip(String tripId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: tripId)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final planState = ref.watch(planProvider);
+    // Narrow select so streaming-text flushes don't rebuild the Scaffold.
+    final showReset = ref.watch(planProvider.select(
+        (s) => s.messages.isNotEmpty || s.completedLocations != null));
 
     return Scaffold(
       appBar: GradientAppBar(
         title: const Text('Plan your trip'),
         actions: [
-          if (planState.messages.isNotEmpty || planState.completedLocations != null)
+          if (showReset)
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => ref.read(planProvider.notifier).reset(),
@@ -77,6 +85,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
         state: planProvider,
         notifier: planProvider.notifier,
         emptyState: _EmptyState(),
+        onViewTrip: _openTrip,
         footerBuilder: (context, state) => state.completedLocations == null
             ? const SizedBox.shrink()
             : _ItineraryBanner(
@@ -85,11 +94,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
                 onLoad: _loadIntoPlanner,
                 onViewTrip: state.savedTripId == null
                     ? null
-                    : () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TripDetailScreen(tripId: state.savedTripId!),
-                          ),
-                        ),
+                    : () => _openTrip(state.savedTripId!),
               ),
       ),
     );
