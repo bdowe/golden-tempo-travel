@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name)
 VALUES ($1, $2, $3)
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
 `
 
 type CreateUserParams struct {
@@ -35,12 +35,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DisplayName,
 		&i.IsAdmin,
 		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at FROM users WHERE email = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -55,12 +56,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.DisplayName,
 		&i.IsAdmin,
 		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at FROM users WHERE id = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -75,14 +77,25 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.DisplayName,
 		&i.IsAdmin,
 		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
+}
+
+const markUserEmailVerified = `-- name: MarkUserEmailVerified :exec
+UPDATE users SET email_verified_at = COALESCE(email_verified_at, now())
+WHERE id = $1
+`
+
+func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markUserEmailVerified, id)
+	return err
 }
 
 const markUserOnboarded = `-- name: MarkUserOnboarded :one
 UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
 WHERE id = $1
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
 `
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
@@ -97,6 +110,21 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, er
 		&i.DisplayName,
 		&i.IsAdmin,
 		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $2 WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
+	return err
 }

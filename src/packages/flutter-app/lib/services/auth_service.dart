@@ -74,6 +74,28 @@ class AuthService {
     );
   }
 
+  /// Always resolves on 202 — the server never reveals whether the email
+  /// has an account.
+  Future<void> requestPasswordReset(String email) async {
+    final res = await httpClient.post(
+      Uri.parse('$baseUrl/auth/request-password-reset'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (res.statusCode != 202) throw _error(res);
+  }
+
+  /// Consumes the emailed reset code and sets the new password. All existing
+  /// sessions are invalidated server-side.
+  Future<void> resetPassword(String token, String newPassword) async {
+    final res = await httpClient.post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'token': token, 'new_password': newPassword}),
+    );
+    if (res.statusCode != 200) throw _error(res);
+  }
+
   /// Extracts the server's error message, falling back to a generic one.
   AuthException _error(http.Response res) {
     String message = 'Request failed (${res.statusCode})';
