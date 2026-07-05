@@ -372,6 +372,21 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cc := strings.ToLower(strings.TrimSpace(request.CabinClass)); cc != "" && !allowedCabinClasses[cc] {
+		writeErr("cabin_class must be one of: 'economy', 'premium_economy', 'business', 'first'")
+		return
+	}
+	if len(request.ChildAges) > 8 {
+		writeErr("at most 8 children per search")
+		return
+	}
+	for _, age := range request.ChildAges {
+		if age < 0 || age > 17 {
+			writeErr("child_ages entries must be between 0 and 17")
+			return
+		}
+	}
+
 	offers, err := duffelService.SearchFlightOffers(r.Context(), request)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

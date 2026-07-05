@@ -44,7 +44,16 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   Airport? _destination;
   DateTime? _departDate;
   int _adults = 1;
+  int _children = 0;
+  String _cabinClass = 'economy';
   String _optimizeFor = 'balanced';
+
+  static const _cabinLabels = {
+    'economy': 'Economy',
+    'premium_economy': 'Premium economy',
+    'business': 'Business',
+    'first': 'First',
+  };
 
   static const _presets = {
     'cost': 'Cheapest',
@@ -190,6 +199,11 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
           destination: _destination!.iataCode,
           departDate: _fmtDate(_departDate!),
           adults: _adults,
+          // Duffel needs an age per child; without a per-child age picker we
+          // send a mid-range child age for each.
+          childAges:
+              _children > 0 ? List.filled(_children, 8) : null,
+          cabinClass: _cabinClass == 'economy' ? null : _cabinClass,
           optimizeFor: _optimizeFor,
         ));
   }
@@ -239,10 +253,35 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                     ),
                     const SizedBox(width: 12),
                     _PassengerStepper(
-                      adults: _adults,
+                      icon: Icons.person_outline,
+                      count: _adults,
+                      min: 1,
                       onChanged: (v) => setState(() => _adults = v),
                     ),
+                    const SizedBox(width: 8),
+                    _PassengerStepper(
+                      icon: Icons.child_care_outlined,
+                      count: _children,
+                      min: 0,
+                      onChanged: (v) => setState(() => _children = v),
+                    ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final e in _cabinLabels.entries)
+                        ChoiceChip(
+                          label: Text(e.value),
+                          selected: _cabinClass == e.key,
+                          onSelected: (_) =>
+                              setState(() => _cabinClass = e.key),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SegmentedButton<String>(
@@ -382,9 +421,16 @@ class _Hint extends StatelessWidget {
 }
 
 class _PassengerStepper extends StatelessWidget {
-  final int adults;
+  final IconData icon;
+  final int count;
+  final int min;
   final ValueChanged<int> onChanged;
-  const _PassengerStepper({required this.adults, required this.onChanged});
+  const _PassengerStepper({
+    required this.icon,
+    required this.count,
+    required this.min,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -396,16 +442,20 @@ class _PassengerStepper extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Icon(icon, size: 16),
+          ),
           IconButton(
             icon: const Icon(Icons.remove, size: 18),
-            onPressed: adults > 1 ? () => onChanged(adults - 1) : null,
+            onPressed: count > min ? () => onChanged(count - 1) : null,
             visualDensity: VisualDensity.compact,
           ),
-          Text('$adults',
+          Text('$count',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           IconButton(
             icon: const Icon(Icons.add, size: 18),
-            onPressed: adults < 9 ? () => onChanged(adults + 1) : null,
+            onPressed: count < 8 ? () => onChanged(count + 1) : null,
             visualDensity: VisualDensity.compact,
           ),
         ],
