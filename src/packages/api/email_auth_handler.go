@@ -62,6 +62,29 @@ func publicBaseURL() string {
 	return "http://localhost:3000"
 }
 
+// publicAppPath is the path prefix under which the Flutter app is served
+// (env PUBLIC_APP_PATH; "/" by default, e.g. "/app/" in deployment).
+// Normalized to always start and end with "/".
+func publicAppPath() string {
+	p := strings.TrimSpace(os.Getenv("PUBLIC_APP_PATH"))
+	if p == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
+}
+
+// publicAppURL builds a user-facing app deep link, e.g.
+// publicAppURL("reset/", token) => https://host/reset/<token>.
+func publicAppURL(parts ...string) string {
+	return publicBaseURL() + publicAppPath() + strings.Join(parts, "")
+}
+
 // sendVerificationEmail is called fire-and-forget after registration (same
 // pattern as the profile distiller kickoff) and from the resend endpoint.
 func sendVerificationEmail(user store.User) {
@@ -73,10 +96,10 @@ func sendVerificationEmail(user store.User) {
 		log.Printf("verification email: could not issue token for %s: %v", user.Email, err)
 		return
 	}
-	link := fmt.Sprintf("%s/api/v1/auth/verify-email?token=%s", publicBaseURL(), token)
+	link := publicAppURL("verify/", token)
 	body := "Welcome to Golden Tempo Travel!\n\n" +
 		"Confirm your email address by opening this link:\n\n" + link + "\n\n" +
-		"The link is valid for 24 hours. If you didn't create an account, you can ignore this email."
+		"The link expires in 24 hours. If you didn't create an account, you can ignore this email."
 	if err := emailService.Send(user.Email, "Confirm your email — Golden Tempo Travel", body); err != nil {
 		log.Printf("verification email: send to %s failed: %v", user.Email, err)
 	}
@@ -182,9 +205,10 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			body := "Someone (hopefully you) asked to reset your Golden Tempo Travel password.\n\n" +
-				"Your reset code:\n\n    " + token + "\n\n" +
+				"Reset your password: " + publicAppURL("reset/", token) + "\n\n" +
+				"If the link doesn't open, use this reset code instead:\n\n    " + token + "\n\n" +
 				"In the app, choose \"Forgot password?\", paste the code, and pick a new password. " +
-				"The code is valid for 1 hour and works once. If this wasn't you, ignore this email — your password is unchanged."
+				"The link and code are valid for 1 hour and work once. If this wasn't you, ignore this email — your password is unchanged."
 			if err := emailService.Send(u.Email, "Reset your password — Golden Tempo Travel", body); err != nil {
 				log.Printf("password reset: send to %s failed: %v", u.Email, err)
 			}

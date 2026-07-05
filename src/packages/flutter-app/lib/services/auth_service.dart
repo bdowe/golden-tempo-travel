@@ -85,6 +85,17 @@ class AuthService {
     if (res.statusCode != 202) throw _error(res);
   }
 
+  /// Consumes the emailed verification token and marks the account's email
+  /// as verified. Used by the /verify/{token} deep-link screen.
+  Future<void> verifyEmail(String token) async {
+    final res = await httpClient.post(
+      Uri.parse('$baseUrl/auth/verify-email'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'token': token}),
+    );
+    if (res.statusCode != 200) throw _error(res);
+  }
+
   /// Consumes the emailed reset code and sets the new password. All existing
   /// sessions are invalidated server-side.
   Future<void> resetPassword(String token, String newPassword) async {
