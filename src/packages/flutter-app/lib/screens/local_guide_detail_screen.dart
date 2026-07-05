@@ -7,6 +7,7 @@ import '../models/local_recommendation.dart';
 import '../providers/local_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../widgets/app_map.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/local_rec_card.dart';
@@ -226,10 +227,10 @@ class _HeroImage extends StatelessWidget {
   }
 }
 
-/// A small OSM map of the guide's mapped pins, numbered in narrative order.
-/// TripMap is keyed to ItineraryItem (positions, categories, route line), so
-/// this stays a purpose-built lightweight map with the same tile usage and the
-/// same scroll-wheel opt-out (the map lives inside a ListView).
+/// A small satellite map of the guide's mapped pins, numbered in narrative
+/// order. TripMap is keyed to ItineraryItem (positions, categories, route
+/// line), so this stays a purpose-built lightweight map on the same shared
+/// basemap, with the same scroll-wheel opt-out (the map lives in a ListView).
 class _GuideMap extends StatefulWidget {
   final List<LocalRecommendation> pins;
 
@@ -265,6 +266,7 @@ class _GuideMapState extends State<_GuideMap> {
             initialCenter: points.first,
             initialZoom: 13,
             interactionOptions: interaction,
+            backgroundColor: appMapBackground,
           )
         : MapOptions(
             initialCameraFit: CameraFit.bounds(
@@ -272,10 +274,11 @@ class _GuideMapState extends State<_GuideMap> {
               padding: const EdgeInsets.all(32),
             ),
             interactionOptions: interaction,
+            backgroundColor: appMapBackground,
           );
 
     return ClipRRect(
-      borderRadius: AppRadius.mdAll,
+      borderRadius: AppRadius.lgAll,
       child: SizedBox(
         height: 240,
         child: Stack(
@@ -284,21 +287,19 @@ class _GuideMapState extends State<_GuideMap> {
               mapController: _controller,
               options: options,
               children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.travelrouteplanner.app',
-                ),
+                ...appMapTileLayers(context),
                 MarkerLayer(
                   markers: [
                     for (var i = 0; i < points.length; i++)
                       Marker(
                         point: points[i],
-                        width: 30,
-                        height: 30,
+                        width: 24,
+                        height: 24,
                         child: _GuidePin(label: '${i + 1}'),
                       ),
                   ],
                 ),
+                appMapAttribution(),
               ],
             ),
             Positioned(
@@ -307,9 +308,17 @@ class _GuideMapState extends State<_GuideMap> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _MapButton(icon: Icons.add, onTap: () => _zoomBy(1)),
+                  MapControlButton(
+                    icon: Icons.add,
+                    tooltip: 'Zoom in',
+                    onTap: () => _zoomBy(1),
+                  ),
                   const SizedBox(height: AppSpacing.sm),
-                  _MapButton(icon: Icons.remove, onTap: () => _zoomBy(-1)),
+                  MapControlButton(
+                    icon: Icons.remove,
+                    tooltip: 'Zoom out',
+                    onTap: () => _zoomBy(-1),
+                  ),
                 ],
               ),
             ),
@@ -332,10 +341,11 @@ class _GuidePin extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.toolLocal,
         shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 3,
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 4,
             offset: const Offset(0, 1),
           ),
         ],
@@ -345,35 +355,8 @@ class _GuidePin extends StatelessWidget {
         label,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-}
-
-/// Small circular zoom control, matching the trip map's overlay buttons.
-class _MapButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _MapButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.surface,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 36,
-          height: 36,
-          child: Icon(icon, size: 20, color: scheme.onSurface),
         ),
       ),
     );

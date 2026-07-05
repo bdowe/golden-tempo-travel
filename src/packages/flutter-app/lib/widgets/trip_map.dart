@@ -6,10 +6,11 @@ import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/itinerary_item.dart';
 import '../theme/app_colors.dart';
+import 'app_map.dart';
 
-/// Plots a trip's itinerary on an OpenStreetMap: a numbered, category-tinted pin
-/// per place, a route line connecting them in itinerary order, auto-fit to the
-/// trip's extent. Tapping a pin calls [onPinTap] with that item's position.
+/// Plots a trip's itinerary on a satellite basemap: a numbered, category-tinted
+/// pin per place, a route line connecting them in itinerary order, auto-fit to
+/// the trip's extent. Tapping a pin calls [onPinTap] with that item's position.
 /// When [selectedPosition] changes the camera recenters on that place.
 class TripMap extends StatefulWidget {
   final List<ItineraryItem> items;
@@ -195,6 +196,7 @@ class _TripMapState extends State<TripMap> {
             initialCenter: selected,
             initialZoom: 15,
             interactionOptions: interaction,
+            backgroundColor: appMapBackground,
           )
         : points.length == 1
             // Single point: bounds collapse, so center with a sensible zoom.
@@ -202,6 +204,7 @@ class _TripMapState extends State<TripMap> {
                 initialCenter: points.first,
                 initialZoom: 13,
                 interactionOptions: interaction,
+                backgroundColor: appMapBackground,
               )
             : MapOptions(
                 initialCameraFit: CameraFit.bounds(
@@ -209,6 +212,7 @@ class _TripMapState extends State<TripMap> {
                   padding: const EdgeInsets.all(32),
                 ),
                 interactionOptions: interaction,
+                backgroundColor: appMapBackground,
               );
 
     return Stack(
@@ -217,17 +221,21 @@ class _TripMapState extends State<TripMap> {
           mapController: _controller,
           options: options,
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.travelrouteplanner.app',
-            ),
+            ...appMapTileLayers(context),
             if (points.length >= 2)
               PolylineLayer(
                 polylines: [
+                  // Two passes make a thin line with a soft glow that stays
+                  // legible over satellite imagery.
                   Polyline(
                     points: points,
-                    strokeWidth: 3,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                    strokeWidth: 6,
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                  Polyline(
+                    points: points,
+                    strokeWidth: 2,
+                    color: Colors.white.withValues(alpha: 0.95),
                   ),
                 ],
               ),
@@ -236,14 +244,18 @@ class _TripMapState extends State<TripMap> {
             MarkerClusterLayerWidget(
               options: MarkerClusterLayerOptions(
                 maxClusterRadius: 45,
-                size: const Size(40, 40),
+                size: const Size(32, 32),
                 padding: const EdgeInsets.all(40),
                 markers: [
                   for (final m in mapped)
                     Marker(
                       point: m.point,
-                      width: 32,
-                      height: 32,
+                      width: widget.selectedPosition == m.item.position
+                          ? 28
+                          : 24,
+                      height: widget.selectedPosition == m.item.position
+                          ? 28
+                          : 24,
                       child: _Pin(
                         label: '${m.item.position + 1}',
                         category: m.item.category,
@@ -258,6 +270,7 @@ class _TripMapState extends State<TripMap> {
                     _ClusterBubble(count: clusterMarkers.length),
               ),
             ),
+            appMapAttribution(),
           ],
         ),
         Positioned(
@@ -266,19 +279,19 @@ class _TripMapState extends State<TripMap> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _MapButton(
+              MapControlButton(
                 icon: Icons.add,
                 tooltip: 'Zoom in',
                 onTap: () => _zoomBy(1),
               ),
               const SizedBox(height: 8),
-              _MapButton(
+              MapControlButton(
                 icon: Icons.remove,
                 tooltip: 'Zoom out',
                 onTap: () => _zoomBy(-1),
               ),
               const SizedBox(height: 8),
-              _MapButton(
+              MapControlButton(
                 icon: Icons.center_focus_strong,
                 tooltip: 'Reset map',
                 onTap: () => _fitToTrip(points),
@@ -287,41 +300,6 @@ class _TripMapState extends State<TripMap> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// A small circular control overlaid on the map (zoom in/out, reset).
-class _MapButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  const _MapButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: scheme.surface,
-        shape: const CircleBorder(),
-        elevation: 2,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(icon, size: 20, color: scheme.onSurface),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -335,16 +313,15 @@ class _SegmentArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Transform.rotate(
       angle: angle,
-      child: Icon(
+      child: const Icon(
         Icons.navigation,
         size: 14,
-        color: scheme.primary,
-        shadows: const [
-          Shadow(color: Colors.white, blurRadius: 3),
-          Shadow(color: Colors.white, blurRadius: 6),
+        color: Colors.white,
+        shadows: [
+          Shadow(color: Colors.black54, blurRadius: 3),
+          Shadow(color: Colors.black54, blurRadius: 6),
         ],
       ),
     );
@@ -358,30 +335,22 @@ class _SegmentLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
-          // Fully opaque with a soft shadow and a stronger border so the time
-          // reads cleanly over the map tiles and the route line beneath it.
-          color: scheme.surface,
+          // Dark translucent chip so the time reads cleanly over satellite
+          // imagery and the route line beneath it.
+          color: Colors.black.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: scheme.outline),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
+          border: Border.all(color: Colors.white24),
         ),
         child: Text(
           text,
           maxLines: 1,
           overflow: TextOverflow.clip,
-          style: TextStyle(
-            color: scheme.onSurface,
+          style: const TextStyle(
+            color: Colors.white,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -397,15 +366,14 @@ class _ClusterBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: scheme.primary,
+        color: Colors.black.withValues(alpha: 0.65),
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 4,
             offset: const Offset(0, 1),
           ),
@@ -416,7 +384,7 @@ class _ClusterBubble extends StatelessWidget {
         '$count',
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -446,17 +414,16 @@ class _Pin extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        // A permanent white ring keeps the small dots crisp over satellite
+        // imagery; selection thickens the ring (and the marker itself grows).
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? Colors.white : color.withValues(alpha: 0.0),
-            width: 2,
-          ),
+          border: Border.all(color: Colors.white, width: selected ? 3 : 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: selected ? 0.4 : 0.25),
-              blurRadius: selected ? 6 : 3,
+              color: Colors.black.withValues(alpha: selected ? 0.5 : 0.35),
+              blurRadius: selected ? 6 : 4,
               offset: const Offset(0, 1),
             ),
           ],
@@ -466,7 +433,7 @@ class _Pin extends StatelessWidget {
           label,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: FontWeight.bold,
           ),
         ),
