@@ -9,6 +9,7 @@ import '../widgets/gradient_app_bar.dart';
 import '../widgets/status_pill.dart';
 import '../models/trip.dart';
 import '../providers/auth_provider.dart';
+import '../providers/shared_with_me_provider.dart';
 import '../providers/trips_provider.dart';
 import 'trip_detail_screen.dart';
 
@@ -65,12 +66,30 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
       );
     } else {
       final isAdmin = ref.watch(authProvider).user?.isAdmin ?? false;
+      final shared =
+          ref.watch(sharedWithMeProvider).valueOrNull ?? const <Trip>[];
       body = RefreshIndicator(
-        onRefresh: () => ref.read(tripsProvider.notifier).loadTrips(),
-        child: ListView.builder(
+        onRefresh: () async {
+          ref.invalidate(sharedWithMeProvider);
+          await ref.read(tripsProvider.notifier).loadTrips();
+        },
+        child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: state.trips.length,
-          itemBuilder: (context, i) => _TripCard(trip: state.trips[i], isAdmin: isAdmin),
+          children: [
+            for (final t in state.trips) _TripCard(trip: t, isAdmin: isAdmin),
+            // Trips others invited this user to co-plan. Kept as a separate
+            // section: "mine" vs "shared with me" is the mental model, and
+            // the card shows the owner instead of admin version chrome.
+            if (shared.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
+                child: Text('Shared with you',
+                    style: theme.textTheme.titleMedium),
+              ),
+              for (final t in shared) _TripCard(trip: t, isAdmin: false),
+            ],
+          ],
         ),
       );
     }
@@ -138,6 +157,12 @@ class _TripCard extends ConsumerWidget {
           else
             Text('Created ${shortDate(trip.createdAt)}'),
           StatusPill(status: trip.status),
+          if (!trip.isOwner && (trip.ownerName ?? '').isNotEmpty)
+            Text(
+              'Planned with ${trip.ownerName}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
         ],
       ),
     );
@@ -145,7 +170,7 @@ class _TripCard extends ConsumerWidget {
     if (!hasHistory) {
       return Card(
         child: ListTile(
-          leading: const Icon(Icons.map_outlined),
+          leading: Icon(trip.isOwner ? Icons.map_outlined : Icons.group_outlined),
           title: title,
           subtitle: subtitle,
           trailing: const Icon(Icons.chevron_right),
