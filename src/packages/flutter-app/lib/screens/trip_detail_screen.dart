@@ -669,8 +669,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
   }
 
+  /// Where the app is mounted on its host: '/' in dev, '/app/' in the
+  /// deployment build (set via --dart-define, like API_BASE_URL). Dart can't
+  /// portably read the base href, so the build injects it.
+  static const _appBasePath =
+      String.fromEnvironment('APP_BASE_PATH', defaultValue: '/');
+
   /// Mints (or reuses) the trip's share link and copies it to the clipboard.
-  /// Flutter web uses hash URLs, so the shareable form is origin + /#/share/….
+  /// Path-style form: origin + basePath + share/<token>.
   Future<void> _shareLink() async {
     try {
       final token = await ref
@@ -682,7 +688,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       } catch (_) {
         origin = ''; // non-http platform; copy a relative link
       }
-      final url = '$origin/#/share/$token';
+      final url = '$origin${_appBasePath}share/$token';
       await Clipboard.setData(ClipboardData(text: url));
       _showSnack('Share link copied to clipboard');
     } catch (e) {

@@ -16,6 +16,17 @@
   -->
   <base href="$FLUTTER_BASE_HREF">
 
+  <!-- Legacy hash-URL shim: pre-path-strategy links look like /#/share/abc.
+       Rewrite them to the real path (base-href aware) before the Flutter
+       engine reads the URL, so old links in chats and emails keep working. -->
+  <script>
+    if (location.hash.startsWith('#/')) {
+      var base = document.querySelector('base').getAttribute('href') || '/';
+      history.replaceState(null, '',
+          base.replace(/\/$/, '') + location.hash.slice(1) + location.search);
+    }
+  </script>
+
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Golden Tempo Travel - Plan trips, optimize routes, and build itineraries with AI.">

@@ -33,7 +33,8 @@ RUN dart run build_runner build --delete-conflicting-outputs
 RUN flutter build web --release \
     --web-renderer canvaskit \
     --base-href /app/ \
-    --dart-define=API_BASE_URL=/api/v1
+    --dart-define=API_BASE_URL=/api/v1 \
+    --dart-define=APP_BASE_PATH=/app/
 
 # Serve static files and proxy API via nginx
 FROM nginx:alpine
