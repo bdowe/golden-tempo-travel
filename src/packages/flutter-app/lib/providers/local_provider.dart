@@ -24,3 +24,11 @@ final localGuidesByCityProvider =
   final service = ref.watch(localApiServiceProvider);
   return service.guides(city.trim());
 });
+
+/// One published guide plus its ordered pins, keyed by guide id.
+final localGuideDetailProvider = FutureProvider.family<
+    ({LocalGuide guide, List<LocalRecommendation> recommendations}),
+    String>((ref, id) async {
+  final service = ref.watch(localApiServiceProvider);
+  return service.guideById(id);
+});

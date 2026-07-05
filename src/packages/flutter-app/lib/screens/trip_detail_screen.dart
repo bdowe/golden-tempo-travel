@@ -7,6 +7,7 @@ import '../models/trip.dart';
 import '../models/itinerary_item.dart';
 import '../models/accommodation.dart';
 import '../models/booking_todo.dart';
+import '../models/local_guide.dart';
 import '../models/location.dart';
 import '../models/location_timing.dart';
 import '../models/route_request.dart';
@@ -32,6 +33,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
 import 'flight_search_screen.dart';
+import 'local_guide_detail_screen.dart';
 
 /// A geographic coordinate used to resolve an itinerary place to its nearest
 /// bookable airport when the place name has no IATA match.
@@ -872,7 +874,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       child: Consumer(builder: (context, ref, _) {
         final recs =
             ref.watch(localRecsByCityProvider(label)).valueOrNull ?? [];
-        if (recs.isEmpty) return const SizedBox.shrink();
+        final guides =
+            ref.watch(localGuidesByCityProvider(label)).valueOrNull ?? [];
+        if (recs.isEmpty && guides.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -893,10 +897,69 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 ],
               ),
             ),
+            for (final g in guides) _guideChip(g, theme),
             for (final r in recs.take(6)) LocalRecCard(rec: r),
           ],
         );
       }),
+    );
+  }
+
+  /// A tappable "Local guide" row inside the Local intel section that opens the
+  /// full narrative guide (story + ordered pins + map).
+  Widget _guideChip(LocalGuide guide, ThemeData theme) {
+    final accent = AppColors.toolLocal;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => LocalGuideDetailScreen(guide: guide),
+            )),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(Icons.menu_book, size: 20, color: accent),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Local guide: ${guide.title}',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (guide.sourceName.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'By ${guide.sourceName}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: accent, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Icon(Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
