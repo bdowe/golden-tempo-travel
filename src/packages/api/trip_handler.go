@@ -246,13 +246,10 @@ func listTripsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // listTripVersionsHandler returns every trip in a chat group (newest first).
-// Admin-only — used to inspect the itinerary versions a single chat produced.
+// Admin-only — registered behind adminMiddleware; used to inspect the
+// itinerary versions a single chat produced.
 func listTripVersionsHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	if !user.IsAdmin {
-		writeJSONError(w, http.StatusForbidden, "admin access required")
-		return
-	}
 	chatID := strings.TrimSpace(r.URL.Query().Get("chat_id"))
 	if chatID == "" {
 		writeJSONError(w, http.StatusBadRequest, "chat_id is required")
