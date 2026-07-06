@@ -6,6 +6,7 @@ import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/auth_storage.dart';
+import '../services/trip_cache.dart';
 import 'api_client_provider.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -148,9 +149,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Clears local auth state without calling the server — for flows where
   /// the session is already gone server-side (logout-all, account deletion).
   Future<void> signOutLocally() async {
+    final userId = state.user?.id;
     await _storage.clearToken();
     _apiClient.authToken = null;
     state = state.copyWith(clearUser: true, clearError: true);
+    // Privacy: drop the offline trip cache alongside the credentials so the
+    // next user of this device can't read the previous user's plans.
+    if (userId != null) await TripCache.clearForUser(userId);
   }
 
   /// Replaces the in-memory user (e.g. after a profile edit).

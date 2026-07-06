@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,8 @@ import '../providers/plan_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/ferries_provider.dart';
 import '../providers/local_provider.dart';
+import '../providers/trip_cache_provider.dart';
+import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
@@ -34,6 +38,7 @@ import '../widgets/bookings_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
+import '../widgets/offline_banner.dart';
 import '../widgets/source_links_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/trip_map.dart';
@@ -57,6 +62,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Trip? _trip;
   bool _loading = true;
   String? _error;
+  // Non-null while _trip is a cached copy served because the network was
+  // unreachable (value = when the copy was saved). The screen is read-only
+  // in this mode; a successful live load clears it.
+  DateTime? _offlineSince;
   // In-page AI refinement panel (side dock on wide layouts, bottom sheet on
   // narrow ones); null target while closed.
   bool _panelOpen = false;
@@ -124,9 +133,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       final trip =
           await ref.read(tripsApiServiceProvider).getTrip(widget.tripId);
       if (mounted) {
+        // Write-through for offline viewing; fire-and-forget (never throws)
+        // so the online path is unaffected.
+        unawaited(ref.read(tripCacheProvider).writeTrip(trip));
         setState(() {
           _trip = trip;
           _bookingTodos = trip.bookingTodos ?? [];
+          _offlineSince = null; // live data — leave offline mode if we were in it
         });
         // Remember this as the most recently viewed trip (home screen tile).
         ref.read(recentTripProvider.notifier).record(
@@ -145,12 +158,40 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         await _computeTravelTimes(trip);
       }
     } catch (e) {
-      // Quiet failures keep showing the stale trip; the next refresh or a
-      // loud load will surface a persistent problem.
+      // Loud path + network-level failure: fall back to the cached copy and
+      // render it read-only. HTTP errors (403/404/500) never reach here —
+      // isNetworkError excludes them — so a revoked or deleted trip can't
+      // resurrect from a stale copy. Quiet failures keep their existing
+      // behavior: the stale trip stays; the next refresh or a loud load will
+      // surface a persistent problem.
+      if (mounted && !quiet && TripCache.isNetworkError(e)) {
+        final cached = await ref.read(tripCacheProvider).readTrip(widget.tripId);
+        if (cached != null && mounted) {
+          setState(() {
+            _trip = cached.trip;
+            _bookingTodos = cached.trip.bookingTodos ?? [];
+            _offlineSince = cached.savedAt;
+            _error = null;
+          });
+          return; // finally still clears _loading
+        }
+      }
       if (mounted && !quiet) setState(() => _error = e.toString());
     } finally {
       if (mounted && !quiet) setState(() => _loading = false);
     }
+  }
+
+  bool get _isOffline => _offlineSince != null;
+
+  /// Belt-and-braces offline gate at the top of every mutation method. The
+  /// primary affordances are also visually disabled/hidden while offline;
+  /// this covers deep entry points (item menus, todo cards, per-day refine
+  /// icons) without touching their widget subtrees.
+  bool _guardOffline() {
+    if (!_isOffline) return false;
+    _showSnack("You're offline — reconnect to make changes.");
+    return true;
   }
 
   bool _refreshQueued = false;
@@ -415,6 +456,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _setBooked(BookingTodo todo, bool booked) async {
+    if (_guardOffline()) return;
     final prev = _bookingTodos;
     setState(() {
       _bookingTodos = [
@@ -433,6 +475,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _deleteTodo(BookingTodo todo) async {
+    if (_guardOffline()) return;
     try {
       await ref
           .read(bookingTodosApiServiceProvider)
@@ -447,6 +490,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _addBooking() async {
+    if (_guardOffline()) return;
     final added = await showDialog<bool>(
       context: context,
       builder: (_) => _AddBookingTodoDialog(tripId: widget.tripId),
@@ -455,6 +499,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _addPlace() async {
+    if (_guardOffline()) return;
     final trip = _trip;
     if (trip == null) return;
     final added = await showDialog<bool>(
@@ -469,6 +514,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       String? startDate,
       String? endDate,
       String? status}) async {
+    if (_guardOffline()) return;
     try {
       final updated = await ref.read(tripsApiServiceProvider).patchTrip(
             widget.tripId,
@@ -485,6 +531,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _editTitle() async {
+    if (_guardOffline()) return;
     final controller = TextEditingController(text: _trip?.title ?? '');
     final result = await showDialog<String>(
       context: context,
@@ -508,6 +555,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _editDates() async {
+    if (_guardOffline()) return;
     final now = DateTime.now();
     final range = await showDateRangePicker(
       context: context,
@@ -523,6 +571,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// with the section's current contents. The session is bound to this trip
   /// server-side, so changes patch the trip in place (no new versions).
   void _openRefine(Trip trip, RefineTarget target) {
+    // Chat/refine needs the network; also keeps the refine panel from ever
+    // observing a cached (read-only) trip.
+    if (_guardOffline()) return;
     // AI refine is owner-only (keeps the version lineage single-writer);
     // the buttons are hidden for editors, this is the belt-and-braces guard.
     if (!trip.isOwner) {
@@ -618,6 +669,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _delete() async {
+    if (_guardOffline()) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -656,6 +708,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _addStay() async {
+    if (_guardOffline()) return;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -673,6 +726,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _deleteStay(Accommodation a) async {
+    if (_guardOffline()) return;
     try {
       await ref
           .read(accommodationsApiServiceProvider)
@@ -684,6 +738,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _addSegment() async {
+    if (_guardOffline()) return;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -701,6 +756,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _deleteSegment(TripSegment s) async {
+    if (_guardOffline()) return;
     try {
       await ref
           .read(transportApiServiceProvider)
@@ -933,8 +989,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             }
           });
         },
-            // Refine is owner-only; editors get no per-day refine icon.
-            (_trip?.isOwner ?? true)
+            // Refine is owner-only (and online-only); editors and offline
+            // viewers get no per-day refine icon.
+            (!_isOffline && (_trip?.isOwner ?? true))
                 ? () {
                     final trip = _trip;
                     if (trip == null) return;
@@ -1014,8 +1071,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           ?.copyWith(color: theme.colorScheme.primary),
                     ),
                   ],
-                  // 'Other places' has no hub the section tool can target.
-                  if (group.label != 'Other places' && trip.isOwner)
+                  // 'Other places' has no hub the section tool can target;
+                  // refine also needs the network.
+                  if (group.label != 'Other places' &&
+                      trip.isOwner &&
+                      !_isOffline)
                     IconButton(
                       icon: const Icon(Icons.auto_awesome, size: 16),
                       tooltip: 'Refine ${group.label}',
@@ -1648,6 +1708,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// order back onto the full item-id permutation and submits it through the
   /// same PUT /items/order path as Move up/down.
   Future<void> _reorderSection(ItineraryItem item) async {
+    if (_guardOffline()) return;
     final trip = _trip;
     if (trip == null) return;
     final section = _sectionOf(item);
@@ -1681,6 +1742,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _moveItem(ItineraryItem item, int delta) async {
+    if (_guardOffline()) return;
     final trip = _trip;
     final other = _moveNeighbor(item, delta);
     if (trip == null || other == null) return;
@@ -1703,6 +1765,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _deleteItem(ItineraryItem item) async {
+    if (_guardOffline()) return;
     final trip = _trip;
     if (trip == null) return;
     try {
@@ -1752,6 +1815,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _editItem(ItineraryItem item) async {
+    if (_guardOffline()) return;
     final changes = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -2027,7 +2091,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 IconButton(
                   icon: const Icon(Icons.edit, size: 20),
                   tooltip: 'Rename',
-                  onPressed: _editTitle,
+                  onPressed: _isOffline ? null : _editTitle,
                 ),
               ],
             ),
@@ -2042,10 +2106,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                   label: Text(hasDates
                       ? '${trip.startDate} → ${trip.endDate}'
                       : 'Add dates'),
-                  onPressed: _editDates,
+                  onPressed: _isOffline ? null : _editDates,
                 ),
                 PopupMenuButton<String>(
                   tooltip: 'Change status',
+                  enabled: !_isOffline,
                   onSelected: (v) => _patch(status: v),
                   itemBuilder: (_) => const [
                     PopupMenuItem(value: 'draft', child: Text('Draft')),
@@ -2080,7 +2145,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
-                  onPressed: () => _openRefine(trip, const RefineTarget.trip()),
+                  // Chat/refine needs the network — disabled while offline.
+                  onPressed: _isOffline
+                      ? null
+                      : () => _openRefine(trip, const RefineTarget.trip()),
                   icon: const Icon(Icons.auto_awesome),
                   label: const Text('Refine with AI'),
                 ),
@@ -2132,8 +2200,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       appBar: GradientAppBar(
         title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
-          // Sharing and deletion are owner-only surfaces; editors see neither.
-          if (trip != null && trip.isOwner)
+          // Sharing and deletion are owner-only surfaces; editors see
+          // neither. Both mutate, so they're hidden while offline-serving.
+          if (trip != null && trip.isOwner && !_isOffline)
             PopupMenuButton<String>(
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Share trip',
@@ -2153,7 +2222,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
               ],
             ),
-          if (trip != null && trip.isOwner)
+          if (trip != null && trip.isOwner && !_isOffline)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete trip',
@@ -2267,7 +2336,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                                     .textTheme.titleMedium),
                                           ),
                                           TextButton.icon(
-                                            onPressed: _addPlace,
+                                            onPressed:
+                                                _isOffline ? null : _addPlace,
                                             style: TextButton.styleFrom(
                                               visualDensity:
                                                   VisualDensity.compact,
@@ -2397,7 +2467,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     Align(
                                       alignment: Alignment.centerRight,
                                       child: TextButton.icon(
-                                        onPressed: _addBooking,
+                                        onPressed: _isOffline ? null : _addBooking,
                                         icon: const Icon(Icons.add, size: 18),
                                         label: const Text('Add booking'),
                                       ),
@@ -2411,7 +2481,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                                 style: theme
                                                     .textTheme.titleMedium)),
                                         TextButton.icon(
-                                          onPressed: _addBooking,
+                                          onPressed: _isOffline ? null : _addBooking,
                                           icon: const Icon(Icons.add, size: 18),
                                           label: const Text('Add'),
                                         ),
@@ -2446,10 +2516,24 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
                       // Pull-to-refresh: with async co-editing, this is how a
                       // user picks up a collaborator's latest changes.
-                      final refreshable = RefreshIndicator(
+                      Widget refreshable = RefreshIndicator(
                         onRefresh: _refresh,
                         child: scrollView,
                       );
+                      // Offline: the trip on screen is a cached copy — pin
+                      // the banner above it. Retry takes the loud load path,
+                      // which exits offline mode on success or re-serves the
+                      // copy on another network failure.
+                      final offlineSince = _offlineSince;
+                      if (offlineSince != null) {
+                        refreshable = Column(
+                          children: [
+                            OfflineBanner(
+                                savedAt: offlineSince, onRetry: _load),
+                            Expanded(child: refreshable),
+                          ],
+                        );
+                      }
 
                       if (!_panelOpen || _refineTarget == null) {
                         return refreshable;
