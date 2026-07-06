@@ -575,6 +575,12 @@ func buildRouter() *mux.Router {
 	generalLimiter := newIPRateLimiter(60, 30)
 	strictLimiter := newIPRateLimiter(5, 3)
 	strict := rateLimitMiddleware(strictLimiter)
+	// Anonymous analytics gets its own bucket: sharing the strict one would let
+	// a visitor's pre-signup pings (landing view + booking clicks) drain the
+	// budget that /auth/register and /auth/login depend on, 429-ing the signup
+	// at the exact conversion moment the events exist to measure.
+	anonEventsLimiter := newIPRateLimiter(10, 5)
+	anonEvents := rateLimitMiddleware(anonEventsLimiter)
 	router.Use(requestIDMiddleware)
 	router.Use(recoveryMiddleware)
 	router.Use(corsMiddleware)
@@ -659,11 +665,12 @@ func buildRouter() *mux.Router {
 	// 401, never a silent downgrade to anonymous); a request without
 	// credentials falls through to the anonymous route, which accepts only
 	// the tiny anonymousClientEventTypes whitelist, always drops trip_id, and
-	// sits behind the strict limiter to bound spam writes (it is an
-	// unauthenticated INSERT surface).
+	// sits behind its own rate-limit bucket to bound spam writes (it is an
+	// unauthenticated INSERT surface) without draining the strict bucket that
+	// the auth endpoints share.
 	api.Handle("/events", authMiddleware(http.HandlerFunc(recordClientEventHandler))).
 		Methods("POST").HeadersRegexp("Authorization", ".+")
-	api.Handle("/events", strict(http.HandlerFunc(recordAnonymousClientEventHandler))).Methods("POST")
+	api.Handle("/events", anonEvents(http.HandlerFunc(recordAnonymousClientEventHandler))).Methods("POST")
 	// Price alerts (specs/price-alerts): creation is strict-tier (each alert
 	// commits the server to recurring provider searches).
 	api.Handle("/alerts", strict(authMiddleware(http.HandlerFunc(createPriceAlertHandler)))).Methods("POST")
