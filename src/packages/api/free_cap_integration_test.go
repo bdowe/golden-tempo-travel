@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -18,31 +16,6 @@ import (
 // free_cap_would_hit per crossing — the only-on-crossing rule's off-by-ones,
 // (b) the dashboard rollup, and (c) that every capped request still SUCCEEDS
 // (measurement only, nothing enforced).
-
-// fakeAnthropicServer stands in for the Anthropic API behind the
-// ANTHROPIC_BASE_URL seam: every /v1/messages call streams a minimal
-// text-only SSE response ending in end_turn, so a real /plan session runs
-// end-to-end through buildRouter with zero external calls.
-func fakeAnthropicServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		frames := []struct{ event, data string }{
-			{"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
-			{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
-			{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Where would you like to go?"}}`},
-			{"content_block_stop", `{"type":"content_block_stop","index":0}`},
-			{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7}}`},
-			{"message_stop", `{"type":"message_stop"}`},
-		}
-		for _, f := range frames {
-			io.WriteString(w, "event: "+f.event+"\ndata: "+f.data+"\n\n")
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
 
 // waitForEventCount polls until the user has exactly want events of the given
 // type. plan_session_started is recorded by a goroutine that writes any
@@ -99,9 +72,7 @@ func freeCapWouldHits(t *testing.T, userID uuid.UUID, capKind string) (hits, las
 // 4 (prior > cap) emits nothing more. Every session must succeed.
 func TestFreeCapPlanRunsCrossingSignal(t *testing.T) {
 	resetDB(t)
-	srv := fakeAnthropicServer(t)
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_BASE_URL", srv.URL)
+	newFakeAnthropic(t, textTurn("Where would you like to go?"))
 	t.Setenv("FREE_PLAN_SESSIONS_PER_MONTH", "2")
 
 	user, token := createTestUser(t, "capped@example.com")
@@ -223,47 +194,6 @@ func TestFreeCapEventNotClientRecordable(t *testing.T) {
 	}
 }
 
-// fakeAnthropicItineraryServer stands in for the Anthropic API for sessions
-// that finalize a trip: any request that does not yet carry a tool_result
-// gets a create_itinerary tool_use (driving plan_handler's persistTrip
-// branch), and the follow-up request (which echoes the tool result back)
-// gets a plain end_turn text answer. Keying on the request body rather than
-// a call counter keeps it deterministic when background callers (the profile
-// distiller) also hit the seam.
-func fakeAnthropicItineraryServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	textFrames := []struct{ event, data string }{
-		{"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
-		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
-		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Your itinerary is saved."}}`},
-		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
-		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7}}`},
-		{"message_stop", `{"type":"message_stop"}`},
-	}
-	toolFrames := []struct{ event, data string }{
-		{"message_start", `{"type":"message_start","message":{"id":"msg_tool","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
-		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"create_itinerary","input":{}}}`},
-		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"title\":\"Athens Weekend\",\"locations\":[{\"name\":\"Acropolis\",\"latitude\":37.97,\"longitude\":23.72,\"day\":1}]}"}}`},
-		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
-		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":9}}`},
-		{"message_stop", `{"type":"message_stop"}`},
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		frames := toolFrames
-		if strings.Contains(string(body), "tool_result") {
-			frames = textFrames
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		for _, f := range frames {
-			io.WriteString(w, "event: "+f.event+"\ndata: "+f.data+"\n\n")
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
 // Version saves must never re-emit the active_trips crossing signal
 // (specs/free-cap-instrumentation: "Saving a new version of an existing trip
 // does not increase the count and can never emit"). With the cap at 1 and one
@@ -273,9 +203,11 @@ func fakeAnthropicItineraryServer(t *testing.T) *httptest.Server {
 // regression this guards — must not emit again.
 func TestFreeCapActiveTripsVersionSaveNeverReemits(t *testing.T) {
 	resetDB(t)
-	srv := fakeAnthropicItineraryServer(t)
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_BASE_URL", srv.URL)
+	// Turn 0: finalize a trip (drives plan_handler's persistTrip branch);
+	// turn 1 (after the tool_result round-trips): a plain end_turn answer.
+	newFakeAnthropic(t,
+		toolTurn("create_itinerary", `{"title":"Athens Weekend","locations":[{"name":"Acropolis","latitude":37.97,"longitude":23.72,"day":1}]}`),
+		textTurn("Your itinerary is saved."))
 	t.Setenv("FREE_ACTIVE_TRIPS", "1") // envInt treats 0 as invalid, so park the user at cap via a seed trip
 
 	user, token := createTestUser(t, "re-finalizer@example.com")
