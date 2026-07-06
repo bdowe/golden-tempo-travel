@@ -58,68 +58,37 @@ func (q *Queries) CountActivatedSignups(ctx context.Context, createdAt time.Time
 	return count, err
 }
 
-const countAnonymousPlanSessions = `-- name: CountAnonymousPlanSessions :one
-SELECT count(*) FROM analytics_events
-WHERE event_type = 'plan_session_completed' AND user_id IS NULL AND created_at >= $1
+const countEventsByTypeGrouped = `-- name: CountEventsByTypeGrouped :many
+SELECT event_type, count(*)::bigint AS n FROM analytics_events
+WHERE created_at >= $1
+GROUP BY event_type
 `
 
-// Counts COMPLETED sessions so the anonymous split shares PlanSessionTotals'
-// denominator (started vs completed would mix event streams).
-func (q *Queries) CountAnonymousPlanSessions(ctx context.Context, createdAt time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, countAnonymousPlanSessions, createdAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountEventsByTypeGroupedRow struct {
+	EventType string `json:"event_type"`
+	N         int64  `json:"n"`
 }
 
-const countEventsByType = `-- name: CountEventsByType :one
-SELECT count(*) FROM analytics_events
-WHERE event_type = $1 AND created_at >= $2
-`
-
-type CountEventsByTypeParams struct {
-	EventType string    `json:"event_type"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-func (q *Queries) CountEventsByType(ctx context.Context, arg CountEventsByTypeParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countEventsByType, arg.EventType, arg.CreatedAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countPlanCapHits = `-- name: CountPlanCapHits :one
-SELECT count(*) FROM analytics_events
-WHERE event_type = 'plan_session_completed'
-  AND (metadata->>'max_iterations_hit')::boolean
-  AND created_at >= $1
-`
-
-// Sessions that hit the agent-loop iteration cap (free-tier pressure signal).
-func (q *Queries) CountPlanCapHits(ctx context.Context, createdAt time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, countPlanCapHits, createdAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countReturningUsers = `-- name: CountReturningUsers :one
-SELECT count(*) FROM (
-  SELECT user_id FROM analytics_events
-  WHERE event_type = 'plan_session_started' AND user_id IS NOT NULL AND created_at >= $1
-  GROUP BY user_id
-  HAVING count(DISTINCT date(created_at)) >= 2
-) returning_users
-`
-
-// Users with planning sessions on at least two distinct days in the window.
-// user_id IS NOT NULL: anonymous sessions must not group into a phantom user.
-func (q *Queries) CountReturningUsers(ctx context.Context, createdAt time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, countReturningUsers, createdAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+// All per-type counts for the metrics window in one round trip (the dashboard
+// previously issued one CountEventsByType query per headline number).
+func (q *Queries) CountEventsByTypeGrouped(ctx context.Context, createdAt time.Time) ([]CountEventsByTypeGroupedRow, error) {
+	rows, err := q.db.Query(ctx, countEventsByTypeGrouped, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountEventsByTypeGroupedRow
+	for rows.Next() {
+		var i CountEventsByTypeGroupedRow
+		if err := rows.Scan(&i.EventType, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countTripsWithBookingClick = `-- name: CountTripsWithBookingClick :one
@@ -158,6 +127,8 @@ func (q *Queries) CreateAnalyticsEvent(ctx context.Context, arg CreateAnalyticsE
 
 const planSessionTotals = `-- name: PlanSessionTotals :one
 SELECT count(*) AS sessions,
+       count(*) FILTER (WHERE user_id IS NULL)::bigint AS anonymous_sessions,
+       count(*) FILTER (WHERE (metadata->>'max_iterations_hit')::boolean)::bigint AS agent_loop_cap_hits,
        COALESCE(sum((metadata->>'input_tokens')::bigint), 0)::bigint AS input_tokens,
        COALESCE(sum((metadata->>'output_tokens')::bigint), 0)::bigint AS output_tokens,
        COALESCE(sum((metadata->>'cache_read_tokens')::bigint), 0)::bigint AS cache_read_tokens,
@@ -168,22 +139,75 @@ WHERE event_type = 'plan_session_completed' AND created_at >= $1
 
 type PlanSessionTotalsRow struct {
 	Sessions            int64 `json:"sessions"`
+	AnonymousSessions   int64 `json:"anonymous_sessions"`
+	AgentLoopCapHits    int64 `json:"agent_loop_cap_hits"`
 	InputTokens         int64 `json:"input_tokens"`
 	OutputTokens        int64 `json:"output_tokens"`
 	CacheReadTokens     int64 `json:"cache_read_tokens"`
 	CacheCreationTokens int64 `json:"cache_creation_tokens"`
 }
 
-// Sessions + token spend from plan_session_completed metadata.
+// Sessions + token spend from plan_session_completed metadata, plus the
+// anonymous split and agent-loop cap hits (all filters over the same
+// completed-session denominator, folded into one round trip).
 func (q *Queries) PlanSessionTotals(ctx context.Context, createdAt time.Time) (PlanSessionTotalsRow, error) {
 	row := q.db.QueryRow(ctx, planSessionTotals, createdAt)
 	var i PlanSessionTotalsRow
 	err := row.Scan(
 		&i.Sessions,
+		&i.AnonymousSessions,
+		&i.AgentLoopCapHits,
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.CacheReadTokens,
 		&i.CacheCreationTokens,
 	)
+	return i, err
+}
+
+const userEngagementCounts = `-- name: UserEngagementCounts :one
+SELECT
+  (SELECT count(DISTINCT a.user_id) FROM analytics_events a
+   WHERE a.event_type = 'plan_session_started' AND a.user_id IS NOT NULL
+     AND a.created_at >= $1)::bigint AS active_users,
+  (SELECT count(*) FROM (
+     SELECT b.user_id FROM analytics_events b
+     WHERE b.event_type = 'plan_session_started' AND b.user_id IS NOT NULL
+       AND b.created_at >= $1
+     GROUP BY b.user_id
+     HAVING count(DISTINCT date(b.created_at)) >= 2
+   ) s)::bigint AS session_frequency_returning,
+  (SELECT count(*) FROM (
+     SELECT c.user_id FROM analytics_events c
+     WHERE c.event_type = 'trip_created' AND c.user_id IS NOT NULL
+       AND c.created_at >= $1
+     GROUP BY c.user_id
+     HAVING max(c.created_at) - min(c.created_at) >= interval '7 days'
+   ) t)::bigint AS second_trip_retention
+`
+
+type UserEngagementCountsRow struct {
+	ActiveUsers               int64 `json:"active_users"`
+	SessionFrequencyReturning int64 `json:"session_frequency_returning"`
+	SecondTripRetention       int64 `json:"second_trip_retention"`
+}
+
+// The three user-level engagement numbers in one round trip.
+// user_id IS NOT NULL everywhere: anonymous sessions must not group into a
+// phantom user.
+//
+//	active_users               — MAU: distinct users who started >= 1 planning
+//	                             session in the window.
+//	session_frequency_returning — users with planning sessions on >= 2 distinct
+//	                             days (a session-frequency proxy; NOT trip
+//	                             retention).
+//	second_trip_retention      — users with >= 2 trip_created events >= 7 days
+//	                             apart (the business model's "returned for a
+//	                             second trip" signal; max-min >= 7 days implies
+//	                             >= 2 events).
+func (q *Queries) UserEngagementCounts(ctx context.Context, createdAt time.Time) (UserEngagementCountsRow, error) {
+	row := q.db.QueryRow(ctx, userEngagementCounts, createdAt)
+	var i UserEngagementCountsRow
+	err := row.Scan(&i.ActiveUsers, &i.SessionFrequencyReturning, &i.SecondTripRetention)
 	return i, err
 }
