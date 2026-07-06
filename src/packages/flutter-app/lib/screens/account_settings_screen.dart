@@ -7,6 +7,7 @@ import '../theme/spacing.dart';
 import '../widgets/legal_links.dart';
 import '../widgets/page_container.dart';
 import '../widgets/section_header.dart';
+import '../utils/snack.dart';
 
 final accountApiServiceProvider = Provider<AccountApiService>((ref) {
   return AccountApiService(ref.watch(apiClientProvider));
@@ -45,8 +46,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   }
 
   void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (mounted) showSnack(context, msg);
   }
 
   String _errText(Object e) => '$e'.replaceFirst('Exception: ', '');

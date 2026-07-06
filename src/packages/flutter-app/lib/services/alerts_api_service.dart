@@ -7,14 +7,6 @@ class AlertsApiService {
 
   AlertsApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   String _errorMessage(String body, int status) {
     try {
       final decoded = jsonDecode(body);
@@ -28,7 +20,7 @@ class AlertsApiService {
   Future<List<PriceAlert>> list() async {
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/alerts'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
@@ -42,7 +34,7 @@ class AlertsApiService {
   Future<PriceAlert> create(Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/alerts'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 201) {
@@ -54,7 +46,7 @@ class AlertsApiService {
   Future<PriceAlert> patch(String id, Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.patch(
       Uri.parse('${apiClient.baseUrl}/alerts/$id'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 200) {
@@ -66,7 +58,7 @@ class AlertsApiService {
   Future<void> delete(String id) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/alerts/$id'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception(_errorMessage(res.body, res.statusCode));

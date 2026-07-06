@@ -9,13 +9,6 @@ class FerryApiService {
 
   FerryApiService(this.apiClient);
 
-  Map<String, String> _headers() {
-    final h = <String, String>{'Accept': 'application/json'};
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   /// Looks up ferry options for a route between two ports/islands.
   Future<List<FerryOption>> searchFerries(
     String origin,
@@ -32,7 +25,7 @@ class FerryApiService {
           'passengers': '$passengers',
       },
     );
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['options'] as List<dynamic>? ?? []);

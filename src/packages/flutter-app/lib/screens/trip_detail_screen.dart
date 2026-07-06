@@ -46,6 +46,7 @@ import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
 import 'flight_search_screen.dart';
 import 'local_guide_detail_screen.dart';
+import '../utils/snack.dart';
 
 /// A geographic coordinate used to resolve an itinerary place to its nearest
 /// bookable airport when the place name has no IATA match.
@@ -703,9 +704,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   void _showSnack(String msg) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-    }
+    if (mounted) showSnack(context, msg);
   }
 
   Future<void> _addStay() async {

@@ -49,25 +49,38 @@ class GuidesScreen extends ConsumerWidget {
               final city = g.city.isEmpty ? 'Elsewhere' : g.city;
               byCity.putIfAbsent(city, () => []).add(g);
             }
-            final cities = byCity.keys.toList();
+            // One flat entry per visual row (header / guide tile / group
+            // spacer) so ListView.builder can inflate rows lazily instead of
+            // building every group's children up front.
+            final rows = <({String? header, LocalGuide? guide})>[
+              for (final entry in byCity.entries) ...[
+                (header: entry.key, guide: null),
+                for (final g in entry.value) (header: null, guide: g),
+                (header: null, guide: null), // spacer after each group
+              ],
+            ];
 
-            return ListView(
+            return ListView.builder(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              children: [
-                for (final city in cities) ...[
-                  Padding(
+              itemCount: rows.length,
+              itemBuilder: (context, i) {
+                final row = rows[i];
+                if (row.header != null) {
+                  return Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                     child: Text(
-                      city,
+                      row.header!,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                     ),
-                  ),
-                  for (final g in byCity[city]!) _GuideListTile(guide: g),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
-              ],
+                  );
+                }
+                if (row.guide != null) {
+                  return _GuideListTile(guide: row.guide!);
+                }
+                return const SizedBox(height: AppSpacing.lg);
+              },
             );
           },
         ),

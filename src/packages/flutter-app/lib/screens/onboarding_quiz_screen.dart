@@ -9,6 +9,7 @@ import '../widgets/airport_field.dart';
 import '../widgets/choice_chip_row.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
+import '../utils/snack.dart';
 
 const _budgets = ['budget', 'mid', 'luxury'];
 const _paces = ['relaxed', 'balanced', 'packed'];
@@ -150,17 +151,14 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
     if (!ok) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save your answers — try again, or skip for now.')),
-      );
+      showSnack(
+          context, 'Could not save your answers — try again, or skip for now.');
       return;
     }
     if (widget.retake) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Travel profile updated')),
-      );
+      showSnack(context, 'Travel profile updated');
       return;
     }
     await ref.read(authProvider.notifier).completeOnboarding();

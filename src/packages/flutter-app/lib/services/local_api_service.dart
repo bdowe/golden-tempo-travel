@@ -12,13 +12,6 @@ class LocalApiService {
 
   LocalApiService(this.apiClient);
 
-  Map<String, String> _headers() {
-    final h = <String, String>{'Accept': 'application/json'};
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   // --- public reads ----------------------------------------------------------
 
   /// Published local recommendations for [city], optionally filtered by category.
@@ -32,7 +25,7 @@ class LocalApiService {
         if (category != null && category.isNotEmpty) 'category': category,
       },
     );
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['recommendations'] as List<dynamic>? ?? []);
@@ -55,7 +48,7 @@ class LocalApiService {
     if (city != null && city.trim().isNotEmpty) {
       uri = uri.replace(queryParameters: {'city': city.trim()});
     }
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['guides'] as List<dynamic>? ?? []);
@@ -76,7 +69,7 @@ class LocalApiService {
   Future<({LocalGuide guide, List<LocalRecommendation> recommendations})>
       guideById(String id) async {
     final uri = Uri.parse('${apiClient.baseUrl}/local/guides/$id');
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final recs = (body['recommendations'] as List<dynamic>? ?? [])
@@ -99,7 +92,7 @@ class LocalApiService {
   /// Lists the local sources (people) the curator can attribute content to.
   Future<List<Map<String, dynamic>>> listSources() async {
     final uri = Uri.parse('${apiClient.baseUrl}/admin/local/sources');
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list.cast<Map<String, dynamic>>();
@@ -117,7 +110,7 @@ class LocalApiService {
     final uri = Uri.parse('${apiClient.baseUrl}/admin/local/sources');
     final res = await apiClient.httpClient.post(
       uri,
-      headers: {..._headers(), 'Content-Type': 'application/json'},
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(fields),
     );
     if (res.statusCode == 201) {
@@ -141,7 +134,7 @@ class LocalApiService {
     final uri = Uri.parse('${apiClient.baseUrl}/admin/local/ingest');
     final res = await apiClient.httpClient.post(
       uri,
-      headers: {..._headers(), 'Content-Type': 'application/json'},
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({
         'source_id': sourceId,
         'city': city,
@@ -163,7 +156,7 @@ class LocalApiService {
   Future<List<Map<String, dynamic>>> listByStatus(String status) async {
     final uri = Uri.parse('${apiClient.baseUrl}/admin/local/recommendations')
         .replace(queryParameters: {'status': status});
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list.cast<Map<String, dynamic>>();
@@ -180,7 +173,7 @@ class LocalApiService {
   Future<void> publish(String id) async {
     final uri = Uri.parse(
         '${apiClient.baseUrl}/admin/local/recommendations/$id/publish');
-    final res = await apiClient.httpClient.post(uri, headers: _headers());
+    final res = await apiClient.httpClient.post(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode != 200) {
       throw ApiException(
         statusCode: res.statusCode,
@@ -193,7 +186,7 @@ class LocalApiService {
   /// Coverage: per-city published/draft/archived counts.
   Future<List<Map<String, dynamic>>> coverage() async {
     final uri = Uri.parse('${apiClient.baseUrl}/admin/local/coverage');
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list.cast<Map<String, dynamic>>();

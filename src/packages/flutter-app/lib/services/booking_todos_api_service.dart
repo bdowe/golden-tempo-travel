@@ -7,14 +7,6 @@ class BookingTodosApiService {
 
   BookingTodosApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   List<BookingTodo> _parseList(String body) {
     final list = jsonDecode(body) as List<dynamic>;
     return list
@@ -28,7 +20,7 @@ class BookingTodosApiService {
       String tripId, List<Map<String, dynamic>> derived) async {
     final res = await apiClient.httpClient.put(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(derived),
     );
     if (res.statusCode == 200) return _parseList(res.body);
@@ -38,7 +30,7 @@ class BookingTodosApiService {
   Future<BookingTodo> addTodo(String tripId, Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 201) {
@@ -51,7 +43,7 @@ class BookingTodosApiService {
       String tripId, String todoId, bool booked) async {
     final res = await apiClient.httpClient.patch(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos/$todoId'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({'booked': booked}),
     );
     if (res.statusCode == 200) {
@@ -63,7 +55,7 @@ class BookingTodosApiService {
   Future<void> delete(String tripId, String todoId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos/$todoId'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception('Failed to delete booking todo (${res.statusCode})');

@@ -5,6 +5,7 @@ import '../widgets/airport_field.dart';
 import '../widgets/choice_chip_row.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../providers/preferences_provider.dart';
+import '../utils/snack.dart';
 
 const _budgets = ['budget', 'mid', 'luxury'];
 const _paces = ['relaxed', 'balanced', 'packed'];
@@ -77,9 +78,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           profileNotes: _notesController.text.trim(),
         );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Preferences saved' : 'Could not save preferences')),
-    );
+    showSnack(context, ok ? 'Preferences saved' : 'Could not save preferences');
   }
 
   @override

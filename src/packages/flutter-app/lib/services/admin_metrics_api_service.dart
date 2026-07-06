@@ -10,13 +10,9 @@ class AdminMetricsApiService {
   AdminMetricsApiService(this.apiClient);
 
   Future<AdminMetrics> fetch({int days = 30}) async {
-    final token = apiClient.authToken;
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/admin/metrics?days=$days'),
-      headers: {
-        'Accept': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode == 200) {
       return AdminMetrics.fromJson(jsonDecode(res.body));

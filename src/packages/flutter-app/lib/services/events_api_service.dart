@@ -11,13 +11,6 @@ class EventsApiService {
 
   EventsApiService(this.apiClient);
 
-  Map<String, String> _headers() {
-    final h = <String, String>{'Accept': 'application/json'};
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   /// Looks up events in [city] between [startDate] and [endDate] (YYYY-MM-DD).
   Future<List<Event>> searchEvents(
     String city,
@@ -33,7 +26,7 @@ class EventsApiService {
         if (category != null && category.isNotEmpty) 'category': category,
       },
     );
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['events'] as List<dynamic>? ?? []);
@@ -63,7 +56,7 @@ class EventsApiService {
         'end_date': endDate,
       },
     );
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['links'] as List<dynamic>? ?? []);

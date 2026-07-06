@@ -9,15 +9,6 @@ class AccountApiService {
 
   AccountApiService(this.apiClient);
 
-  Map<String, String> _headers() {
-    final token = apiClient.authToken;
-    return {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
-
   String _message(String body, int status) {
     try {
       final decoded = jsonDecode(body);
@@ -31,7 +22,7 @@ class AccountApiService {
   Future<UserModel> updateDisplayName(String displayName) async {
     final res = await apiClient.httpClient.patch(
       Uri.parse('${apiClient.baseUrl}/auth/account'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({'display_name': displayName}),
     );
     if (res.statusCode == 200) {
@@ -46,7 +37,7 @@ class AccountApiService {
       String current, String newPassword) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/auth/change-password'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({
         'current_password': current,
         'new_password': newPassword,
@@ -65,7 +56,7 @@ class AccountApiService {
   Future<void> logoutAll() async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/auth/logout-all'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(json: true),
     );
     if (res.statusCode != 204) {
       throw Exception(_message(res.body, res.statusCode));
@@ -75,7 +66,7 @@ class AccountApiService {
   Future<void> deleteAccount(String password) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/auth/account'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({'password': password}),
     );
     if (res.statusCode != 204) {
