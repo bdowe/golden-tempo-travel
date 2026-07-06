@@ -6,7 +6,9 @@
 # not an image rebuild.
 #
 # Runs from /opt/goldentempo/ on the VPS with a .env file next to it
-# (secrets/env plumbing is intentionally minimal here — see PR A2).
+# (copy .env.sample in this directory and fill it in). Compose reads that
+# same .env automatically for ${...} interpolation, so POSTGRES_PASSWORD /
+# IMAGE_TAG below and the api's env_file all come from one file.
 services:
   chrome:
     image: chromedp/headless-shell:latest
@@ -19,13 +21,20 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    # .env provides POSTGRES_PASSWORD (must match the DATABASE_URL the api
-    # receives from the same .env).
-    env_file:
-      - .env
+    # No env_file here on purpose: postgres only needs its own three vars,
+    # not the API keys and SMTP credentials the rest of .env carries.
+    # POSTGRES_PASSWORD is interpolated from the same .env (compose loads it
+    # automatically) with NO default — `docker compose config/up` fails fast
+    # with a clear error instead of booting a database with a known password.
+    # The api's DATABASE_URL below is composed from the same variable, so the
+    # two can never drift.
     environment:
       POSTGRES_USER: travel
       POSTGRES_DB: travel_planner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    # No `ports:` on purpose — 5432 must stay unpublished. The database is
+    # reachable only from containers on the private compose bridge network,
+    # which is also why sslmode=disable on the api's DATABASE_URL is safe.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,11 +50,29 @@ services:
     image: ghcr.io/bdowe/goldentempo-api:${IMAGE_TAG:-latest}
     expose:
       - "8080"
+    # All runtime config reaches the api via env_file passthrough from .env:
+    # provider keys (GOOGLE_PLACES_API_KEY, ANTHROPIC_API_KEY,
+    # DUFFEL_ACCESS_TOKEN, TICKETMASTER_API_KEY, FERRYHOPPER_AFFILIATE_ID,
+    # BOOKING_AFFILIATE_ID), SMTP_*, PUBLIC_BASE_URL / PUBLIC_APP_PATH,
+    # SENTRY_DSN / SENTRY_RELEASE, ALLOWED_ORIGINS, ALERT_* / FREE_* tuning.
+    # See .env.sample in this directory for the full annotated inventory.
+    # The `environment:` block holds only values that are composed or pinned
+    # by the stack itself; compose gives `environment:` precedence over
+    # env_file, so anything stale in .env (e.g. a localhost DATABASE_URL)
+    # cannot leak in.
     env_file:
       - .env
     environment:
       - GO_ENV=production
       - CHROME_WS_URL=ws://chrome:9222/
+      # Composed from the same POSTGRES_PASSWORD the postgres service boots
+      # with, so credentials cannot drift between the two services.
+      # sslmode=disable is acceptable here — and only here — because the
+      # connection never leaves the host: postgres publishes no host port
+      # (no `ports:` above, keep it that way) and both containers sit on the
+      # same private compose bridge network. TLS would only encrypt
+      # loopback-equivalent traffic between two containers on one machine.
+      - DATABASE_URL=postgres://travel:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/travel_planner?sslmode=disable
     depends_on:
       chrome:
         condition: service_started
