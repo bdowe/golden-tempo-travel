@@ -12,6 +12,7 @@ Cloudflare edge IPs.
 /opt/goldentempo/
 ├── docker-compose.yml        # this directory's compose file
 ├── .env                      # secrets: API keys, POSTGRES_PASSWORD, DATABASE_URL (PR A2)
+├── .image_tag                # IMAGE_TAG=<sha> of the live deploy (written by CI)
 ├── nginx/
 │   ├── prod.conf             # TLS server blocks (mounted over conf.d/default.conf)
 │   └── cloudflare-realip.conf# CF ranges + real_ip_header (mounted into conf.d/)
@@ -63,13 +64,28 @@ from <https://www.cloudflare.com/ips/> and reload the gateway.
 
 ## Deploy / rollback
 
-```bash
-# Deploy a new build (images published by CI as :latest and :<sha>)
-cd /opt/goldentempo
-IMAGE_TAG=<sha> docker compose pull && IMAGE_TAG=<sha> docker compose up -d
+**Normal path is hands-off:** every green push to `main` builds + pushes
+both images to GHCR (`:latest` and `:<sha>`) and the CI `deploy` job
+rsyncs this directory to `/opt/goldentempo/` and restarts the stack with
+`IMAGE_TAG=<sha>`. It also writes the live tag to
+`/opt/goldentempo/.image_tag` so manual restarts don't fall back to
+`:latest`. (Until the `DEPLOY_HOST` / `DEPLOY_SSH_KEY` /
+`DEPLOY_KNOWN_HOSTS` secrets exist, the deploy job self-skips with a
+notice.)
 
-# Rollback: same command with the previous sha
-IMAGE_TAG=<previous-sha> docker compose pull && IMAGE_TAG=<previous-sha> docker compose up -d
+**Rollback** = re-deploy an older image: GitHub → Actions → CI →
+*Run workflow* on `main` with `image_tag` set to the git SHA of a previous
+green main build. Manual fallback on the server:
+
+```bash
+cd /opt/goldentempo
+
+# Restart whatever is currently deployed (reads .image_tag written by CI)
+set -a; . ./.image_tag; set +a
+docker compose pull && docker compose up -d
+
+# Deploy/rollback a specific build by hand
+IMAGE_TAG=<sha> docker compose pull && IMAGE_TAG=<sha> docker compose up -d
 
 # Config-only change (no new images)
 docker compose up -d --force-recreate gateway
