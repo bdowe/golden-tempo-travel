@@ -111,3 +111,120 @@ func TestDedupBySchedulePreservesOrderAndKeepsCheapest(t *testing.T) {
 		t.Errorf("expected b-other preserved in second slot, got %q", got[1].ID)
 	}
 }
+
+// roundTrip extends offer() with a return slice: retLegs segments (return
+// stops = retLegs-1) and a return duration. Top-level fields stay
+// outbound-based, mirroring how duffel_service.go builds round-trip offers.
+func roundTrip(id string, price float64, from, to, dep, arr string, dur, stops, retDur, retLegs int) FlightOffer {
+	o := offer(id, price, from, to, dep, arr, dur, stops)
+	o.ReturnDurationMin = retDur
+	for i := 0; i < retLegs; i++ {
+		o.ReturnSegments = append(o.ReturnSegments, FlightLeg{From: to, To: from})
+	}
+	return o
+}
+
+// Round-trip "time" ranking must use TOTAL duration (outbound + return), not
+// outbound alone: a fast-outbound/slow-return offer with the larger total must
+// lose to a slow-outbound/fast-return offer with the smaller total.
+func TestRankRoundTripTimeUsesTotalDuration(t *testing.T) {
+	in := []FlightOffer{
+		// Fast outbound (300) but slow return (600): total 900. Outbound-only
+		// ranking would put this first.
+		roundTrip("fast-out", 400, "JFK", "CDG", "T1", "T2", 300, 0, 600, 1),
+		// Slow outbound (500) but fast return (200): total 700 — the real winner.
+		roundTrip("fast-total", 400, "JFK", "CDG", "T3", "T4", 500, 0, 200, 1),
+	}
+	got := RankFlightOffers(in, "time")
+	if got[0].ID != "fast-total" {
+		t.Fatalf("time ranking should pick the smaller TOTAL duration (fast-total), got %q first", got[0].ID)
+	}
+	// Score fields must reflect totals: 700 beats 900.
+	if got[0].DurationScore <= got[1].DurationScore {
+		t.Errorf("expected fast-total DurationScore (%v) > fast-out (%v)", got[0].DurationScore, got[1].DurationScore)
+	}
+	// Displayed per-slice fields must be untouched by ranking.
+	if got[0].DurationMin != 500 || got[0].ReturnDurationMin != 200 {
+		t.Errorf("displayed durations changed: outbound=%d return=%d", got[0].DurationMin, got[0].ReturnDurationMin)
+	}
+}
+
+// Round-trip stops scoring counts return-slice stops (len(ReturnSegments)-1):
+// a nonstop outbound with a 2-stop return (total 2) must lose to a 1-stop
+// outbound with a nonstop return (total 1) when durations and price are equal.
+func TestRankRoundTripStopsUseTotalStops(t *testing.T) {
+	in := []FlightOffer{
+		roundTrip("nonstop-out-2stop-back", 400, "JFK", "CDG", "T1", "T2", 480, 0, 480, 3),
+		roundTrip("1stop-out-nonstop-back", 400, "JFK", "CDG", "T3", "T4", 480, 1, 480, 1),
+	}
+	got := RankFlightOffers(in, "balanced")
+	if got[0].ID != "1stop-out-nonstop-back" {
+		t.Fatalf("balanced ranking should pick the lower TOTAL stops, got %q first", got[0].ID)
+	}
+	if got[0].StopsScore <= got[1].StopsScore {
+		t.Errorf("expected total-stops=1 StopsScore (%v) > total-stops=2 (%v)", got[0].StopsScore, got[1].StopsScore)
+	}
+	// Displayed outbound stop counts stay per-slice.
+	if got[0].Stops != 1 || got[1].Stops != 0 {
+		t.Errorf("displayed outbound stops changed: got %d and %d", got[0].Stops, got[1].Stops)
+	}
+}
+
+// One-way scoring is byte-identical to the pre-round-trip behavior: with no
+// return slice, scoringDuration/scoringStops reduce to the outbound fields.
+// Pin exact scores on a known one-way fixture so any drift is caught.
+func TestRankOneWayScoringUnchanged(t *testing.T) {
+	in := []FlightOffer{
+		offer("slow-cheap", 200, "JFK", "CDG", "T1", "T2", 600, 1),
+		offer("fast-pricey", 400, "JFK", "ORY", "T3", "T4", 400, 0),
+	}
+	got := RankFlightOffers(in, "time")
+	if got[0].ID != "fast-pricey" {
+		t.Fatalf("time preset should favor the faster one-way, got %q first", got[0].ID)
+	}
+	// fast-pricey: price 10->0, duration 10, stops 10 => 0*0.15 + 10*0.60 + 10*0.25 = 8.5
+	if got[0].Score != 8.5 {
+		t.Errorf("expected fast-pricey score 8.5, got %v", got[0].Score)
+	}
+	// slow-cheap: price 10, duration 0, stops 0 => 10*0.15 = 1.5
+	if got[1].Score != 1.5 {
+		t.Errorf("expected slow-cheap score 1.5, got %v", got[1].Score)
+	}
+}
+
+// Mixed one-way/round-trip lists compare TOTALS as-is: a one-way's total is
+// just its outbound, so a round-trip offer with more total flown time scores
+// below a one-way with less — no per-slice averaging or trip-type buckets.
+func TestRankMixedOneWayAndRoundTripComparesTotals(t *testing.T) {
+	in := []FlightOffer{
+		// One-way: total 500, 0 stops.
+		offer("oneway", 300, "JFK", "CDG", "T1", "T2", 500, 0),
+		// Round-trip: outbound 400 (faster than the one-way's outbound!) but
+		// total 800 with 1 total stop.
+		roundTrip("roundtrip", 300, "JFK", "CDG", "T3", "T4", 400, 0, 400, 2),
+	}
+	got := RankFlightOffers(in, "time")
+	if got[0].ID != "oneway" {
+		t.Fatalf("expected the smaller-total one-way to rank first, got %q", got[0].ID)
+	}
+	if got[0].DurationScore != 10.0 || got[1].DurationScore != 0.0 {
+		t.Errorf("expected totals 500 vs 800 to score 10 vs 0, got %v and %v", got[0].DurationScore, got[1].DurationScore)
+	}
+	if got[0].StopsScore != 10.0 || got[1].StopsScore != 0.0 {
+		t.Errorf("expected total stops 0 vs 1 to score 10 vs 0, got %v and %v", got[0].StopsScore, got[1].StopsScore)
+	}
+}
+
+// cost ranking is unaffected by the round-trip totals change: total_amount
+// already prices both slices, so price weighting alone decides equal-price
+// factors the same way it did before.
+func TestRankRoundTripCostStillPriceDriven(t *testing.T) {
+	in := []FlightOffer{
+		roundTrip("cheap-slow", 200, "JFK", "CDG", "T1", "T2", 500, 1, 500, 2),
+		roundTrip("pricey-fast", 900, "JFK", "CDG", "T3", "T4", 300, 0, 300, 1),
+	}
+	got := RankFlightOffers(in, "cost")
+	if got[0].ID != "cheap-slow" {
+		t.Fatalf("cost preset should still favor the cheaper round-trip, got %q first", got[0].ID)
+	}
+}

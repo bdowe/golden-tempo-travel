@@ -40,6 +40,29 @@ func invScore(value, min, max float64) float64 {
 	return (max - value) / (max - min) * 10.0
 }
 
+// scoringDuration is the duration an offer is *ranked* on: the trip total
+// (outbound + return). For one-way offers ReturnDurationMin is zero, so this
+// is exactly the outbound duration and one-way scoring is unchanged. The
+// displayed per-slice fields (DurationMin, Stops, times) are never touched —
+// only the score inputs consider the return slice. In mixed one-way/round-trip
+// lists the totals are compared as-is: a one-way's total is its outbound, so a
+// round-trip offer is naturally (and correctly) penalized for the extra flown
+// time relative to a one-way in the same result set.
+func scoringDuration(o FlightOffer) float64 {
+	return float64(o.DurationMin + o.ReturnDurationMin)
+}
+
+// scoringStops is the stop count an offer is ranked on: outbound stops plus
+// return stops (derived as len(ReturnSegments)-1; a nonstop return slice has
+// one segment). Zero return segments means one-way, adding nothing.
+func scoringStops(o FlightOffer) float64 {
+	stops := o.Stops
+	if n := len(o.ReturnSegments); n > 1 {
+		stops += n - 1
+	}
+	return float64(stops)
+}
+
 // scheduleSignature identifies an offer at the level a traveler perceives it on
 // a summary card: origin, final destination, overall departure/arrival times,
 // and the ordered list of connecting airports. Offers that share a signature
@@ -90,6 +113,9 @@ func dedupBySchedule(offers []FlightOffer) []FlightOffer {
 // then scores each remaining offer on price, duration, and stops (each
 // normalized to 0-10 across the result set, lower being better), combines them
 // using the preset weights, and returns the offers sorted by descending score.
+// Round-trip offers are scored on trip TOTALS — duration and stops across both
+// slices (price already totals both) — while one-way scoring and the displayed
+// per-slice fields are unchanged; see scoringDuration/scoringStops.
 // The *_score and Score fields on each offer are populated in place.
 func RankFlightOffers(offers []FlightOffer, optimizeFor string) []FlightOffer {
 	if len(offers) == 0 {
@@ -105,15 +131,15 @@ func RankFlightOffers(offers []FlightOffer, optimizeFor string) []FlightOffer {
 	minStops, maxStops := math.Inf(1), math.Inf(-1)
 	for _, o := range offers {
 		minPrice, maxPrice = math.Min(minPrice, o.Price), math.Max(maxPrice, o.Price)
-		minDur, maxDur = math.Min(minDur, float64(o.DurationMin)), math.Max(maxDur, float64(o.DurationMin))
-		minStops, maxStops = math.Min(minStops, float64(o.Stops)), math.Max(maxStops, float64(o.Stops))
+		minDur, maxDur = math.Min(minDur, scoringDuration(o)), math.Max(maxDur, scoringDuration(o))
+		minStops, maxStops = math.Min(minStops, scoringStops(o)), math.Max(maxStops, scoringStops(o))
 	}
 
 	for i := range offers {
 		o := &offers[i]
 		o.PriceScore = round2(invScore(o.Price, minPrice, maxPrice))
-		o.DurationScore = round2(invScore(float64(o.DurationMin), minDur, maxDur))
-		o.StopsScore = round2(invScore(float64(o.Stops), minStops, maxStops))
+		o.DurationScore = round2(invScore(scoringDuration(*o), minDur, maxDur))
+		o.StopsScore = round2(invScore(scoringStops(*o), minStops, maxStops))
 		o.Score = round2(o.PriceScore*w.price + o.DurationScore*w.duration + o.StopsScore*w.stops)
 	}
 
