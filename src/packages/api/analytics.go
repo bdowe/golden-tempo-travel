@@ -101,7 +101,22 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// MetricsResponse is the Phase 1 dashboard-in-an-endpoint.
+// Claude pricing used for the dashboard's COGS estimates (USD per million
+// tokens), pinned to the model plan_handler.go actually calls. If the /plan
+// model changes, update this block in the same commit. The resulting est_*
+// fields cover Claude spend ONLY — Google Places (and other provider) calls
+// are not metered yet (deferred, per specs/instrumentation-events).
+const (
+	planCostModelID              = "claude-sonnet-4-6"
+	planCostInputUSDPerMTok      = 3.00
+	planCostOutputUSDPerMTok     = 15.00
+	planCostCacheWriteUSDPerMTok = 3.75 // 5-minute-TTL cache write (1.25x input)
+	planCostCacheReadUSDPerMTok  = 0.30 // cache read (0.1x input)
+)
+
+// MetricsResponse is the Phase 1 dashboard-in-an-endpoint, keyed to the
+// questions in docs/business-model.md §8 (activation, second-trip retention,
+// attach rate, COGS per active user, cap-hit rate).
 type MetricsResponse struct {
 	Days                  int              `json:"days"`
 	Signups               int64            `json:"signups"`
@@ -115,16 +130,36 @@ type MetricsResponse struct {
 	BookingClicks         int64            `json:"booking_clicks"`
 	ClicksByProvider      map[string]int64 `json:"clicks_by_provider"`
 	TodosMarkedBooked     int64            `json:"todos_marked_booked"`
-	ReturningUsers        int64            `json:"returning_users"`
-	PlanSessions          int64            `json:"plan_sessions"`
-	PlanSessionsAnonymous int64            `json:"plan_sessions_anonymous"`
-	PlanCapHits           int64            `json:"plan_cap_hits"`
-	PlanInputTokens       int64            `json:"plan_input_tokens"`
-	PlanOutputTokens      int64            `json:"plan_output_tokens"`
-	PlanCacheReadTokens   int64            `json:"plan_cache_read_tokens"`
-	PlanCacheCreateTokens int64            `json:"plan_cache_creation_tokens"`
-	AlertsCreated         int64            `json:"alerts_created"`
-	AlertsTriggered       int64            `json:"alerts_triggered"`
+	// SecondTripRetention answers the business model's actual retention
+	// question: users who created >= 2 trips at least 7 days apart in the
+	// window (the Phase 3 "retention proven across >= 2 trips" trigger).
+	SecondTripRetention int64 `json:"second_trip_retention"`
+	// SessionFrequencyReturning is the old "returning users" number — plan
+	// sessions on >= 2 distinct days. Kept as a session-frequency signal;
+	// it is NOT trip retention (hence the rename from returning_users).
+	SessionFrequencyReturning int64 `json:"session_frequency_returning"`
+	// ActiveUsers is MAU within the window: distinct signed-in users with
+	// >= 1 plan_session_started. The COGS-per-user denominator.
+	ActiveUsers           int64 `json:"active_users"`
+	PlanSessions          int64 `json:"plan_sessions"`
+	PlanSessionsAnonymous int64 `json:"plan_sessions_anonymous"`
+	// AgentLoopCapHits counts sessions whose agent loop hit the
+	// max-iterations safety cap (metadata max_iterations_hit) — a
+	// runaway-loop signal, not free-tier pressure. Formerly plan_cap_hits.
+	AgentLoopCapHits      int64 `json:"agent_loop_cap_hits"`
+	PlanInputTokens       int64 `json:"plan_input_tokens"`
+	PlanOutputTokens      int64 `json:"plan_output_tokens"`
+	PlanCacheReadTokens   int64 `json:"plan_cache_read_tokens"`
+	PlanCacheCreateTokens int64 `json:"plan_cache_creation_tokens"`
+	// EstClaudeCostUSD / EstCogsPerActiveUser are ESTIMATES covering Claude
+	// spend only, from the planCost* pricing constants (Places calls are
+	// not counted — deferred). EstCostModel names the model whose pricing
+	// produced them, so the number is self-describing.
+	EstCostModel         string  `json:"est_cost_model"`
+	EstClaudeCostUSD     float64 `json:"est_claude_cost_usd"`
+	EstCogsPerActiveUser float64 `json:"est_cogs_per_active_user"`
+	AlertsCreated        int64   `json:"alerts_created"`
+	AlertsTriggered      int64   `json:"alerts_triggered"`
 }
 
 // adminMetricsHandler is GET /api/v1/admin/metrics?days= (admin only; gated
@@ -142,26 +177,26 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := store.New(dbPool)
 
-	count := func(eventType string) int64 {
-		n, err := q.CountEventsByType(ctx, store.CountEventsByTypeParams{
-			EventType: eventType, CreatedAt: since,
-		})
-		if err != nil {
-			log.Printf("metrics: count %s: %v", eventType, err)
+	// One GROUP BY round trip replaces the previous per-type count queries.
+	counts := map[string]int64{}
+	if rows, err := q.CountEventsByTypeGrouped(ctx, since); err == nil {
+		for _, row := range rows {
+			counts[row.EventType] = row.N
 		}
-		return n
+	} else {
+		log.Printf("metrics: grouped counts: %v", err)
 	}
 
 	resp := MetricsResponse{
 		Days:                 days,
-		Signups:              count("user_registered"),
-		OnboardingsCompleted: count("onboarding_completed"),
-		TripsCreated:         count("trip_created"),
-		TripsRefined:         count("trip_refined"),
-		BookingClicks:        count("booking_link_clicked"),
-		TodosMarkedBooked:    count("booking_marked_booked"),
-		AlertsCreated:        count("alert_created"),
-		AlertsTriggered:      count("alert_triggered"),
+		Signups:              counts["user_registered"],
+		OnboardingsCompleted: counts["onboarding_completed"],
+		TripsCreated:         counts["trip_created"],
+		TripsRefined:         counts["trip_refined"],
+		BookingClicks:        counts["booking_link_clicked"],
+		TodosMarkedBooked:    counts["booking_marked_booked"],
+		AlertsCreated:        counts["alert_created"],
+		AlertsTriggered:      counts["alert_triggered"],
 		ClicksByProvider:     map[string]int64{},
 	}
 	if n, err := q.CountActivatedSignups(ctx, since); err == nil {
@@ -183,19 +218,28 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if totals, err := q.PlanSessionTotals(ctx, since); err == nil {
 		resp.PlanSessions = totals.Sessions
+		resp.PlanSessionsAnonymous = totals.AnonymousSessions
+		resp.AgentLoopCapHits = totals.AgentLoopCapHits
 		resp.PlanInputTokens = totals.InputTokens
 		resp.PlanOutputTokens = totals.OutputTokens
 		resp.PlanCacheReadTokens = totals.CacheReadTokens
 		resp.PlanCacheCreateTokens = totals.CacheCreationTokens
 	}
-	if n, err := q.CountAnonymousPlanSessions(ctx, since); err == nil {
-		resp.PlanSessionsAnonymous = n
+	if eng, err := q.UserEngagementCounts(ctx, since); err == nil {
+		resp.ActiveUsers = eng.ActiveUsers
+		resp.SessionFrequencyReturning = eng.SessionFrequencyReturning
+		resp.SecondTripRetention = eng.SecondTripRetention
 	}
-	if n, err := q.CountPlanCapHits(ctx, since); err == nil {
-		resp.PlanCapHits = n
-	}
-	if n, err := q.CountReturningUsers(ctx, since); err == nil {
-		resp.ReturningUsers = n
+	// Estimated Claude spend for the window (Claude only; Places not
+	// counted). input_tokens is the uncached remainder — cache reads and
+	// writes are billed separately at their own rates.
+	resp.EstCostModel = planCostModelID
+	resp.EstClaudeCostUSD = (float64(resp.PlanInputTokens)*planCostInputUSDPerMTok +
+		float64(resp.PlanOutputTokens)*planCostOutputUSDPerMTok +
+		float64(resp.PlanCacheCreateTokens)*planCostCacheWriteUSDPerMTok +
+		float64(resp.PlanCacheReadTokens)*planCostCacheReadUSDPerMTok) / 1e6
+	if resp.ActiveUsers > 0 {
+		resp.EstCogsPerActiveUser = resp.EstClaudeCostUSD / float64(resp.ActiveUsers)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
