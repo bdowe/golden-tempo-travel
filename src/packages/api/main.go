@@ -653,7 +653,17 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/items/order", authMiddleware(http.HandlerFunc(reorderItineraryItemsHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(patchItineraryItemHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/items/{itemId}", authMiddleware(http.HandlerFunc(deleteItineraryItemHandler))).Methods("DELETE")
-	api.Handle("/events", authMiddleware(http.HandlerFunc(recordClientEventHandler))).Methods("POST")
+	// Client analytics events. Two registrations, matched in order: a request
+	// presenting ANY Authorization header takes the authenticated route
+	// (token validated + attributed by authMiddleware — an invalid token is a
+	// 401, never a silent downgrade to anonymous); a request without
+	// credentials falls through to the anonymous route, which accepts only
+	// the tiny anonymousClientEventTypes whitelist, always drops trip_id, and
+	// sits behind the strict limiter to bound spam writes (it is an
+	// unauthenticated INSERT surface).
+	api.Handle("/events", authMiddleware(http.HandlerFunc(recordClientEventHandler))).
+		Methods("POST").HeadersRegexp("Authorization", ".+")
+	api.Handle("/events", strict(http.HandlerFunc(recordAnonymousClientEventHandler))).Methods("POST")
 	// Price alerts (specs/price-alerts): creation is strict-tier (each alert
 	// commits the server to recurring provider searches).
 	api.Handle("/alerts", strict(authMiddleware(http.HandlerFunc(createPriceAlertHandler)))).Methods("POST")

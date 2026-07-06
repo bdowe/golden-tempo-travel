@@ -39,6 +39,9 @@ class _RecordingAnalytics implements AnalyticsApiService {
   ApiClient get apiClient => throw UnimplementedError();
 
   @override
+  Future<void> recordLandingViewed() => Future.value();
+
+  @override
   Future<void> recordBookingLinkClicked({
     String? tripId,
     String? todoKey,

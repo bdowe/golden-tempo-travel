@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import '../providers/analytics_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../widgets/brand_logo.dart';
@@ -12,8 +14,42 @@ import 'auth_screen.dart';
 /// showcases the core features, then funnels into the existing auth form:
 /// "Get started" opens sign-up, "Sign in" opens login. On success the AuthGate
 /// swaps this screen for the app automatically.
-class LandingScreen extends StatelessWidget {
+///
+/// Rendering this screen records the anonymous `landing_viewed` analytics
+/// event — the top of the activation funnel — at most once per app session
+/// (guarded by a static, so rebuilds and sign-out round trips don't
+/// re-record).
+class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
+
+  /// True once this app session has recorded `landing_viewed`.
+  static bool _viewRecorded = false;
+
+  /// Resets the once-per-session guard so widget tests can assert on it.
+  @visibleForTesting
+  static void resetViewRecordedForTest() => _viewRecorded = false;
+
+  @override
+  State<LandingScreen> createState() => _LandingScreenState();
+}
+
+class _LandingScreenState extends State<LandingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    if (!LandingScreen._viewRecorded) {
+      LandingScreen._viewRecorded = true;
+      try {
+        // Fire-and-forget; listen: false is safe in initState. A widget tree
+        // without a ProviderScope must never break the landing page.
+        ProviderScope.containerOf(context, listen: false)
+            .read(analyticsApiServiceProvider)
+            .recordLandingViewed();
+      } catch (_) {
+        // Tracking must never affect the visitor's experience.
+      }
+    }
+  }
 
   static void _openAuth(BuildContext context, {required bool isLogin}) {
     Navigator.of(context).push(
