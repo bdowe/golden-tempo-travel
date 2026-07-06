@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/legal_links.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   /// Whether the form opens in sign-in (true) or create-account (false) mode.
@@ -159,6 +160,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           )
                         : Text(_isLogin ? 'Sign in' : 'Create account'),
                   ),
+                  if (!_isLogin) ...[
+                    const SizedBox(height: 12),
+                    const LegalAgreementText(),
+                  ],
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: auth.loading ? null : _toggleMode,

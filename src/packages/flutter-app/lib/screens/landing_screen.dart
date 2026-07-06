@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/legal_links.dart';
 import '../widgets/page_container.dart';
 import 'auth_screen.dart';
 
@@ -108,11 +109,50 @@ class LandingScreen extends StatelessWidget {
                 ),
 
                 const SizedBox(height: AppSpacing.lg),
+
+                const _LandingFooter(),
+
+                const SizedBox(height: AppSpacing.lg),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Footer: legal links + company line, so the policy pages are reachable
+/// before sign-up (affiliate programs require a discoverable privacy policy).
+class _LandingFooter extends StatelessWidget {
+  const _LandingFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    return Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpacing.sm,
+          children: [
+            TextButton(
+              onPressed: openPrivacyPolicy,
+              child: const Text('Privacy Policy'),
+            ),
+            Text('·', style: muted),
+            TextButton(
+              onPressed: openTermsOfService,
+              child: const Text('Terms of Service'),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text('© 2026 Golden Tempo LLC', style: muted),
+      ],
     );
   }
 }
