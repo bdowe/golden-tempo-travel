@@ -103,7 +103,6 @@ func TestClientEventOwnTripIDIsKept(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 // itinerary_item_added (specs/add-to-itinerary): accepted as a client event,
 // with metadata "source" constrained to the closed value set the dashboard
 // groups on — anything else is dropped, never stored.
@@ -162,7 +161,6 @@ func TestClientEventItineraryItemAdded(t *testing.T) {
 	}
 }
 
-=======
 // --- anonymous top-of-funnel events (Wave 8) ---
 
 // countAnonymousEvents counts rows with a NULL user_id for one event type.
@@ -332,7 +330,6 @@ func TestAuthedEventsNotOnStrictTier(t *testing.T) {
 	waitForEventCount(t, user.ID, "booking_link_clicked", 10)
 }
 
->>>>>>> origin/main
 func TestClientEventMetadataSanitized(t *testing.T) {
 	resetDB(t)
 	user, token := createTestUser(t, "meta-abuser@example.com")
