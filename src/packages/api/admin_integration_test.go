@@ -44,6 +44,39 @@ func TestAdminMetricsForAdmin(t *testing.T) {
 	if body["days"] != float64(7) {
 		t.Fatalf("days = %v, want 7", body["days"])
 	}
+
+	// The process-lifetime provider counters must always be present (they
+	// come off in-process singletons, not the DB) under names that say they
+	// are NOT window-scoped. Values depend on what earlier tests did to the
+	// shared singletons, so assert shape + non-negativity, not exact counts.
+	places, ok := body["places_calls_since_process_start"].(map[string]any)
+	if !ok {
+		t.Fatalf("places_calls_since_process_start missing or not an object: %v", body["places_calls_since_process_start"])
+	}
+	for _, class := range []string{"search", "autocomplete", "details"} {
+		c, ok := places[class].(map[string]any)
+		if !ok {
+			t.Fatalf("places_calls_since_process_start.%s missing: %v", class, places[class])
+		}
+		for _, field := range []string{"upstream", "cache_hits"} {
+			n, ok := c[field].(float64)
+			if !ok || n < 0 {
+				t.Fatalf("places %s.%s = %v, want non-negative number", class, field, c[field])
+			}
+		}
+	}
+	if cost, ok := places["est_places_cost_usd"].(float64); !ok || cost < 0 {
+		t.Fatalf("est_places_cost_usd = %v, want non-negative number", places["est_places_cost_usd"])
+	}
+	events, ok := body["events_calls_since_process_start"].(map[string]any)
+	if !ok {
+		t.Fatalf("events_calls_since_process_start missing or not an object: %v", body["events_calls_since_process_start"])
+	}
+	for _, field := range []string{"upstream", "cache_hits"} {
+		if n, ok := events[field].(float64); !ok || n < 0 {
+			t.Fatalf("events %s = %v, want non-negative number", field, events[field])
+		}
+	}
 }
 
 // insertEvent writes an analytics event with an explicit created_at so tests

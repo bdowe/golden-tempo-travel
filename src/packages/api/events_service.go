@@ -28,6 +28,12 @@ type EventsService struct {
 	// searches within the TTL are served from memory (same pattern as the
 	// Duffel airport cache). Short TTL: event inventory shifts.
 	cache *ttlCache[[]Event]
+
+	// Process-lifetime upstream-vs-cache-hit counters (reset on restart,
+	// atomic — see upstreamCallCounters in places_service.go). No cost
+	// estimate: the Ticketmaster key is free tier; this is quota/cache
+	// visibility only.
+	calls upstreamCallCounters
 }
 
 // Event is a normalized local event (concert, sport, festival, show) used by
@@ -104,6 +110,7 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 	}
 	cacheKey := strings.ToLower(strings.TrimSpace(city)) + "|" + strings.TrimSpace(startDate) + "|" + strings.TrimSpace(endDate) + "|" + cat
 	if cached, ok := s.cache.get(cacheKey); ok {
+		s.calls.cacheHits.Add(1)
 		return cached, nil
 	}
 
@@ -129,6 +136,7 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 	}
 	req.Header.Set("Accept", "application/json")
 
+	s.calls.upstream.Add(1)
 	resp, err := s.Client.Do(req)
 	if err != nil {
 		// redactTransportError: a *url.Error would embed the request URL,

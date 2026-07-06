@@ -233,8 +233,9 @@ func recordAnonymousClientEventHandler(w http.ResponseWriter, r *http.Request) {
 // Claude pricing used for the dashboard's COGS estimates (USD per million
 // tokens), pinned to the model plan_handler.go actually calls. If the /plan
 // model changes, update this block in the same commit. The resulting est_*
-// fields cover Claude spend ONLY — Google Places (and other provider) calls
-// are not metered yet (deferred, per specs/instrumentation-events).
+// fields cover Claude spend ONLY — Google Places spend is estimated
+// separately from the process-lifetime counters below (a different, non-
+// window-scoped basis, so the two estimates are never summed).
 const (
 	planCostModelID              = "claude-sonnet-4-6"
 	planCostInputUSDPerMTok      = 3.00
@@ -242,6 +243,51 @@ const (
 	planCostCacheWriteUSDPerMTok = 3.75 // 5-minute-TTL cache write (1.25x input)
 	planCostCacheReadUSDPerMTok  = 0.30 // cache read (0.1x input)
 )
+
+// Google Places pricing used for est_places_cost_usd, in USD per call.
+// Source: Google Maps Platform pricing table
+// (https://developers.google.com/maps/billing-and-pricing/pricing), list
+// prices for the legacy Places API endpoints places_service.go calls:
+//   - Text Search:            $32 / 1000 requests
+//   - Autocomplete (per-req): $2.83 / 1000 requests (no session tokens used)
+//   - Place Details:          $17 / 1000 requests (contact+atmosphere fields)
+//
+// ESTIMATES ONLY: actual billing varies with field masks, session tokens,
+// volume tiers, and the monthly free credit. Update alongside any endpoint
+// or field-mask change in places_service.go.
+const (
+	placesCostSearchUSDPerCall       = 32.0 / 1000
+	placesCostAutocompleteUSDPerCall = 2.83 / 1000
+	placesCostDetailsUSDPerCall      = 17.0 / 1000
+)
+
+// PlacesCallsSnapshot is the places_calls_since_process_start object: per-
+// endpoint-class upstream calls vs cache hits, plus the estimated upstream
+// spend those calls represent. PROCESS-LIFETIME (reset on restart/deploy) —
+// deliberately NOT scoped to the days window like the rest of
+// MetricsResponse, hence the loud field name.
+type PlacesCallsSnapshot struct {
+	Search       UpstreamCallCounts `json:"search"`
+	Autocomplete UpstreamCallCounts `json:"autocomplete"`
+	Details      UpstreamCallCounts `json:"details"`
+	// EstPlacesCostUSD prices the upstream counts with the placesCost*
+	// constants above. An estimate of list price, not a bill.
+	EstPlacesCostUSD float64 `json:"est_places_cost_usd"`
+}
+
+// placesCallsSnapshot prices a point-in-time read of the placesService
+// counters.
+func placesCallsSnapshot(gps *GooglePlacesService) PlacesCallsSnapshot {
+	s := PlacesCallsSnapshot{
+		Search:       gps.searchCalls.snapshot(),
+		Autocomplete: gps.autocompleteCalls.snapshot(),
+		Details:      gps.detailsCalls.snapshot(),
+	}
+	s.EstPlacesCostUSD = float64(s.Search.Upstream)*placesCostSearchUSDPerCall +
+		float64(s.Autocomplete.Upstream)*placesCostAutocompleteUSDPerCall +
+		float64(s.Details.Upstream)*placesCostDetailsUSDPerCall
+	return s
+}
 
 // MetricsResponse is the Phase 1 dashboard-in-an-endpoint, keyed to the
 // questions in docs/business-model.md §8 (activation, second-trip retention,
@@ -290,9 +336,11 @@ type MetricsResponse struct {
 	PlanCacheReadTokens   int64 `json:"plan_cache_read_tokens"`
 	PlanCacheCreateTokens int64 `json:"plan_cache_creation_tokens"`
 	// EstClaudeCostUSD / EstCogsPerActiveUser are ESTIMATES covering Claude
-	// spend only, from the planCost* pricing constants (Places calls are
-	// not counted — deferred). EstCostModel names the model whose pricing
-	// produced them, so the number is self-describing.
+	// spend only, from the planCost* pricing constants. Places spend is
+	// estimated separately in PlacesCallsSinceProcessStart (process-lifetime
+	// basis, so it cannot be folded into these windowed numbers).
+	// EstCostModel names the model whose pricing produced them, so the
+	// number is self-describing.
 	EstCostModel         string  `json:"est_cost_model"`
 	EstClaudeCostUSD     float64 `json:"est_claude_cost_usd"`
 	EstCogsPerActiveUser float64 `json:"est_cogs_per_active_user"`
@@ -307,6 +355,15 @@ type MetricsResponse struct {
 	// in code yet.
 	FreeCapWouldHits     map[string]int64 `json:"free_cap_would_hits"`
 	FreeCapUsersAffected map[string]int64 `json:"free_cap_users_affected"`
+	// PlacesCallsSinceProcessStart / EventsCallsSinceProcessStart are
+	// PROCESS-LIFETIME provider-call counters: they start at zero on API boot
+	// and reset on every restart/deploy. Unlike every field above they are
+	// NOT scoped to the Days window — the *_since_process_start names exist
+	// so nobody reads them as period metrics. Places carries an estimated
+	// upstream cost (COGS visibility); events is quota/cache visibility only
+	// (free tier).
+	PlacesCallsSinceProcessStart PlacesCallsSnapshot `json:"places_calls_since_process_start"`
+	EventsCallsSinceProcessStart UpstreamCallCounts  `json:"events_calls_since_process_start"`
 }
 
 // adminMetricsHandler is GET /api/v1/admin/metrics?days= (admin only; gated
@@ -386,9 +443,10 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.SessionFrequencyReturning = eng.SessionFrequencyReturning
 		resp.SecondTripRetention = eng.SecondTripRetention
 	}
-	// Estimated Claude spend for the window (Claude only; Places not
-	// counted). input_tokens is the uncached remainder — cache reads and
-	// writes are billed separately at their own rates.
+	// Estimated Claude spend for the window (Claude only; Places is the
+	// separate process-lifetime estimate below). input_tokens is the
+	// uncached remainder — cache reads and writes are billed separately at
+	// their own rates.
 	resp.EstCostModel = planCostModelID
 	resp.EstClaudeCostUSD = (float64(resp.PlanInputTokens)*planCostInputUSDPerMTok +
 		float64(resp.PlanOutputTokens)*planCostOutputUSDPerMTok +
@@ -397,5 +455,9 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	if resp.ActiveUsers > 0 {
 		resp.EstCogsPerActiveUser = resp.EstClaudeCostUSD / float64(resp.ActiveUsers)
 	}
+	// Process-lifetime provider-call telemetry (not window-scoped; see the
+	// field comments). Read straight off the singletons — no DB involved.
+	resp.PlacesCallsSinceProcessStart = placesCallsSnapshot(placesService)
+	resp.EventsCallsSinceProcessStart = eventsService.calls.snapshot()
 	writeJSON(w, http.StatusOK, resp)
 }

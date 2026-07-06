@@ -49,6 +49,10 @@ func TestSearchEventsServedFromCache(t *testing.T) {
 	if len(first) != 1 || len(second) != 1 || second[0].ID != "e1" {
 		t.Fatalf("cached result mismatch: first=%v second=%v", first, second)
 	}
+	// Quota-visibility counters mirror the traffic: one upstream, one hit.
+	if c := svc.calls.snapshot(); c.Upstream != 1 || c.CacheHits != 1 {
+		t.Fatalf("events counters = %+v, want upstream=1 cache_hits=1", c)
+	}
 }
 
 func TestSearchEventsCacheKeyCoversInputs(t *testing.T) {

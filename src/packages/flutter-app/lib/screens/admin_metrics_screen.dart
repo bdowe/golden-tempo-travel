@@ -139,6 +139,48 @@ class _MetricsBody extends StatelessWidget {
           _Stat('Tokens out', _tokens(m.planOutputTokens),
               caption: 'est. ${_usd(m.estClaudeCostUsd)} total'),
         ]),
+        if (m.placesCallsSinceProcessStart != null ||
+            m.eventsCallsSinceProcessStart != null) ...[
+          const SizedBox(height: AppSpacing.xl),
+          // Deliberately labeled "(since restart)": these counters are
+          // process-lifetime on the API and reset on every deploy — they are
+          // NOT scoped to the selected window above.
+          const SectionHeader(title: 'Provider APIs (since restart)'),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Process-lifetime counters — reset on API restart, '
+            'not scoped to the selected window.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _TileGrid(tiles: [
+            if (m.placesCallsSinceProcessStart != null) ...[
+              _Stat(
+                'Places API (since restart)',
+                '${m.placesCallsSinceProcessStart!.totalUpstream}',
+                caption:
+                    '${m.placesCallsSinceProcessStart!.totalCacheHits} cache hits'
+                    ' · est. ${_usd(m.placesCallsSinceProcessStart!.estPlacesCostUsd)}',
+              ),
+              _Stat(
+                'Places by class',
+                '${m.placesCallsSinceProcessStart!.search.upstream} search',
+                caption:
+                    '${m.placesCallsSinceProcessStart!.autocomplete.upstream} autocomplete'
+                    ' · ${m.placesCallsSinceProcessStart!.details.upstream} details',
+              ),
+            ],
+            if (m.eventsCallsSinceProcessStart != null)
+              _Stat(
+                'Events API (since restart)',
+                '${m.eventsCallsSinceProcessStart!.upstream}',
+                caption:
+                    '${m.eventsCallsSinceProcessStart!.cacheHits} cache hits · free tier',
+              ),
+          ]),
+        ],
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(title: 'Price alerts'),
         const SizedBox(height: AppSpacing.sm),
