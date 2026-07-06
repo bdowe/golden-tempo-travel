@@ -102,6 +102,64 @@ func TestClientEventOwnTripIDIsKept(t *testing.T) {
 	}
 }
 
+// itinerary_item_added (specs/add-to-itinerary): accepted as a client event,
+// with metadata "source" constrained to the closed value set the dashboard
+// groups on — anything else is dropped, never stored.
+func TestClientEventItineraryItemAdded(t *testing.T) {
+	resetDB(t)
+	owner, token := createTestUser(t, "adder@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	tid := trip.ID.String()
+
+	rec := doJSON(t, "POST", "/api/v1/events", token, map[string]any{
+		"event_type": "itinerary_item_added",
+		"trip_id":    tid,
+		"metadata":   map[string]any{"source": "local_rec"},
+	})
+	if rec.Code != 202 {
+		t.Fatalf("POST /events = %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	waitForEventCount(t, owner.ID, "itinerary_item_added", 1)
+
+	var gotTrip *string
+	var meta map[string]any
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT trip_id::text, metadata FROM analytics_events
+		 WHERE user_id = $1 AND event_type = 'itinerary_item_added'`,
+		owner.ID).Scan(&gotTrip, &meta); err != nil {
+		t.Fatalf("event row: %v", err)
+	}
+	if gotTrip == nil || *gotTrip != tid {
+		t.Fatalf("trip_id = %v, want %s", gotTrip, tid)
+	}
+	if meta["source"] != "local_rec" {
+		t.Fatalf("source = %v, want local_rec", meta["source"])
+	}
+
+	// A free-form source value is dropped (closed set: local_rec/event/guide_pin).
+	rec = doJSON(t, "POST", "/api/v1/events", token, map[string]any{
+		"event_type": "itinerary_item_added",
+		"metadata":   map[string]any{"source": "totally_made_up", "kind": "place"},
+	})
+	if rec.Code != 202 {
+		t.Fatalf("POST /events (bogus source) = %d, want 202", rec.Code)
+	}
+	waitForEventCount(t, owner.ID, "itinerary_item_added", 2)
+	var meta2 map[string]any
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT metadata FROM analytics_events
+		 WHERE user_id = $1 AND event_type = 'itinerary_item_added' AND trip_id IS NULL`,
+		owner.ID).Scan(&meta2); err != nil {
+		t.Fatalf("second event row: %v", err)
+	}
+	if _, ok := meta2["source"]; ok {
+		t.Fatalf("bogus source stored: %v", meta2)
+	}
+	if meta2["kind"] != "place" {
+		t.Fatalf("kind = %v, want place", meta2["kind"])
+	}
+}
+
 func TestClientEventMetadataSanitized(t *testing.T) {
 	resetDB(t)
 	user, token := createTestUser(t, "meta-abuser@example.com")

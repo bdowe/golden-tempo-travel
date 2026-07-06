@@ -123,6 +123,12 @@ func locationFromItem(it store.ItineraryItem) map[string]any {
 		// itemParamsFromLocation.
 		loc["day"] = float64(*it.Day)
 	}
+	// Carry the local-source attribution snapshots so a section rewrite doesn't
+	// silently strip credit from kept items.
+	setStr("local_source_name", it.LocalSourceName)
+	if it.LocalRecommendationID.Valid {
+		loc["local_recommendation_id"] = uuid.UUID(it.LocalRecommendationID.Bytes).String()
+	}
 	return loc
 }
 

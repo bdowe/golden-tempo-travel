@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"travel-route-planner/store"
 )
 
@@ -220,5 +223,29 @@ func TestLocationFromItemRoundTrip(t *testing.T) {
 		params.DayTripFrom == nil || *params.DayTripFrom != "Paris" ||
 		params.Day == nil || *params.Day != 2 {
 		t.Fatalf("round trip lost fields: %+v", params)
+	}
+}
+
+// Attribution snapshots must survive a section rewrite: locationFromItem
+// carries them and itemParamsFromLocation coerces them back (specs/add-to-itinerary).
+func TestLocationFromItemRoundTripsAttribution(t *testing.T) {
+	src := item("Tasca da Ana", 1, "Lisbon", "")
+	name := "Ana"
+	src.LocalSourceName = &name
+	recID := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	src.LocalRecommendationID = pgtype.UUID{Bytes: recID, Valid: true}
+
+	params := itemParamsFromLocation(src.TripID, 0, locationFromItem(src))
+	if params.LocalSourceName == nil || *params.LocalSourceName != "Ana" {
+		t.Fatalf("local_source_name lost: %+v", params.LocalSourceName)
+	}
+	if !params.LocalRecommendationID.Valid || params.LocalRecommendationID.Bytes != recID {
+		t.Fatalf("local_recommendation_id lost: %+v", params.LocalRecommendationID)
+	}
+
+	// Unattributed items stay unattributed (no empty-string snapshots).
+	plain := itemParamsFromLocation(src.TripID, 0, locationFromItem(item("Louvre", 1, "Paris", "")))
+	if plain.LocalSourceName != nil || plain.LocalRecommendationID.Valid {
+		t.Fatalf("plain item grew attribution: %+v %+v", plain.LocalSourceName, plain.LocalRecommendationID)
 	}
 }

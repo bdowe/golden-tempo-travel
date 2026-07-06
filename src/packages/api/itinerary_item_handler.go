@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"travel-route-planner/store"
 )
@@ -22,6 +23,12 @@ type AddItineraryItemRequest struct {
 	City        *string  `json:"city"`
 	DayTripFrom *string  `json:"day_trip_from"`
 	Day         *int     `json:"day"`
+	// Local-source attribution snapshots (specs/add-to-itinerary): set when the
+	// item comes from a local recommendation or guide pin so the trip credits
+	// the local. The id must be a UUID but is deliberately NOT checked for
+	// existence — snapshots survive pin archival by design.
+	LocalSourceName       *string `json:"local_source_name"`
+	LocalRecommendationID *string `json:"local_recommendation_id"`
 }
 
 // insertPositionForDay places a new item at the end of its day: just after the
@@ -96,6 +103,21 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 			dayTripFrom = &d
 		}
 	}
+	var localSourceName *string
+	if req.LocalSourceName != nil {
+		if n := strings.TrimSpace(*req.LocalSourceName); n != "" {
+			localSourceName = &n
+		}
+	}
+	var localRecID pgtype.UUID
+	if req.LocalRecommendationID != nil && strings.TrimSpace(*req.LocalRecommendationID) != "" {
+		id, err := uuid.Parse(strings.TrimSpace(*req.LocalRecommendationID))
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "local_recommendation_id must be a UUID")
+			return
+		}
+		localRecID = pgtype.UUID{Bytes: id, Valid: true}
+	}
 	// Columns are NOT NULL; (0,0) is the established "no location" sentinel the
 	// app already excludes from the map and travel times.
 	var lat, lng float64
@@ -125,18 +147,20 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := q.CreateItineraryItem(ctx, store.CreateItineraryItemParams{
-		TripID:      tripID,
-		Position:    int32(pos),
-		Name:        name,
-		PlaceID:     req.PlaceID,
-		Address:     req.Address,
-		Latitude:    lat,
-		Longitude:   lng,
-		Category:    category,
-		TimeOfDay:   timeOfDay,
-		City:        city,
-		DayTripFrom: dayTripFrom,
-		Day:         day,
+		TripID:                tripID,
+		Position:              int32(pos),
+		Name:                  name,
+		PlaceID:               req.PlaceID,
+		Address:               req.Address,
+		Latitude:              lat,
+		Longitude:             lng,
+		Category:              category,
+		TimeOfDay:             timeOfDay,
+		City:                  city,
+		DayTripFrom:           dayTripFrom,
+		Day:                   day,
+		LocalSourceName:       localSourceName,
+		LocalRecommendationID: localRecID,
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not save place")
 		return
@@ -264,20 +288,7 @@ func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not save place")
 		return
 	}
-	writeJSON(w, http.StatusOK, ItineraryItemResponse{
-		ID:          item.ID.String(),
-		Position:    int(item.Position),
-		Name:        item.Name,
-		PlaceID:     item.PlaceID,
-		Address:     item.Address,
-		Latitude:    item.Latitude,
-		Longitude:   item.Longitude,
-		Category:    item.Category,
-		TimeOfDay:   item.TimeOfDay,
-		City:        item.City,
-		DayTripFrom: item.DayTripFrom,
-		Day:         int32PtrToIntPtr(item.Day),
-	})
+	writeJSON(w, http.StatusOK, toItineraryItemResponse(item))
 }
 
 func deleteItineraryItemHandler(w http.ResponseWriter, r *http.Request) {

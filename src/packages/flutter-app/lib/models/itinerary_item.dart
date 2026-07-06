@@ -20,6 +20,14 @@ class ItineraryItem {
   final String? dayTripFrom;
   final int? day;
 
+  /// Local-source attribution snapshots: the name of the local who recommended
+  /// this place and the recommendation pin it came from. Write-once at item
+  /// creation (agent or add-to-trip); survive pin archival by design.
+  @JsonKey(name: 'local_source_name')
+  final String? localSourceName;
+  @JsonKey(name: 'local_recommendation_id')
+  final String? localRecommendationId;
+
   const ItineraryItem({
     required this.id,
     required this.position,
@@ -33,6 +41,8 @@ class ItineraryItem {
     this.city,
     this.dayTripFrom,
     this.day,
+    this.localSourceName,
+    this.localRecommendationId,
   });
 
   factory ItineraryItem.fromJson(Map<String, dynamic> json) =>
