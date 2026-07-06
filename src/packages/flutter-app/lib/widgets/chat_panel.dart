@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/plan_message.dart';
 import '../providers/plan_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/tracked_launch.dart';
 import 'result_summary_chip.dart';
 
 /// The plan-agent chat surface (messages, tool chips, result chips, input bar)
@@ -195,7 +195,7 @@ class _ChatTail extends StatelessWidget {
         _ResultChips(state: state, notifier: notifier, onViewTrip: onViewTrip),
         if (footerBuilder != null)
           _ChatFooter(state: state, footerBuilder: footerBuilder!),
-        _ErrorBanner(state: state),
+        _ErrorBanner(state: state, notifier: notifier),
       ],
     );
   }
@@ -460,13 +460,18 @@ class _ChatFooter extends ConsumerWidget {
 
 class _ErrorBanner extends ConsumerWidget {
   final ProviderListenable<PlanState> state;
+  final ProviderListenable<PlanNotifier> notifier;
 
-  const _ErrorBanner({required this.state});
+  const _ErrorBanner({required this.state, required this.notifier});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final error = ref.watch(state.select((s) => s.error));
     if (error == null) return const SizedBox.shrink();
+    // Narrow derived select: retry only makes sense once a user turn exists
+    // for [PlanNotifier.retryLastSend] to re-run.
+    final canRetry = ref.watch(state
+        .select((s) => s.messages.any((m) => m.role == MessageRole.user)));
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -475,9 +480,26 @@ class _ErrorBanner extends ConsumerWidget {
         color: theme.colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        error,
-        style: TextStyle(color: theme.colorScheme.onErrorContainer),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            error,
+            style: TextStyle(color: theme.colorScheme.onErrorContainer),
+          ),
+          if (canRetry)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.onErrorContainer,
+                ),
+                onPressed: () => ref.read(notifier).retryLastSend(),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -489,10 +511,17 @@ class ChatMessageBubble extends StatelessWidget {
 
   const ChatMessageBubble({super.key, required this.message, this.isStreaming = false});
 
-  Future<void> _openLink(String url) async {
+  Future<void> _openLink(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Agent-emitted markdown links can point at any provider, so the link
+    // host stands in as the provider label.
+    await trackedLaunchUrl(
+      context,
+      url,
+      provider: uri.host.isEmpty ? 'unknown' : uri.host,
+      surface: 'chat',
+    );
   }
 
   @override
@@ -532,7 +561,7 @@ class ChatMessageBubble extends StatelessWidget {
                   : GptMarkdown(
                       message.content,
                       style: TextStyle(color: theme.colorScheme.onSurface),
-                      onLinkTap: (url, title) => _openLink(url),
+                      onLinkTap: (url, title) => _openLink(context, url),
                     ),
             ),
             if (isStreaming) ...[

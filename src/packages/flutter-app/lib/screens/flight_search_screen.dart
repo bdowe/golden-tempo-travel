@@ -45,6 +45,9 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   Airport? _origin;
   Airport? _destination;
   DateTime? _departDate;
+
+  /// Optional round-trip return date; null = one-way (the default).
+  DateTime? _returnDate;
   int _adults = 1;
 
   /// One entry per child passenger; the value is the child's age (0–17).
@@ -59,6 +62,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
     String origin,
     String destination,
     String departDate,
+    String? returnDate,
     int adults,
     String cabinClass,
     bool hasChildren,
@@ -92,9 +96,19 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   /// still editable.
   Future<void> _seedInitial() async {
     final w = widget;
-    final date = w.prefillDepartDate == null
+    var date = w.prefillDepartDate == null
         ? null
         : DateTime.tryParse(w.prefillDepartDate!);
+    if (date != null) {
+      // Prefill dates come from itinerary legs, which are unbounded (past
+      // trips, trips >1 year out). Clamp into the pickers' bookable window
+      // [today, today+365d] so neither date picker can be handed an
+      // out-of-range initial/first date (showDatePicker asserts on those).
+      final today = DateUtils.dateOnly(DateTime.now());
+      final windowEnd = today.add(const Duration(days: 365));
+      if (date.isBefore(today)) date = today;
+      if (date.isAfter(windowEnd)) date = windowEnd;
+    }
     if (date != null && _departDate == null) {
       setState(() => _departDate = date);
     }
@@ -203,23 +217,68 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    final first = now;
+    final last = now.add(const Duration(days: 365));
+    // Defensive initial clamp: _departDate is clamped at seed time, but keep
+    // the picker safe against any out-of-window value regardless of source.
+    var initial = _departDate ?? now.add(const Duration(days: 14));
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _departDate ?? now.add(const Duration(days: 14)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
     );
-    if (picked != null) setState(() => _departDate = picked);
+    if (picked != null) {
+      setState(() {
+        _departDate = picked;
+        // A return before the new departure is impossible; clear it rather
+        // than silently guessing a new one.
+        if (_returnDate != null && _returnDate!.isBefore(picked)) {
+          _returnDate = null;
+        }
+      });
+    }
+  }
+
+  /// Picks the optional return date. The picker's floor is the departure date,
+  /// so return < departure is impossible to select (same-day return allowed).
+  Future<void> _pickReturnDate() async {
+    final now = DateTime.now();
+    // Reconcile the range before handing it to the picker: a stale or
+    // prefilled departure can sit outside [today, today+365d], and
+    // showDatePicker asserts when firstDate > lastDate. Floor the start at
+    // today (no past returns), then extend the end if the departure still
+    // overruns it.
+    var first = _departDate ?? now;
+    if (first.isBefore(now)) first = now;
+    var last = now.add(const Duration(days: 365));
+    if (last.isBefore(first)) last = first;
+    var initial = _returnDate ??
+        _departDate?.add(const Duration(days: 7)) ??
+        now.add(const Duration(days: 21));
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+    );
+    if (picked != null) setState(() => _returnDate = picked);
   }
 
   void _search() {
     if (!_canSearch) return;
     // Snapshot what was actually searched: the "Watch this route" alert must
     // describe these parameters, not whatever the form says later.
+    final returnDate = _returnDate == null ? null : _fmtDate(_returnDate!);
     _watched = (
       origin: _origin!.iataCode,
       destination: _destination!.iataCode,
       departDate: _fmtDate(_departDate!),
+      returnDate: returnDate,
       adults: _adults,
       cabinClass: _cabinClass,
       hasChildren: _childAges.isNotEmpty,
@@ -228,6 +287,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
           origin: _origin!.iataCode,
           destination: _destination!.iataCode,
           departDate: _fmtDate(_departDate!),
+          returnDate: returnDate,
           adults: _adults,
           childAges: _childAges.isEmpty ? null : List.of(_childAges),
           cabinClass: _cabinClass == 'economy' ? null : _cabinClass,
@@ -279,6 +339,30 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickReturnDate,
+                        icon: const Icon(Icons.calendar_today, size: 18),
+                        label: Text(_returnDate == null
+                            ? 'Return (optional)'
+                            : _fmtDate(_returnDate!)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                    if (_returnDate != null)
+                      IconButton(
+                        tooltip: 'Clear return date',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => setState(() => _returnDate = null),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
                     _PassengerStepper(
                       icon: Icons.person_outline,
                       count: _adults,
@@ -413,6 +497,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                         origin: w.origin,
                         destination: w.destination,
                         departDate: w.departDate,
+                        returnDate: w.returnDate,
                         adults: w.adults,
                         cabinClass: w.cabinClass,
                         currentPrice: w.hasChildren ? null : cheapest.price,

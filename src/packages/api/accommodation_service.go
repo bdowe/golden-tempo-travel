@@ -43,9 +43,8 @@ func (airbnbProvider) SearchURL(q AccommodationQuery) string {
 	if q.Guests > 0 {
 		params.Set("adults", strconv.Itoa(q.Guests))
 	}
-	if id := os.Getenv("AIRBNB_AFFILIATE_ID"); id != "" {
-		params.Set("af", id)
-	}
+	// No affiliate param: Airbnb shut down its affiliate program in 2021
+	// (docs/business-model.md) — these links are pure user value, $0 revenue.
 	if enc := params.Encode(); enc != "" {
 		u += "?" + enc
 	}

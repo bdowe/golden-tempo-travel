@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
 
 	"travel-route-planner/store"
@@ -22,6 +22,18 @@ import (
 // 8–11 iterations; parallel tool calls share an iteration. Hitting the cap
 // ends the stream gracefully instead of letting a pathological loop burn cost.
 const planMaxIterations = 15
+
+// planMaxMessages / planMaxMessageChars bound the resent conversation history.
+// Every agent-loop iteration (up to planMaxIterations) re-pays input tokens on
+// the full history, so an unbounded history multiplies token cost by up to
+// 15x. Both caps sit far above anything the Flutter chat UI produces (a few
+// dozen short turns, plus one long itinerary-context first message on refine);
+// hitting them means a runaway or abusive client. Violations return a friendly
+// SSE `error` event, not a 500.
+const (
+	planMaxMessages     = 40
+	planMaxMessageChars = 20000
+)
 
 type PlanRequest struct {
 	Messages []PlanChatMessage `json:"messages"`
@@ -59,13 +71,26 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cap the conversation before any model call: the whole history is resent
+	// on every agent-loop iteration, so these bounds are a hard cost lever.
+	if len(req.Messages) > planMaxMessages {
+		sendSSE(w, "error", map[string]string{"message": "This conversation is too long to continue. Please start a new chat to keep planning."})
+		return
+	}
+	for _, m := range req.Messages {
+		if utf8.RuneCountInString(m.Content) > planMaxMessageChars {
+			sendSSE(w, "error", map[string]string{"message": "One of the messages is too long for the planner. Please shorten it and try again."})
+			return
+		}
+	}
+
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		sendSSE(w, "error", map[string]string{"message": "ANTHROPIC_API_KEY not configured"})
 		return
 	}
 
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	client := newAnthropicClient(apiKey)
 
 	// Resolve the caller once: anonymous sessions get no personalization and no
 	// preference-writing tool; signed-in sessions get both.
@@ -84,7 +109,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	if authed {
 		planUID = &uid
 	}
-	go recordEventOpt(planUID, "plan_session_started", nil, map[string]any{"authenticated": authed})
+	// Also runs the free-cap plan_runs crossing check (free_cap.go) — one
+	// count query, entirely off the SSE hot path, skipped when unauthed or
+	// degraded.
+	go recordPlanSessionStart(planUID, authed)
 	defer func() {
 		recordEventOpt(planUID, "plan_session_completed", planTripID, map[string]any{
 			"authenticated":         authed,
@@ -347,7 +375,6 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	today := time.Now()
 	basePrompt := "You are an expert travel agent. Today's date is " + today.Format("Monday, January 2, 2006") + " (" + today.Format("2006-01-02") + "). When a traveler gives a date without a year, assume the soonest upcoming occurrence on or after today — never a past year. Use dates in YYYY-MM-DD form when calling tools. Help users plan trips by searching for specific places and attractions. For each city, ALWAYS call search_local_recommendations FIRST — these are hand-curated picks from real locals, the legit info you can't get by googling. Prefer them over generic results, build the itinerary around them where they fit the traveler, and cite the local by name in your reply (e.g. 'Ana, a Lisbon chef, swears by…'). When a local pick becomes an itinerary place, carry its id into local_recommendation_id and its source_name into local_source_name. Then use search_places to fill gaps and find any other real locations with coordinates. Search for individual places (e.g. 'Louvre Museum Paris') rather than broad queries. Include a mix of activities/attractions and dining (restaurants), guided by the traveler's interests, budget, and pace. When you call create_itinerary, tag each location with category ('attraction' or 'restaurant'), a time_of_day ('morning', 'afternoon', or 'evening'), and a day (the 1-based trip day it falls on, increasing chronologically across the whole trip) so each day reads as a sensible schedule. When you have gathered enough places for the user's trip, call create_itinerary to finalize the plan; pass start_date (and end_date) whenever the traveler has given or agreed to travel dates, with day 1 being the start date. You can also use search_flights to find real flight options — ask for the traveler's departure city/airport and dates if you don't know them, and pick optimize_for from their budget (budget→cost, luxury→time, otherwise balanced); summarize the top 2-3 options in your own words and help them choose — do not tell the traveler to look at cards or lists in the chat. For travel between Greek islands, use suggest_ferries (ferries are the primary way to island-hop); note that in Greece search_events returns curated source links rather than ticketed listings. Use get_weather when weather changes the advice — packing, outdoor days, beach or ski viability, seasonal closures; for far-off dates it returns last year's weather as a seasonal guide, so present it as 'typically', never as a forecast. For signed-in travelers: when they reference a trip you've already planned together, call get_trip to read what's saved instead of asking them to repeat it; and when you give time-sensitive booking advice about a saved trip (book the ferry, reserve that restaurant), call add_booking_todo so it lands on their checklist instead of getting lost in chat. Be conversational and helpful — ask clarifying questions if needed before searching. Format replies with light markdown — short paragraphs, **bold** for place names, hyphen lists — no headings or tables."
 
-	placesService := NewGooglePlacesService()
 	ctx := r.Context()
 	distilled := false
 
@@ -471,7 +498,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).
 				if authed {
-					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
+					if tripID, newLineage, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID
@@ -480,6 +507,14 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 							go recordEvent(uid, "trip_created", &parsed, map[string]any{
 								"item_count": len(in.Locations),
 							})
+							// Free-cap active_trips crossing signal — only a
+							// brand-new lineage can move the lineage count; a
+							// version save of an existing chat lineage leaves
+							// it unchanged and must never emit
+							// (specs/free-cap-instrumentation).
+							if newLineage {
+								go recordActiveTripsCapSignal(uid, parsed)
+							}
 						}
 						// Distill what this conversation revealed about the traveler
 						// in the background — it must never delay or fail the trip.

@@ -29,6 +29,22 @@ func (q *Queries) CloseItineraryItemPositionGap(ctx context.Context, arg CloseIt
 	return err
 }
 
+const countActiveTripLineagesByOwner = `-- name: CountActiveTripLineagesByOwner :one
+SELECT count(DISTINCT COALESCE(chat_id, id::text)) FROM trips WHERE user_id = $1
+`
+
+// Active trips for the free-cap signal (specs/free-cap-instrumentation):
+// one per chat lineage, the same COALESCE(chat_id, id::text) grouping
+// ListLatestTripsByOwner's DISTINCT ON uses — new versions of an existing
+// lineage don't add to the count. All saved trips count as active (no
+// archived status exists today).
+func (q *Queries) CountActiveTripLineagesByOwner(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveTripLineagesByOwner, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createItineraryItem = `-- name: CreateItineraryItem :one
 INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -440,6 +456,30 @@ UPDATE trips SET updated_at = now() WHERE id = $1
 func (q *Queries) TouchTrip(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchTrip, id)
 	return err
+}
+
+const tripLineageExists = `-- name: TripLineageExists :one
+SELECT EXISTS(
+  SELECT 1 FROM trips WHERE user_id = $1 AND chat_id = $2
+) AS lineage_exists
+`
+
+type TripLineageExistsParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	ChatID *string   `json:"chat_id"`
+}
+
+// Whether the owner already has any trip in this chat lineage. persistTrip
+// runs it inside the same transaction as its insert to distinguish a
+// brand-new lineage from a new version of an existing one: the free-cap
+// active_trips signal may only fire for new lineages (a version save never
+// moves the lineage count and can never emit —
+// specs/free-cap-instrumentation).
+func (q *Queries) TripLineageExists(ctx context.Context, arg TripLineageExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, tripLineageExists, arg.UserID, arg.ChatID)
+	var lineage_exists bool
+	err := row.Scan(&lineage_exists)
+	return lineage_exists, err
 }
 
 const updateItineraryItem = `-- name: UpdateItineraryItem :one

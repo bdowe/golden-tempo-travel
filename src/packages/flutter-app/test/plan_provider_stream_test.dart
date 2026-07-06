@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:travel_route_planner/models/plan_message.dart';
 import 'package:travel_route_planner/providers/plan_provider.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
@@ -96,6 +97,44 @@ void main() {
     await notifier.sendMessage('thanks');
     expect(notifier.state.tripUpdatedThisTurn, isFalse);
     expect(notifier.state.tripUpdateCount, 2);
+  });
+
+  test('retryLastSend re-runs the failed turn with no duplicate user message',
+      () async {
+    final service = _ScriptedPlanService([
+      const PlanEvent(type: 'text_delta', data: {'text': 'Half an ans'}),
+      const PlanEvent(type: 'error', data: {'message': 'stream died'}),
+    ]);
+    final notifier = PlanNotifier(service, ApiClient());
+
+    await notifier.sendMessage('plan athens');
+    expect(notifier.state.error, 'stream died');
+    expect(notifier.state.isStreaming, isFalse);
+    // The failed turn kept the user message plus the committed partial reply.
+    expect(notifier.state.messages.map((m) => m.role).toList(),
+        [MessageRole.user, MessageRole.assistant]);
+
+    // The retry succeeds.
+    service.events
+      ..clear()
+      ..add(const PlanEvent(type: 'text_delta', data: {'text': 'Full answer.'}));
+    await notifier.retryLastSend();
+
+    expect(notifier.state.error, isNull);
+    // Exactly one copy of the user message; the partial was rolled back and
+    // regenerated as a fresh turn.
+    final users =
+        notifier.state.messages.where((m) => m.role == MessageRole.user);
+    expect(users.length, 1);
+    expect(users.single.content, 'plan athens');
+    expect(notifier.state.messages.last.role, MessageRole.assistant);
+    expect(notifier.state.messages.last.content, 'Full answer.');
+    // The server payload for the retry carried no duplicate either.
+    expect(service.lastHistory!.where((m) => m['role'] == 'user').length, 1);
+
+    // Retry is a no-op when there is nothing to retry.
+    await notifier.retryLastSend();
+    expect(notifier.state.messages.length, 2);
   });
 
   test('displayLabel collapses the bubble but the full content reaches history',

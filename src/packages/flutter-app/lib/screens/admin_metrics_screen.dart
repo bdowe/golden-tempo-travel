@@ -81,6 +81,8 @@ class _MetricsBody extends StatelessWidget {
     return '$v';
   }
 
+  String _usd(double v) => '\$${v.toStringAsFixed(2)}';
+
   @override
   Widget build(BuildContext context) {
     final m = metrics;
@@ -94,7 +96,10 @@ class _MetricsBody extends StatelessWidget {
           _Stat('Activated', '${m.activatedSignups}',
               caption: _pct(m.activationRate)),
           _Stat('Onboardings', '${m.onboardingsCompleted}'),
-          _Stat('Returning users', '${m.returningUsers}'),
+          _Stat('Second-trip retention', '${m.secondTripRetention}',
+              caption: '≥2 trips ≥7 days apart'),
+          _Stat('Multi-day planners', '${m.sessionFrequencyReturning}',
+              caption: 'sessions on ≥2 days'),
         ]),
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(title: 'Trips & bookings'),
@@ -115,12 +120,24 @@ class _MetricsBody extends StatelessWidget {
         const SectionHeader(title: 'AI planning'),
         const SizedBox(height: AppSpacing.sm),
         _TileGrid(tiles: [
+          _Stat('Active users (MAU)', '${m.activeUsers}'),
+          _Stat('Est. cost / active user', _usd(m.estCogsPerActiveUser),
+              caption: 'Claude only, estimate'),
           _Stat('Plan sessions', '${m.planSessions}',
               caption: '${m.planSessionsAnonymous} anonymous'),
-          _Stat('Cap hits', '${m.planCapHits}'),
+          _Stat('Agent loop cap hits', '${m.agentLoopCapHits}',
+              caption: 'runaway-loop signal'),
+          _Stat('Would hit plan cap', '${m.freeCapWouldHits['plan_runs'] ?? 0}',
+              caption:
+                  '${m.freeCapUsersAffected['plan_runs'] ?? 0} users affected'),
+          _Stat(
+              'Would hit trip cap', '${m.freeCapWouldHits['active_trips'] ?? 0}',
+              caption:
+                  '${m.freeCapUsersAffected['active_trips'] ?? 0} users affected'),
           _Stat('Tokens in', _tokens(m.planInputTokens),
               caption: '${_tokens(m.planCacheReadTokens)} from cache'),
-          _Stat('Tokens out', _tokens(m.planOutputTokens)),
+          _Stat('Tokens out', _tokens(m.planOutputTokens),
+              caption: 'est. ${_usd(m.estClaudeCostUsd)} total'),
         ]),
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(title: 'Price alerts'),

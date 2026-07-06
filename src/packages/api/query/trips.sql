@@ -39,6 +39,25 @@ LEFT JOIN LATERAL (
 ) c ON true
 ORDER BY latest.created_at DESC;
 
+-- name: CountActiveTripLineagesByOwner :one
+-- Active trips for the free-cap signal (specs/free-cap-instrumentation):
+-- one per chat lineage, the same COALESCE(chat_id, id::text) grouping
+-- ListLatestTripsByOwner's DISTINCT ON uses — new versions of an existing
+-- lineage don't add to the count. All saved trips count as active (no
+-- archived status exists today).
+SELECT count(DISTINCT COALESCE(chat_id, id::text)) FROM trips WHERE user_id = $1;
+
+-- name: TripLineageExists :one
+-- Whether the owner already has any trip in this chat lineage. persistTrip
+-- runs it inside the same transaction as its insert to distinguish a
+-- brand-new lineage from a new version of an existing one: the free-cap
+-- active_trips signal may only fire for new lineages (a version save never
+-- moves the lineage count and can never emit —
+-- specs/free-cap-instrumentation).
+SELECT EXISTS(
+  SELECT 1 FROM trips WHERE user_id = $1 AND chat_id = $2
+) AS lineage_exists;
+
 -- name: ListTripVersionsByChat :many
 SELECT * FROM trips WHERE user_id = $1 AND chat_id = $2 ORDER BY created_at DESC;
 

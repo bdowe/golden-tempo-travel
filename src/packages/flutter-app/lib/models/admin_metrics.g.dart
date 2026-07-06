@@ -25,19 +25,36 @@ AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
               ) ??
               const {},
       todosMarkedBooked: (json['todos_marked_booked'] as num?)?.toInt() ?? 0,
-      returningUsers: (json['returning_users'] as num?)?.toInt() ?? 0,
+      secondTripRetention:
+          (json['second_trip_retention'] as num?)?.toInt() ?? 0,
+      sessionFrequencyReturning:
+          (json['session_frequency_returning'] as num?)?.toInt() ?? 0,
+      activeUsers: (json['active_users'] as num?)?.toInt() ?? 0,
       planSessions: (json['plan_sessions'] as num?)?.toInt() ?? 0,
       planSessionsAnonymous:
           (json['plan_sessions_anonymous'] as num?)?.toInt() ?? 0,
-      planCapHits: (json['plan_cap_hits'] as num?)?.toInt() ?? 0,
+      agentLoopCapHits: (json['agent_loop_cap_hits'] as num?)?.toInt() ?? 0,
       planInputTokens: (json['plan_input_tokens'] as num?)?.toInt() ?? 0,
       planOutputTokens: (json['plan_output_tokens'] as num?)?.toInt() ?? 0,
       planCacheReadTokens:
           (json['plan_cache_read_tokens'] as num?)?.toInt() ?? 0,
       planCacheCreationTokens:
           (json['plan_cache_creation_tokens'] as num?)?.toInt() ?? 0,
+      estClaudeCostUsd: (json['est_claude_cost_usd'] as num?)?.toDouble() ?? 0,
+      estCogsPerActiveUser:
+          (json['est_cogs_per_active_user'] as num?)?.toDouble() ?? 0,
       alertsCreated: (json['alerts_created'] as num?)?.toInt() ?? 0,
       alertsTriggered: (json['alerts_triggered'] as num?)?.toInt() ?? 0,
+      freeCapWouldHits:
+          (json['free_cap_would_hits'] as Map<String, dynamic>?)?.map(
+                (k, e) => MapEntry(k, (e as num).toInt()),
+              ) ??
+              const {},
+      freeCapUsersAffected:
+          (json['free_cap_users_affected'] as Map<String, dynamic>?)?.map(
+                (k, e) => MapEntry(k, (e as num).toInt()),
+              ) ??
+              const {},
     );
 
 Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
@@ -54,14 +71,20 @@ Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
       'booking_clicks': instance.bookingClicks,
       'clicks_by_provider': instance.clicksByProvider,
       'todos_marked_booked': instance.todosMarkedBooked,
-      'returning_users': instance.returningUsers,
+      'second_trip_retention': instance.secondTripRetention,
+      'session_frequency_returning': instance.sessionFrequencyReturning,
+      'active_users': instance.activeUsers,
       'plan_sessions': instance.planSessions,
       'plan_sessions_anonymous': instance.planSessionsAnonymous,
-      'plan_cap_hits': instance.planCapHits,
+      'agent_loop_cap_hits': instance.agentLoopCapHits,
       'plan_input_tokens': instance.planInputTokens,
       'plan_output_tokens': instance.planOutputTokens,
       'plan_cache_read_tokens': instance.planCacheReadTokens,
       'plan_cache_creation_tokens': instance.planCacheCreationTokens,
+      'est_claude_cost_usd': instance.estClaudeCostUsd,
+      'est_cogs_per_active_user': instance.estCogsPerActiveUser,
       'alerts_created': instance.alertsCreated,
       'alerts_triggered': instance.alertsTriggered,
+      'free_cap_would_hits': instance.freeCapWouldHits,
+      'free_cap_users_affected': instance.freeCapUsersAffected,
     };

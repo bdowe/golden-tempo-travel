@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -48,6 +51,55 @@ func TestPersonalizedSystemPromptIgnoresWhitespaceNotes(t *testing.T) {
 	p := &store.TravelerPreference{ProfileNotes: strPtr("  \n ")}
 	if got := personalizedSystemPrompt("base", p); got != "base" {
 		t.Fatalf("prompt = %q, want base unchanged for blank notes", got)
+	}
+}
+
+// runPlanHandler posts a PlanRequest to planHandler directly (the recorder
+// implements http.Flusher, which the SSE handler requires) and returns the
+// raw event-stream body.
+func runPlanHandler(t *testing.T, req PlanRequest) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	planHandler(rec, httptest.NewRequest("POST", "/api/v1/plan", bytes.NewReader(body)))
+	return rec
+}
+
+// Oversized histories must be rejected with a friendly SSE error event (the
+// stream's normal error shape), before any model call or session bookkeeping.
+func TestPlanHandlerRejectsTooManyMessages(t *testing.T) {
+	msgs := make([]PlanChatMessage, planMaxMessages+1)
+	for i := range msgs {
+		msgs[i] = PlanChatMessage{Role: "user", Content: "hi"}
+	}
+	rec := runPlanHandler(t, PlanRequest{Messages: msgs})
+
+	out := rec.Body.String()
+	if !strings.Contains(out, `"type":"error"`) {
+		t.Fatalf("stream = %q, want an SSE error event", out)
+	}
+	if !strings.Contains(out, "too long") || !strings.Contains(out, "start a new chat") {
+		t.Fatalf("stream = %q, want the conversation-too-long message", out)
+	}
+	if strings.Count(out, "data: ") != 1 {
+		t.Fatalf("stream = %q, want exactly one event (handler must stop after rejecting)", out)
+	}
+}
+
+func TestPlanHandlerRejectsOversizedMessage(t *testing.T) {
+	rec := runPlanHandler(t, PlanRequest{Messages: []PlanChatMessage{
+		{Role: "user", Content: strings.Repeat("a", planMaxMessageChars+1)},
+	}})
+
+	out := rec.Body.String()
+	if !strings.Contains(out, `"type":"error"`) || !strings.Contains(out, "too long") {
+		t.Fatalf("stream = %q, want an SSE error event about an oversized message", out)
+	}
+	if strings.Count(out, "data: ") != 1 {
+		t.Fatalf("stream = %q, want exactly one event", out)
 	}
 }
 

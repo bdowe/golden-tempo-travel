@@ -18,8 +18,8 @@ tool surfaces the same links.
   `DeleteAccommodation` (`WHERE id=$1 AND trip_id=$2`). `make api-sqlc`.
 - **`accommodation_service.go`:** `AccommodationQuery`, `AccommodationProvider`
   interface, `airbnbProvider`/`bookingProvider` `SearchURL` (encoded destination +
-  checkin/checkout + guests; affiliate params from `BOOKING_AFFILIATE_ID`/`AIRBNB_AFFILIATE_ID`
-  when set). `providerLinks(q)` helper returning `[]{provider,url}`.
+  checkin/checkout + guests; Booking affiliate param from `BOOKING_AFFILIATE_ID`
+  when set; Airbnb has no affiliate program). `providerLinks(q)` helper returning `[]{provider,url}`.
 - **`accommodation_handler.go`:** `accommodationLinksHandler` (parse query, 400 if no
   destination), `addAccommodationHandler` (verify trip ownership via `GetTripByIDAndOwner`,
   then `CreateAccommodation`), `deleteAccommodationHandler` (404 if 0 rows). Reuse

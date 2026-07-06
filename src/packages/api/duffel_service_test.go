@@ -75,6 +75,111 @@ func TestSearchFlightOffersPassengerAndCabinPayload(t *testing.T) {
 	}
 }
 
+// stubDuffelWithOffers serves a canned offers payload and captures the request.
+func stubDuffelWithOffers(t *testing.T, captured *map[string]any, offersJSON string) *DuffelService {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, captured); err != nil {
+			t.Fatalf("stub could not parse request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(offersJSON))
+	}))
+	t.Cleanup(srv.Close)
+	return &DuffelService{
+		Token:   "test-token",
+		BaseURL: srv.URL,
+		Version: "v2",
+		Client:  &http.Client{Timeout: 5 * time.Second},
+	}
+}
+
+func TestSearchFlightOffersRoundTrip(t *testing.T) {
+	var captured map[string]any
+	d := stubDuffelWithOffers(t, &captured, `{"data":{"offers":[{
+		"id":"off_rt","total_amount":"842.40","total_currency":"USD",
+		"owner":{"iata_code":"AF","name":"Air France"},
+		"slices":[
+			{"duration":"PT7H30M","segments":[{
+				"origin":{"iata_code":"JFK"},"destination":{"iata_code":"CDG"},
+				"departing_at":"2026-09-01T18:00:00","arriving_at":"2026-09-02T07:30:00",
+				"marketing_carrier":{"name":"Air France","iata_code":"AF"},
+				"marketing_carrier_flight_number":"11"}]},
+			{"duration":"PT8H15M","segments":[{
+				"origin":{"iata_code":"CDG"},"destination":{"iata_code":"JFK"},
+				"departing_at":"2026-09-10T10:00:00","arriving_at":"2026-09-10T12:15:00",
+				"marketing_carrier":{"name":"Delta","iata_code":"DL"},
+				"marketing_carrier_flight_number":"263"}]}
+		]}]}}`)
+
+	offers, err := d.SearchFlightOffers(context.Background(), FlightSearchRequest{
+		Origin: "JFK", Destination: "CDG",
+		DepartDate: "2026-09-01", ReturnDate: "2026-09-10", Adults: 1,
+	})
+	if err != nil {
+		t.Fatalf("SearchFlightOffers: %v", err)
+	}
+
+	// The request must carry two slices, with the return reversed.
+	slices := captured["data"].(map[string]any)["slices"].([]any)
+	if len(slices) != 2 {
+		t.Fatalf("request slices = %d, want 2", len(slices))
+	}
+	ret := slices[1].(map[string]any)
+	if ret["origin"] != "CDG" || ret["destination"] != "JFK" || ret["departure_date"] != "2026-09-10" {
+		t.Fatalf("return slice = %v, want CDG->JFK on 2026-09-10", ret)
+	}
+
+	if len(offers) != 1 {
+		t.Fatalf("offers = %d, want 1", len(offers))
+	}
+	o := offers[0]
+	// Outbound-based fields are unchanged from one-way behavior.
+	if len(o.Segments) != 1 || o.Segments[0].From != "JFK" || o.Segments[0].To != "CDG" {
+		t.Fatalf("outbound segments = %v, want JFK->CDG", o.Segments)
+	}
+	if o.Stops != 0 || o.DurationMin != 7*60+30 {
+		t.Fatalf("stops=%d dur=%d, want 0/450", o.Stops, o.DurationMin)
+	}
+	// The return slice must be preserved for the UI to render both directions.
+	if len(o.ReturnSegments) != 1 || o.ReturnSegments[0].From != "CDG" || o.ReturnSegments[0].To != "JFK" {
+		t.Fatalf("return segments = %v, want CDG->JFK", o.ReturnSegments)
+	}
+	if o.ReturnDurationMin != 8*60+15 {
+		t.Fatalf("return duration = %d, want 495", o.ReturnDurationMin)
+	}
+	// Carriers from both directions are surfaced.
+	if len(o.Airlines) != 2 || o.Airlines[0] != "Air France" || o.Airlines[1] != "Delta" {
+		t.Fatalf("airlines = %v, want [Air France Delta]", o.Airlines)
+	}
+}
+
+func TestSearchFlightOffersOneWayHasNoReturnFields(t *testing.T) {
+	var captured map[string]any
+	d := stubDuffelWithOffers(t, &captured, `{"data":{"offers":[{
+		"id":"off_ow","total_amount":"420.00","total_currency":"USD",
+		"owner":{"iata_code":"AF","name":"Air France"},
+		"slices":[{"duration":"PT7H30M","segments":[{
+			"origin":{"iata_code":"JFK"},"destination":{"iata_code":"CDG"},
+			"departing_at":"2026-09-01T18:00:00","arriving_at":"2026-09-02T07:30:00",
+			"marketing_carrier":{"name":"Air France","iata_code":"AF"},
+			"marketing_carrier_flight_number":"11"}]}]}]}}`)
+
+	offers, err := d.SearchFlightOffers(context.Background(), FlightSearchRequest{
+		Origin: "JFK", Destination: "CDG", DepartDate: "2026-09-01", Adults: 1,
+	})
+	if err != nil {
+		t.Fatalf("SearchFlightOffers: %v", err)
+	}
+	if got := len(captured["data"].(map[string]any)["slices"].([]any)); got != 1 {
+		t.Fatalf("request slices = %d, want 1", got)
+	}
+	if len(offers) != 1 || offers[0].ReturnSegments != nil || offers[0].ReturnDurationMin != 0 {
+		t.Fatalf("one-way offer must carry no return fields: %+v", offers)
+	}
+}
+
 func TestSearchFlightOffersDefaultsToEconomy(t *testing.T) {
 	var captured map[string]any
 	d := stubDuffel(t, &captured)

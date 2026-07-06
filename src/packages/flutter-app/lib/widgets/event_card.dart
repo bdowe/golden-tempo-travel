@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/event.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/tracked_launch.dart';
 
 /// A single local event: name, when, venue/category, opening the ticket/info
 /// page externally on tap. Styled to sit beside itinerary and booking rows.
@@ -11,12 +11,10 @@ class EventCard extends StatelessWidget {
 
   const EventCard({super.key, required this.event});
 
-  Future<void> _open() async {
+  Future<void> _open(BuildContext context) async {
     if (event.url.isEmpty) return;
-    final uri = Uri.tryParse(event.url);
-    if (uri != null) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await trackedLaunchUrl(context, event.url,
+        provider: 'ticketmaster', surface: 'event_card');
   }
 
   @override
@@ -32,7 +30,7 @@ class EventCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: event.url.isEmpty ? null : _open,
+        onTap: event.url.isEmpty ? null : () => _open(context),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(

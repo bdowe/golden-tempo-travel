@@ -22,14 +22,20 @@ void main() {
       attachRate: 0.15,
       bookingClicks: 12,
       clicksByProvider: {'booking': 8, 'airbnb': 4},
+      secondTripRetention: 7,
+      activeUsers: 60,
       planSessions: 100,
       planSessionsAnonymous: 40,
-      planCapHits: 2,
+      agentLoopCapHits: 2,
       planInputTokens: 1500000,
       planOutputTokens: 250000,
       planCacheReadTokens: 900000,
+      estClaudeCostUsd: 12.5,
+      estCogsPerActiveUser: 0.21,
       alertsCreated: 5,
       alertsTriggered: 1,
+      freeCapWouldHits: {'plan_runs': 3, 'active_trips': 1},
+      freeCapUsersAffected: {'plan_runs': 2, 'active_trips': 1},
     );
 
     await tester.pumpWidget(
@@ -48,6 +54,17 @@ void main() {
     expect(find.text('40 anonymous'), findsOneWidget);
     expect(find.text('1.5M'), findsOneWidget); // tokens in
     expect(find.text('900.0k from cache'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget); // second-trip retention
+    expect(find.text('≥2 trips ≥7 days apart'), findsOneWidget);
+    expect(find.text('60'), findsOneWidget); // MAU
+    expect(find.text('\$0.21'), findsOneWidget); // est. cost / active user
+    expect(find.text('Claude only, estimate'), findsOneWidget);
+    expect(find.text('Agent loop cap hits'), findsOneWidget);
+    expect(find.text('Would hit plan cap'), findsOneWidget);
+    expect(find.text('2 users affected'), findsOneWidget); // plan_runs cohort
+    expect(find.text('Would hit trip cap'), findsOneWidget);
+    expect(
+        find.text('1 users affected'), findsOneWidget); // active_trips cohort
     expect(find.text('Clicks by provider'), findsOneWidget);
     expect(find.text('booking'), findsOneWidget);
     expect(find.text('Price alerts'), findsOneWidget);

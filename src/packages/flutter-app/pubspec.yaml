@@ -88,6 +88,9 @@ dev_dependencies:
   json_serializable: ^6.7.1
   build_runner: ^2.4.7
 
+  # Faking the URL launcher in widget tests (tracked_launch_test.dart)
+  url_launcher_platform_interface: ^2.3.2
+
   # Generates native (iOS/Android) launch screens from the config below.
   # Rerun `dart run flutter_native_splash:create` after changing it.
   flutter_native_splash: ^2.4.1

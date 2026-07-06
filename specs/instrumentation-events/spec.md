@@ -63,7 +63,10 @@ conversions live in partner dashboards); clicks are the in-product proxy, with
 - [x] An admin can fetch a metrics summary for a chosen window: signups,
       activation rate (signups that saved a first trip), trips created,
       attach rate (trips with ≥1 booking click), clicks by provider, todos
-      marked booked, returning users, plan sessions and total tokens.
+      marked booked, second-trip retention, session-frequency returning
+      users, active users (MAU), plan sessions, total tokens, and estimated
+      Claude cost (total and per active user) — see Derived Metric
+      Definitions.
 - [x] Non-admins cannot record arbitrary event types or read metrics.
 - [x] With the database down, every instrumented flow (signup, planning,
       booking links) behaves exactly as it does today — events are silently
@@ -90,11 +93,69 @@ conversions live in partner dashboards); clicks are the in-product proxy, with
 - **Request:** optional `days` window (default 30).
 - **Response:** counts and rates for the window — signups, activated users and
   activation rate, trips created, trips with ≥1 booking click and attach rate,
-  booking clicks by provider, todos marked booked, returning users (≥2
-  planning sessions on different days), plan sessions, total input/output
-  tokens.
+  booking clicks by provider, todos marked booked, the derived metrics below,
+  plan sessions, total input/output/cache tokens, and cost estimates.
 - **Errors:** 401 unauthenticated; 403 non-admin; 503 when persistence is
   unavailable.
+
+## Derived Metric Definitions
+
+These numbers drive pricing and phase-gate decisions (`docs/business-model.md`
+§8), so their definitions are normative here — the SQL implements this spec,
+not the other way around.
+
+- **`second_trip_retention`** — the business model's retention metric ("users
+  returning for a second trip", the Phase 3 trigger): count of signed-in users
+  whose `trip_created` events span **≥ 2 distinct trip lineages with first
+  creations at least 7 days apart** inside the window. A *lineage* is the My
+  Trips grouping (`COALESCE(trips.chat_id, trips.id)`): `trip_created` fires
+  on every finalize, including a new **version** of an existing chat lineage,
+  so events are deduplicated to one first-creation timestamp per lineage
+  before the spread check (`max(first_at) − min(first_at) ≥ 7 days` per user,
+  which implies ≥ 2 lineages). The 7-day gap is what separates "came back for
+  another trip" from "kept editing the same planning burst"; two trips created
+  the same week count once, and re-finalizing one trip weeks later counts
+  zero. Known trade-off: the lineage lookup joins `trips`, so events whose
+  trip row was later deleted drop out (slight undercount, preferred over the
+  version-save overcount).
+- **`session_frequency_returning`** — the metric formerly (and misleadingly)
+  named `returning_users`: users with planning sessions on ≥ 2 distinct days
+  in the window. It is a **session-frequency proxy**, not trip retention — a
+  user polishing one trip across two evenings counts. Kept because it is still
+  a useful engagement signal; renamed so nobody reads it as the §8 retention
+  number.
+- **`active_users` (MAU)** — distinct signed-in users with ≥ 1
+  `plan_session_started` event in the window. Anonymous sessions are
+  excluded (no stable identity). This is the denominator for COGS per active
+  user.
+- **`est_claude_cost_usd` / `est_cogs_per_active_user`** — **estimates
+  covering Claude spend only** (Google Places and other provider calls are
+  not metered — deferred, see Out of Scope). Computed from the
+  `plan_session_completed` token sums at the published claude-sonnet-4-6
+  prices, pinned in one const block in `analytics.go` (update it if the /plan
+  model changes):
+
+  | Token class | USD per MTok |
+  |---|---|
+  | input (uncached) | 3.00 |
+  | output | 15.00 |
+  | cache write (5-minute TTL, 1.25× input) | 3.75 |
+  | cache read (0.1× input) | 0.30 |
+
+  `est_claude_cost_usd = (input·3.00 + output·15.00 + cache_write·3.75 +
+  cache_read·0.30) / 1,000,000`, and `est_cogs_per_active_user =
+  est_claude_cost_usd / active_users` (0 when there are no active users).
+  `input_tokens` is the uncached remainder as reported by the API — cache
+  reads/writes are billed separately, so the four classes are summed, never
+  double-counted.
+- **`agent_loop_cap_hits`** — the metric formerly named `plan_cap_hits`:
+  completed plan sessions whose metadata carries `max_iterations_hit = true`.
+  The underlying event is unchanged; only the label moved. Rationale: the cap
+  it counts is the **agent-loop max-iterations safety cap** in
+  `plan_handler.go` — a runaway-agent-loop signal — not a free-tier usage cap,
+  so calling it "cap hits" next to the business model's "cap-hit rate" (% of
+  users hitting free limits) invited a wrong pricing read. When free-tier
+  limits exist, their metric will be a separate, user-denominated number.
 
 Server-side events have no API surface — they are recorded inside the existing
 flows they describe.
@@ -144,5 +205,7 @@ flows they describe.
 
 None — resolved with the product owner before implementation:
 - "Returning user" = planning sessions on ≥2 distinct days within the window.
+  (Later renamed `session_frequency_returning`; true trip retention is the
+  separate `second_trip_retention` — see Derived Metric Definitions.)
 - `onboarding_completed` does not distinguish finish vs. skip; the existing
   onboarding-complete contract stays untouched.

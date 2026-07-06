@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
+import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import 'flight_details_sheet.dart';
 
@@ -16,8 +17,8 @@ class FlightOfferCard extends StatelessWidget {
   Future<void> _book(BuildContext context) async {
     final url = offer.bookingUrl;
     if (url == null || url.isEmpty) return;
-    final ok =
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    final ok = await trackedLaunchUrl(context, url,
+        provider: 'duffel', surface: 'flight_card');
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Could not open link')));
@@ -86,7 +87,12 @@ class FlightOfferCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        if (offer.segments.isNotEmpty) _Times(offer: offer),
+                        if (offer.segments.isNotEmpty)
+                          _SliceTimes(legs: offer.segments),
+                        if (offer.isRoundTrip) ...[
+                          const SizedBox(height: 2),
+                          _SliceTimes(legs: offer.returnSegments),
+                        ],
                       ],
                     ),
                   ),
@@ -108,11 +114,16 @@ class FlightOfferCard extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _Stat(icon: Icons.schedule, label: offer.durationLabel),
+                  _Stat(
+                      icon: Icons.schedule,
+                      label: offer.isRoundTrip
+                          ? '${offer.durationLabel} + ${offer.returnDurationLabel}'
+                          : offer.durationLabel),
                   const SizedBox(width: 16),
                   _Stat(
-                      icon: Icons.connecting_airports, label: offer.stopsLabel),
-                  if (offer.stops > 0) ...[
+                      icon: Icons.connecting_airports,
+                      label: offer.combinedStopsLabel),
+                  if (offer.stops > 0 || offer.returnStops > 0) ...[
                     const SizedBox(width: 6),
                     Icon(Icons.chevron_right,
                         size: 16, color: theme.colorScheme.onSurfaceVariant),
@@ -134,17 +145,22 @@ class FlightOfferCard extends StatelessWidget {
   }
 }
 
-/// Route line with departure/arrival clock times, e.g. "EWR 10:50 → GIG 00:47 +1".
-class _Times extends StatelessWidget {
-  final FlightOffer offer;
-  const _Times({required this.offer});
+/// Route line for one slice with departure/arrival clock times, e.g.
+/// "EWR 10:50 → GIG 00:47 +1". Round-trip offers render one per direction
+/// (the reversed airport codes make the direction self-evident).
+class _SliceTimes extends StatelessWidget {
+  final List<FlightLeg> legs;
+  const _SliceTimes({required this.legs});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
-    final from = offer.segments.first.from;
-    final to = offer.segments.last.to;
+    final from = legs.first.from;
+    final to = legs.last.to;
+    final departClock = _clock(legs.first.departTime);
+    final arriveClock = _clock(legs.last.arriveTime);
+    final dayOffset = _dayOffset(legs.first.departTime, legs.last.arriveTime);
     final bold = theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600);
     final base = theme.textTheme.bodyMedium?.copyWith(color: muted);
@@ -154,21 +170,36 @@ class _Times extends StatelessWidget {
         style: base,
         children: [
           TextSpan(text: '$from '),
-          if (offer.departClock.isNotEmpty)
-            TextSpan(text: offer.departClock, style: bold),
+          if (departClock.isNotEmpty) TextSpan(text: departClock, style: bold),
           const TextSpan(text: '  →  '),
           TextSpan(text: '$to '),
-          if (offer.arriveClock.isNotEmpty)
-            TextSpan(text: offer.arriveClock, style: bold),
-          if (offer.arrivalDayOffset > 0)
+          if (arriveClock.isNotEmpty) TextSpan(text: arriveClock, style: bold),
+          if (dayOffset > 0)
             TextSpan(
-              text: ' +${offer.arrivalDayOffset}',
+              text: ' +$dayOffset',
               style: theme.textTheme.labelSmall
                   ?.copyWith(color: theme.colorScheme.error),
             ),
         ],
       ),
     );
+  }
+
+  /// "hh:mm" for an ISO8601 time, empty if unparseable.
+  static String _clock(String iso) {
+    final t = DateTime.tryParse(iso);
+    if (t == null) return '';
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Calendar days the arrival falls after the departure (for the "+N" badge).
+  static int _dayOffset(String depart, String arrive) {
+    final d = DateTime.tryParse(depart);
+    final a = DateTime.tryParse(arrive);
+    if (d == null || a == null) return 0;
+    return DateTime(a.year, a.month, a.day)
+        .difference(DateTime(d.year, d.month, d.day))
+        .inDays;
   }
 }
 

@@ -40,6 +40,7 @@ RUN flutter build web --release \
 FROM nginx:alpine
 
 COPY dockerize/deployment/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY dockerize/static /usr/share/nginx/html/static
 COPY --from=flutter-build /app/build/web /usr/share/nginx/html/app
 
 EXPOSE 80

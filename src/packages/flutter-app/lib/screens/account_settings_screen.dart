@@ -4,6 +4,7 @@ import '../providers/api_client_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/account_api_service.dart';
 import '../theme/spacing.dart';
+import '../widgets/legal_links.dart';
 import '../widgets/page_container.dart';
 import '../widgets/section_header.dart';
 
@@ -218,6 +219,27 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                 icon: const Icon(Icons.logout),
                 label: const Text('Sign out everywhere'),
                 onPressed: _busy ? null : _logoutAll,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            const SectionHeader(title: 'Legal'),
+            const SizedBox(height: AppSpacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: AppSpacing.sm,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Privacy Policy'),
+                    onPressed: openPrivacyPolicy,
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Terms of Service'),
+                    onPressed: openTermsOfService,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: AppSpacing.xl),

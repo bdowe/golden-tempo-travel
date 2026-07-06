@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -108,5 +111,92 @@ func TestStatusRecorderForwardsFlusher(t *testing.T) {
 	}
 	if !rec.Flushed {
 		t.Fatal("Flush was not forwarded to the underlying writer")
+	}
+}
+
+func TestBodyLimitRejectsOversizedDeclaredBody(t *testing.T) {
+	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler must not run for an over-limit declared body")
+	}))
+
+	body := bytes.NewReader(make([]byte, maxRequestBodyBytes+1))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/optimize-route", body))
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "request body too large") {
+		t.Fatalf("body = %q, want body-too-large message", rec.Body.String())
+	}
+}
+
+func TestBodyLimitAllowsNormalBody(t *testing.T) {
+	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Fatalf("reading an under-limit body failed: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/optimize-route", bytes.NewReader(make([]byte, 64<<10))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+// /plan resends the whole chat history, so it gets the wider 4 MiB lane
+// (sized to exceed what the handler's own rune caps admit): a body over the
+// general cap but under the plan cap must pass through.
+func TestBodyLimitPlanGetsWiderLane(t *testing.T) {
+	handlerRan := false
+	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerRan = true
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Fatalf("reading a 512KiB /plan body failed: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/plan", bytes.NewReader(make([]byte, 512<<10))))
+	if !handlerRan || rec.Code != http.StatusOK {
+		t.Fatalf("handlerRan = %v, status = %d; want 512KiB /plan body to pass", handlerRan, rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/plan", bytes.NewReader(make([]byte, planMaxRequestBodyBytes+1))))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 for over-cap /plan body", rec.Code)
+	}
+}
+
+// Clients that lie about (or omit) Content-Length can't be rejected up front;
+// MaxBytesReader must stop the read mid-body instead.
+func TestBodyLimitStopsUndeclaredOversizedRead(t *testing.T) {
+	var readErr error
+	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, readErr = io.Copy(io.Discard, r.Body)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/optimize-route", bytes.NewReader(make([]byte, maxRequestBodyBytes+1)))
+	req.ContentLength = -1 // unknown length (e.g. chunked)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	var maxErr *http.MaxBytesError
+	if !errors.As(readErr, &maxErr) {
+		t.Fatalf("read error = %v, want *http.MaxBytesError", readErr)
+	}
+}
+
+// End-to-end through buildRouter: the middleware is actually wired, and an
+// oversized request dies with a 413 before reaching any handler (no DB needed).
+func TestRouterRejectsOversizedBody(t *testing.T) {
+	router := buildRouter()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/optimize-route", bytes.NewReader(make([]byte, maxRequestBodyBytes+1))))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
 	}
 }

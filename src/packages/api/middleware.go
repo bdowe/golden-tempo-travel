@@ -78,6 +78,44 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Request body caps. Generous headroom over the largest legitimate payloads:
+// a full 50-location optimize-route or an admin ingest of raw research text is
+// tens of KB; /plan resends the whole chat history so it gets a wider lane.
+//
+// The /plan lane must comfortably cover everything plan_handler.go's own
+// rune caps admit: planMaxMessages (40) x planMaxMessageChars (20,000 runes)
+// of 4-byte UTF-8 is ~3.2 MiB of content plus JSON framing, so 4 MiB keeps
+// the byte lane strictly wider than the rune lane. That way conversations the
+// handler would accept (or reject with a friendly SSE error event) never die
+// here first with a bare 413, which an SSE client surfaces poorly.
+const (
+	maxRequestBodyBytes     = 256 << 10 // 256 KiB, all endpoints by default
+	planMaxRequestBodyBytes = 4 << 20   // 4 MiB for the /plan chat history (see above)
+)
+
+// bodyLimitMiddleware caps request body size. It wraps the request body ONLY
+// (http.MaxBytesReader) — the response path is untouched, so SSE streaming on
+// /plan and the server's WriteTimeout=0 invariant are unaffected. A declared
+// Content-Length over the cap is rejected up front with a clean 413; chunked
+// or lying clients are stopped by MaxBytesReader mid-read, which surfaces as
+// the handler's normal decode-error response.
+func bodyLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := int64(maxRequestBodyBytes)
+		if r.URL.Path == "/api/v1/plan" {
+			limit = planMaxRequestBodyBytes
+		}
+		if r.ContentLength > limit {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // recoveryMiddleware converts a handler panic into a JSON 500 instead of a
 // dropped connection, logging the stack with the request ID. net/http already
 // keeps the process alive on handler panics; the value here is the clean

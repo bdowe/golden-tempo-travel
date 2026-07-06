@@ -201,10 +201,12 @@ func placesSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	results, err := placesService.SearchPlaces(query)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to search places: %v", err), http.StatusInternalServerError)
+		// Detail goes to the server log only: provider/internal error strings
+		// must never reach an unauthenticated caller.
+		ctxLog(r.Context()).Error("places search failed", "error", err)
+		http.Error(w, "Failed to search places", http.StatusInternalServerError)
 		return
 	}
 
@@ -224,10 +226,10 @@ func placesAutocompleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	results, err := placesService.GetPlaceAutocomplete(input)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get autocomplete: %v", err), http.StatusInternalServerError)
+		ctxLog(r.Context()).Error("places autocomplete failed", "error", err)
+		http.Error(w, "Failed to get autocomplete", http.StatusInternalServerError)
 		return
 	}
 
@@ -247,10 +249,10 @@ func placesDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	result, err := placesService.GetPlaceDetails(placeID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get place details: %v", err), http.StatusInternalServerError)
+		ctxLog(r.Context()).Error("place details failed", "error", err)
+		http.Error(w, "Failed to get place details", http.StatusInternalServerError)
 		return
 	}
 
@@ -301,7 +303,11 @@ func airportsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to search airports: %v", err), http.StatusInternalServerError)
+		// Duffel's key travels in a header (no URL leak), but its error
+		// strings can echo upstream response bodies — same policy: log the
+		// detail, answer generically.
+		ctxLog(r.Context()).Error("airport search failed", "error", err)
+		http.Error(w, "Failed to search airports", http.StatusInternalServerError)
 		return
 	}
 
@@ -375,10 +381,11 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	offers, err := duffelService.SearchFlightOffers(r.Context(), request)
 	if err != nil {
+		ctxLog(r.Context()).Error("flight search failed", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(Response{
-			Message: fmt.Sprintf("Failed to search flights: %v", err),
+			Message: "Failed to search flights",
 			Status:  "error",
 		})
 		return
@@ -571,6 +578,7 @@ func buildRouter() *mux.Router {
 	router.Use(requestIDMiddleware)
 	router.Use(recoveryMiddleware)
 	router.Use(corsMiddleware)
+	router.Use(bodyLimitMiddleware)
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/health" || r.URL.Path == "/api/v1/health" {
