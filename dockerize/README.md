@@ -7,7 +7,8 @@ Docker orchestration lives here instead of in individual app packages. A single 
 ```
 dockerize/
 ├── development/     # Flutter dev server (hot reload) + Go API + nginx
-└── deployment/      # Static Flutter build + Go API + nginx
+├── deployment/      # Static Flutter build + Go API + nginx
+└── production/      # goldentempo.co: prebuilt GHCR images + TLS gateway behind Cloudflare (see its README)
 ```
 
 ## Quick start

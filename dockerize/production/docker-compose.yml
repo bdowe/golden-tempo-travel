@@ -1,0 +1,97 @@
+# Production stack for https://goldentempo.co — same topology as
+# dockerize/deployment/docker-compose.yml, but runs prebuilt images from
+# GHCR (no build:) and terminates TLS on the gateway (:80 + :443) behind
+# Cloudflare. All nginx config and certs are volume-mounted, never baked,
+# so a config change is `docker compose up -d --force-recreate gateway`,
+# not an image rebuild.
+#
+# Runs from /opt/goldentempo/ on the VPS with a .env file next to it
+# (secrets/env plumbing is intentionally minimal here — see PR A2).
+services:
+  chrome:
+    image: chromedp/headless-shell:latest
+    expose:
+      - "9222"
+    shm_size: '2gb'
+    restart: unless-stopped
+    networks:
+      - travel-planner-network
+
+  postgres:
+    image: postgres:16-alpine
+    # .env provides POSTGRES_PASSWORD (must match the DATABASE_URL the api
+    # receives from the same .env).
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_DB: travel_planner
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travel -d travel_planner"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - travel-planner-network
+
+  api:
+    image: ghcr.io/bdowe/goldentempo-api:${IMAGE_TAG:-latest}
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      - GO_ENV=production
+      - CHROME_WS_URL=ws://chrome:9222/
+    depends_on:
+      chrome:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - travel-planner-network
+
+  gateway:
+    image: ghcr.io/bdowe/goldentempo-gateway:${IMAGE_TAG:-latest}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # prod.conf replaces the baked-in :80 localhost server; the shared
+      # location snippet + $share_prerender map stay from the image.
+      - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/cloudflare-realip.conf:/etc/nginx/conf.d/cloudflare-realip.conf:ro
+      # Cloudflare Origin CA cert + key (origin.crt / origin.key).
+      - /etc/goldentempo/certs:/etc/goldentempo/certs:ro
+    depends_on:
+      - api
+    healthcheck:
+      # :80 is a wholesale 301 to https://goldentempo.co, so probe :443
+      # directly; the apex server is default_server, so "localhost" lands
+      # there. --no-check-certificate: the Origin CA cert isn't in the
+      # container's trust store (it's only trusted by Cloudflare).
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - travel-planner-network
+
+volumes:
+  postgres_data:
+
+networks:
+  travel-planner-network:
+    driver: bridge
