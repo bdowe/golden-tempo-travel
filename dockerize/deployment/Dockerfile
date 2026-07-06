@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-ARG FLUTTER_VERSION=3.24.0
+# Keep in lockstep with dockerize/development/flutter/Dockerfile.
+ARG FLUTTER_VERSION=3.35.4
 RUN git clone https://github.com/flutter/flutter.git /flutter --depth 1 --branch ${FLUTTER_VERSION}
 ENV PATH="/flutter/bin:/flutter/bin/cache/dart-sdk/bin:${PATH}"
 
@@ -25,13 +26,14 @@ RUN flutter pub get
 
 COPY src/packages/flutter-app/lib/ lib/
 COPY src/packages/flutter-app/web/ web/
+COPY src/packages/flutter-app/assets/ assets/
 COPY src/packages/flutter-app/analysis_options.yaml ./
 
 RUN mkdir -p web/icons
 RUN dart run build_runner build --delete-conflicting-outputs
 
+# --web-renderer was removed in Flutter 3.32+ (canvaskit is the default).
 RUN flutter build web --release \
-    --web-renderer canvaskit \
     --base-href /app/ \
     --dart-define=API_BASE_URL=/api/v1 \
     --dart-define=APP_BASE_PATH=/app/
@@ -39,7 +41,13 @@ RUN flutter build web --release \
 # Serve static files and proxy API via nginx
 FROM nginx:alpine
 
+# default.conf is the local :80 server shell; the production stack
+# volume-mounts dockerize/production/nginx/prod.conf over it. The shared
+# location snippet and the http-scope $share_prerender map are baked in
+# separately so both shells can include/rely on them.
 COPY dockerize/deployment/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY dockerize/deployment/nginx/share-prerender-map.conf /etc/nginx/conf.d/share-prerender-map.conf
+COPY dockerize/deployment/nginx/snippets/ /etc/nginx/snippets/
 COPY dockerize/static /usr/share/nginx/html/static
 COPY --from=flutter-build /app/build/web /usr/share/nginx/html/app
 
