@@ -1,5 +1,5 @@
 # Travel Route Planner - Development Makefile
-.PHONY: help build run test clean docker-build docker-run docker-dev docker-deploy docker-stop docker-logs api-build api-run api-test
+.PHONY: help build run test clean docker-build docker-run docker-dev docker-deploy docker-stop docker-logs api-build api-run api-test seed-local
 
 # Variables
 API_DIR = src/packages/api
@@ -147,6 +147,13 @@ test-countries: ## Test country optimization via gateway
 	curl -s -X POST $(GATEWAY_URL)/api/v1/optimize-countries \
 		-H "Content-Type: application/json" \
 		-d '{"countries":[{"code":"US","name":"United States","latitude":39.8283,"longitude":-98.5795,"min_stay_days":7}],"optimize_for":"balanced"}' | jq '.'
+
+# Content seeding (see specs/local-content-seeding and content/local/README.md)
+# Credentials come from the environment: SEED_TOKEN, or SEED_EMAIL+SEED_PASSWORD.
+seed-local: ## Bulk-ingest local content via admin API (CONTENT_DIR=./content/local, CITY=<slug>, BASE_URL=gateway)
+	@BASE_URL="$(if $(BASE_URL),$(BASE_URL),$(GATEWAY_URL))" \
+		CONTENT_DIR="$(CONTENT_DIR)" CITY="$(CITY)" \
+		./scripts/seed_local_content.sh
 
 # Documentation
 docs: ## Show application URLs and documentation

@@ -1,0 +1,8 @@
+{
+  "name": "Casey Fixture (Seed Test)",
+  "bio": "A fictional local used by the seeding script's committed example fixture. Not a real person.",
+  "location": "Exampleville",
+  "expertise": "Coffee, hidden courtyards, canal walks",
+  "credibility": "Fictional — exists only to exercise the seeding pipeline end to end.",
+  "consent_ref": "n/a (fictional fixture data)"
+}
