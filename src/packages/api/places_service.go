@@ -80,6 +80,14 @@ func NewGooglePlacesService() *GooglePlacesService {
 	}
 }
 
+// placesService is a process-wide singleton reused across requests, matching
+// duffelService/eventsService/weatherService. Constructing it once is what
+// makes the TTL caches above effective — a per-request instance would discard
+// them and re-bill Google on every call. A missing GOOGLE_PLACES_API_KEY stays
+// a soft failure (one boot-time warning; each method returns a clear error),
+// so degraded mode keeps working.
+var placesService = NewGooglePlacesService()
+
 // SearchPlaces searches for places by text query
 func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult, error) {
 	if gps.APIKey == "" {

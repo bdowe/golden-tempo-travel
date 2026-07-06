@@ -201,7 +201,6 @@ func placesSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	results, err := placesService.SearchPlaces(query)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to search places: %v", err), http.StatusInternalServerError)
@@ -224,7 +223,6 @@ func placesAutocompleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	results, err := placesService.GetPlaceAutocomplete(input)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get autocomplete: %v", err), http.StatusInternalServerError)
@@ -247,7 +245,6 @@ func placesDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placesService := NewGooglePlacesService()
 	result, err := placesService.GetPlaceDetails(placeID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get place details: %v", err), http.StatusInternalServerError)
@@ -571,6 +568,7 @@ func buildRouter() *mux.Router {
 	router.Use(requestIDMiddleware)
 	router.Use(recoveryMiddleware)
 	router.Use(corsMiddleware)
+	router.Use(bodyLimitMiddleware)
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/health" || r.URL.Path == "/api/v1/health" {

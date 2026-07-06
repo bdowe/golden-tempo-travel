@@ -528,10 +528,8 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 		}
 	}
 
-	// Initialize Google Places service
-	placesService := NewGooglePlacesService()
-
-	// Resolve locations that don't have coordinates
+	// Resolve locations that don't have coordinates (via the shared
+	// placesService singleton so lookups hit its TTL caches)
 	for i := range request.Locations {
 		if err := ro.resolveLocation(&request.Locations[i], placesService); err != nil {
 			return RouteResponse{
