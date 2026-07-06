@@ -158,9 +158,9 @@ func (s *WeatherService) GetTripWeather(ctx context.Context, city, startDate, en
 	}
 	var report WeatherReport
 	if !end.Before(today) && time.Until(end) <= forecastHorizonDays*24*time.Hour {
-		report, err = s.fetchForecast(ctx, geo, fcStart, end)
+		report, err = s.fetchDaily(ctx, geo, fcStart, end, true)
 	} else {
-		report, err = s.fetchArchive(ctx, geo, start.AddDate(-1, 0, 0), end.AddDate(-1, 0, 0))
+		report, err = s.fetchDaily(ctx, geo, start.AddDate(-1, 0, 0), end.AddDate(-1, 0, 0), false)
 	}
 	if err != nil {
 		return WeatherReport{}, err
@@ -170,7 +170,10 @@ func (s *WeatherService) GetTripWeather(ctx context.Context, city, startDate, en
 	return report, nil
 }
 
-func (s *WeatherService) fetchForecast(ctx context.Context, geo geoResult, start, end time.Time) (WeatherReport, error) {
+// fetchDaily hits Open-Meteo's forecast or archive endpoint — the two share
+// the same daily-series shape, except the archive carries no precipitation
+// probability — and maps the response onto a WeatherReport.
+func (s *WeatherService) fetchDaily(ctx context.Context, geo geoResult, start, end time.Time, forecast bool) (WeatherReport, error) {
 	var out struct {
 		Daily struct {
 			Time         []string  `json:"time"`
@@ -180,12 +183,18 @@ func (s *WeatherService) fetchForecast(ctx context.Context, geo geoResult, start
 			PrecipChance []int     `json:"precipitation_probability_mean"`
 		} `json:"daily"`
 	}
-	u := fmt.Sprintf("%s/v1/forecast?latitude=%f&longitude=%f&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_mean&timezone=auto&start_date=%s&end_date=%s",
-		s.ForecastBaseURL, geo.Lat, geo.Lon, start.Format(dateLayout), end.Format(dateLayout))
+	base, endpoint, daily, kind := s.ArchiveBaseURL, "archive",
+		"temperature_2m_max,temperature_2m_min,precipitation_sum", "historical"
+	if forecast {
+		base, endpoint, kind = s.ForecastBaseURL, "forecast", "forecast"
+		daily += ",precipitation_probability_mean"
+	}
+	u := fmt.Sprintf("%s/v1/%s?latitude=%f&longitude=%f&daily=%s&timezone=auto&start_date=%s&end_date=%s",
+		base, endpoint, geo.Lat, geo.Lon, daily, start.Format(dateLayout), end.Format(dateLayout))
 	if err := s.getJSON(ctx, u, &out); err != nil {
 		return WeatherReport{}, err
 	}
-	report := WeatherReport{Kind: "forecast"}
+	report := WeatherReport{Kind: kind}
 	for i, d := range out.Daily.Time {
 		day := WeatherDay{Date: d}
 		if i < len(out.Daily.TempMax) {
@@ -197,40 +206,9 @@ func (s *WeatherService) fetchForecast(ctx context.Context, geo geoResult, start
 		if i < len(out.Daily.PrecipSum) {
 			day.PrecipMM = out.Daily.PrecipSum[i]
 		}
-		if i < len(out.Daily.PrecipChance) {
+		if forecast && i < len(out.Daily.PrecipChance) {
 			p := out.Daily.PrecipChance[i]
 			day.PrecipPct = &p
-		}
-		report.Days = append(report.Days, day)
-	}
-	return report, nil
-}
-
-func (s *WeatherService) fetchArchive(ctx context.Context, geo geoResult, start, end time.Time) (WeatherReport, error) {
-	var out struct {
-		Daily struct {
-			Time      []string  `json:"time"`
-			TempMax   []float64 `json:"temperature_2m_max"`
-			TempMin   []float64 `json:"temperature_2m_min"`
-			PrecipSum []float64 `json:"precipitation_sum"`
-		} `json:"daily"`
-	}
-	u := fmt.Sprintf("%s/v1/archive?latitude=%f&longitude=%f&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&start_date=%s&end_date=%s",
-		s.ArchiveBaseURL, geo.Lat, geo.Lon, start.Format(dateLayout), end.Format(dateLayout))
-	if err := s.getJSON(ctx, u, &out); err != nil {
-		return WeatherReport{}, err
-	}
-	report := WeatherReport{Kind: "historical"}
-	for i, d := range out.Daily.Time {
-		day := WeatherDay{Date: d}
-		if i < len(out.Daily.TempMax) {
-			day.TempMaxC = out.Daily.TempMax[i]
-		}
-		if i < len(out.Daily.TempMin) {
-			day.TempMinC = out.Daily.TempMin[i]
-		}
-		if i < len(out.Daily.PrecipSum) {
-			day.PrecipMM = out.Daily.PrecipSum[i]
 		}
 		report.Days = append(report.Days, day)
 	}
