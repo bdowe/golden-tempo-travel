@@ -22,6 +22,12 @@ type EventsService struct {
 	APIKey  string
 	BaseURL string
 	Client  *http.Client
+
+	// The free Ticketmaster key allows 5 req/s and 5k calls/day, and a plan
+	// session can re-ask for the same city/window several times, so identical
+	// searches within the TTL are served from memory (same pattern as the
+	// Duffel airport cache). Short TTL: event inventory shifts.
+	cache *ttlCache[[]Event]
 }
 
 // Event is a normalized local event (concert, sport, festival, show) used by
@@ -48,6 +54,9 @@ const (
 	fetchSize = 100
 )
 
+// eventsCacheTTL bounds how long an events search result is reused.
+const eventsCacheTTL = 20 * time.Minute
+
 // NewEventsService creates a new events service, reading the Ticketmaster key
 // from the environment. A missing key is a soft failure (a warning, like the
 // Google/Duffel keys) so the rest of the API stays healthy; calls fail clearly.
@@ -66,6 +75,7 @@ func NewEventsService() *EventsService {
 		APIKey:  apiKey,
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Client:  &http.Client{Timeout: 30 * time.Second},
+		cache:   newTTLCache[[]Event](eventsCacheTTL, 1000),
 	}
 }
 
@@ -84,6 +94,17 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 	endDT, err := toTicketmasterDateTime(endDate, true)
 	if err != nil {
 		return nil, fmt.Errorf("invalid end_date: %w", err)
+	}
+
+	// Cache identical searches for the TTL. Key covers every input that
+	// changes the result set: city, window, and optional category.
+	cat := ""
+	if category != nil {
+		cat = strings.ToLower(strings.TrimSpace(*category))
+	}
+	cacheKey := strings.ToLower(strings.TrimSpace(city)) + "|" + strings.TrimSpace(startDate) + "|" + strings.TrimSpace(endDate) + "|" + cat
+	if cached, ok := s.cache.get(cacheKey); ok {
+		return cached, nil
 	}
 
 	params := url.Values{}
@@ -208,6 +229,7 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 			break
 		}
 	}
+	s.cache.set(cacheKey, events)
 	return events, nil
 }
 

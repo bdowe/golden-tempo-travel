@@ -150,8 +150,9 @@ func ingestLocalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Verify + insert each recommendation.
-	places := NewGooglePlacesService()
+	// 3. Verify + insert each recommendation (shared singleton — verification
+	// lookups hit the Places TTL caches).
+	places := placesService
 	resp := ingestResponse{Recommendations: []store.LocalRecommendation{}}
 	var recIDs []uuid.UUID
 	for _, rec := range content.Recommendations {
