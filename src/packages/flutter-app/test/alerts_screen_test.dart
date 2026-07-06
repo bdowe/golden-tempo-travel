@@ -7,6 +7,7 @@ import 'package:travel_route_planner/models/user.dart';
 import 'package:travel_route_planner/providers/alerts_provider.dart';
 import 'package:travel_route_planner/providers/auth_provider.dart';
 import 'package:travel_route_planner/screens/alerts_screen.dart';
+import 'package:travel_route_planner/screens/auth_screen.dart';
 import 'package:travel_route_planner/services/alerts_api_service.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 
@@ -14,6 +15,12 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
     implements AuthNotifier {
   _FakeAuthNotifier(UserModel? user)
       : super(AuthState(user: user, initialized: true));
+
+  /// Simulates a session arriving (e.g. sign-in completing on the pushed
+  /// AuthScreen) without driving the auth UI.
+  void signInAs(UserModel user) {
+    state = AuthState(user: user, initialized: true);
+  }
 
   @override
   Future<bool> login(String email, String password) async => false;
@@ -94,13 +101,14 @@ Future<_FakeAlertsApiService> _pump(
   WidgetTester tester, {
   List<PriceAlert> alerts = const [],
   bool signedIn = true,
+  _FakeAuthNotifier? auth,
 }) async {
   final service = _FakeAlertsApiService(alerts);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        authProvider
-            .overrideWith((ref) => _FakeAuthNotifier(signedIn ? _user() : null)),
+        authProvider.overrideWith(
+            (ref) => auth ?? _FakeAuthNotifier(signedIn ? _user() : null)),
         alertsApiServiceProvider.overrideWithValue(service),
       ],
       child: const MaterialApp(home: AlertsScreen()),
@@ -111,9 +119,29 @@ Future<_FakeAlertsApiService> _pump(
 }
 
 void main() {
-  testWidgets('signed out shows sign-in prompt', (tester) async {
+  testWidgets('signed out shows sign-in prompt with a working action',
+      (tester) async {
     await _pump(tester, signedIn: false);
     expect(find.text('Sign in to watch fares'), findsOneWidget);
+
+    // The email deep link lands here signed out — the prompt must offer a
+    // route into auth, not a dead end.
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthScreen), findsOneWidget);
+  });
+
+  testWidgets('deep link lands on loaded alerts once the session arrives',
+      (tester) async {
+    final auth = _FakeAuthNotifier(null);
+    await _pump(tester, alerts: [_alert(id: 'a1')], auth: auth);
+    expect(find.text('Sign in to watch fares'), findsOneWidget);
+
+    auth.signInAs(_user());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in to watch fares'), findsNothing);
+    expect(find.text('BOS → CDG'), findsOneWidget);
   });
 
   testWidgets('empty list shows how-to empty state', (tester) async {
