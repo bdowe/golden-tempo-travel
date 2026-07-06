@@ -498,7 +498,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				// Persist the trip only for signed-in callers; anonymous sessions
 				// stay ephemeral (no trip_id in the done event).
 				if authed {
-					if tripID, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
+					if tripID, newLineage, err := persistTrip(ctx, uid, req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
 						log.Printf("failed to persist trip: %v", err)
 					} else {
 						donePayload["trip_id"] = tripID
@@ -507,10 +507,14 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 							go recordEvent(uid, "trip_created", &parsed, map[string]any{
 								"item_count": len(in.Locations),
 							})
-							// Free-cap active_trips crossing signal — a new
-							// lineage may take the user past the cap; new
-							// versions of an existing lineage never do.
-							go recordActiveTripsCapSignal(uid, parsed)
+							// Free-cap active_trips crossing signal — only a
+							// brand-new lineage can move the lineage count; a
+							// version save of an existing chat lineage leaves
+							// it unchanged and must never emit
+							// (specs/free-cap-instrumentation).
+							if newLineage {
+								go recordActiveTripsCapSignal(uid, parsed)
+							}
 						}
 						// Distill what this conversation revealed about the traveler
 						// in the background — it must never delay or fail the trip.

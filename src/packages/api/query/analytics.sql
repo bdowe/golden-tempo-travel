@@ -37,10 +37,14 @@ SELECT count(DISTINCT trip_id) FROM analytics_events
 WHERE event_type = 'booking_link_clicked' AND trip_id IS NOT NULL AND created_at >= $1;
 
 -- name: BookingClicksByProvider :many
-SELECT COALESCE(metadata->>'provider', 'unknown')::text AS provider, count(*) AS clicks
+-- provider is client-supplied (sanitized at ingest since Wave 7, but older
+-- rows predate that): left(..., 64) + LIMIT 20 bound the admin dashboard's
+-- rollup against arbitrary historical values.
+SELECT COALESCE(left(metadata->>'provider', 64), 'unknown')::text AS provider, count(*) AS clicks
 FROM analytics_events
 WHERE event_type = 'booking_link_clicked' AND created_at >= $1
-GROUP BY 1 ORDER BY clicks DESC;
+GROUP BY 1 ORDER BY clicks DESC, provider
+LIMIT 20;
 
 -- name: PlanSessionTotals :one
 -- Sessions + token spend from plan_session_completed metadata, plus the
@@ -65,10 +69,20 @@ WHERE event_type = 'plan_session_completed' AND created_at >= $1;
 --   session_frequency_returning — users with planning sessions on >= 2 distinct
 --                                days (a session-frequency proxy; NOT trip
 --                                retention).
---   second_trip_retention      — users with >= 2 trip_created events >= 7 days
---                                apart (the business model's "returned for a
---                                second trip" signal; max-min >= 7 days implies
---                                >= 2 events).
+--   second_trip_retention      — users whose trip_created events span >= 2
+--                                DISTINCT trip lineages (COALESCE(chat_id,
+--                                id) — the My Trips grouping) with first
+--                                creations >= 7 days apart (the business
+--                                model's "returned for a second trip" signal;
+--                                max-min >= 7 days implies >= 2 lineages).
+--                                Grouping by lineage keeps re-finalizing one
+--                                chat — a version save, which also emits
+--                                trip_created — from counting as a second
+--                                trip. Trade-off: the trips join drops events
+--                                whose trip row was later deleted, a slight
+--                                undercount (vs. the per-event overcount it
+--                                replaces); acceptable until trip deletion is
+--                                a real flow.
 SELECT
   (SELECT count(DISTINCT a.user_id) FROM analytics_events a
    WHERE a.event_type = 'plan_session_started' AND a.user_id IS NOT NULL
@@ -81,9 +95,14 @@ SELECT
      HAVING count(DISTINCT date(b.created_at)) >= 2
    ) s)::bigint AS session_frequency_returning,
   (SELECT count(*) FROM (
-     SELECT c.user_id FROM analytics_events c
-     WHERE c.event_type = 'trip_created' AND c.user_id IS NOT NULL
-       AND c.created_at >= $1
-     GROUP BY c.user_id
-     HAVING max(c.created_at) - min(c.created_at) >= interval '7 days'
+     SELECT l.user_id FROM (
+       SELECT c.user_id, min(c.created_at) AS first_at
+       FROM analytics_events c
+       JOIN trips tr ON tr.id = c.trip_id
+       WHERE c.event_type = 'trip_created' AND c.user_id IS NOT NULL
+         AND c.created_at >= $1
+       GROUP BY c.user_id, COALESCE(tr.chat_id, tr.id::text)
+     ) l
+     GROUP BY l.user_id
+     HAVING max(l.first_at) - min(l.first_at) >= interval '7 days'
    ) t)::bigint AS second_trip_retention;

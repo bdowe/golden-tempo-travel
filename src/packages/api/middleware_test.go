@@ -146,8 +146,9 @@ func TestBodyLimitAllowsNormalBody(t *testing.T) {
 	}
 }
 
-// /plan resends the whole chat history, so it gets the wider 1 MiB lane: a
-// body over the general cap but under the plan cap must pass through.
+// /plan resends the whole chat history, so it gets the wider 4 MiB lane
+// (sized to exceed what the handler's own rune caps admit): a body over the
+// general cap but under the plan cap must pass through.
 func TestBodyLimitPlanGetsWiderLane(t *testing.T) {
 	handlerRan := false
 	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

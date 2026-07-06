@@ -106,11 +106,18 @@ not the other way around.
 
 - **`second_trip_retention`** — the business model's retention metric ("users
   returning for a second trip", the Phase 3 trigger): count of signed-in users
-  with **≥ 2 `trip_created` events at least 7 days apart** inside the window
-  (implemented as `max(created_at) − min(created_at) ≥ 7 days` per user, which
-  implies ≥ 2 events). The 7-day gap is what separates "came back for another
-  trip" from "kept editing the same planning burst"; two trips created the
-  same week count once.
+  whose `trip_created` events span **≥ 2 distinct trip lineages with first
+  creations at least 7 days apart** inside the window. A *lineage* is the My
+  Trips grouping (`COALESCE(trips.chat_id, trips.id)`): `trip_created` fires
+  on every finalize, including a new **version** of an existing chat lineage,
+  so events are deduplicated to one first-creation timestamp per lineage
+  before the spread check (`max(first_at) − min(first_at) ≥ 7 days` per user,
+  which implies ≥ 2 lineages). The 7-day gap is what separates "came back for
+  another trip" from "kept editing the same planning burst"; two trips created
+  the same week count once, and re-finalizing one trip weeks later counts
+  zero. Known trade-off: the lineage lookup joins `trips`, so events whose
+  trip row was later deleted drop out (slight undercount, preferred over the
+  version-save overcount).
 - **`session_frequency_returning`** — the metric formerly (and misleadingly)
   named `returning_users`: users with planning sessions on ≥ 2 distinct days
   in the window. It is a **session-frequency proxy**, not trip retention — a

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,23 @@ import (
 	"strings"
 	"time"
 )
+
+// redactTransportError strips the request URL from transport-level HTTP
+// errors before they enter an error chain. http.Client failures come back as
+// *url.Error, whose Error() embeds the FULL request URL — including secret
+// query parameters like key=/apikey= (Go redacts only userinfo passwords,
+// never the query string). Wrapping ue.Err instead keeps the useful cause
+// (DNS failure, timeout, connection refused) while guaranteeing the secret
+// can never reach handler responses or the /plan agent's tool results.
+// Defense-in-depth: handlers additionally return generic messages and log
+// the detail server-side.
+func redactTransportError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
+}
 
 // GooglePlacesService handles Google Places API interactions
 type GooglePlacesService struct {
@@ -107,7 +125,7 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("failed to search places: %w", err)
+		return nil, fmt.Errorf("failed to search places: %w", redactTransportError(err))
 	}
 	defer resp.Body.Close()
 
@@ -178,7 +196,7 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("failed to get autocomplete: %w", err)
+		return nil, fmt.Errorf("failed to get autocomplete: %w", redactTransportError(err))
 	}
 	defer resp.Body.Close()
 
@@ -235,7 +253,7 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("failed to get place details: %w", err)
+		return nil, fmt.Errorf("failed to get place details: %w", redactTransportError(err))
 	}
 	defer resp.Body.Close()
 

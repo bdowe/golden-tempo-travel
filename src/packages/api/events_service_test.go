@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -79,5 +80,29 @@ func TestSearchEventsWithoutKeyErrors(t *testing.T) {
 	}
 	if *calls != 0 {
 		t.Fatalf("Ticketmaster called %d times without a key, want 0", *calls)
+	}
+}
+
+// Transport-level failures must never put the Ticketmaster key (an `apikey=`
+// query param) into the error chain — eventsSearchHandler and the /plan
+// agent's search_events tool both surface these error strings.
+func TestSearchEventsTransportErrorOmitsAPIKey(t *testing.T) {
+	const secret = "SECRET-TICKETMASTER-KEY"
+	svc := &EventsService{
+		APIKey:  secret,
+		BaseURL: "https://app.ticketmaster.example/discovery/v2",
+		Client:  &http.Client{Transport: failingTransport{}},
+		cache:   newTTLCache[[]Event](eventsCacheTTL, 100),
+	}
+	_, err := svc.SearchEvents(context.Background(), "Paris", "2026-08-01", "2026-08-03", nil)
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, secret) || strings.Contains(msg, "apikey=") {
+		t.Fatalf("error leaks the API key: %q", msg)
+	}
+	if !strings.Contains(msg, "connection refused") {
+		t.Fatalf("redaction lost the underlying cause: %q", msg)
 	}
 }

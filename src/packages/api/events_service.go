@@ -131,7 +131,10 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		// redactTransportError: a *url.Error would embed the request URL,
+		// apikey= included, into the error chain (and from there into
+		// responses/tool results).
+		return nil, fmt.Errorf("request failed: %w", redactTransportError(err))
 	}
 	defer resp.Body.Close()
 
@@ -296,7 +299,11 @@ func eventsSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	events, err := eventsService.SearchEvents(r.Context(), city, startDate, endDate, category)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to search events: %v", err), http.StatusInternalServerError)
+		// Log the detail server-side; clients get a generic message so
+		// provider/internal error strings never reach an unauthenticated
+		// caller.
+		ctxLog(r.Context()).Error("events search failed", "error", err)
+		http.Error(w, "Failed to search events", http.StatusInternalServerError)
 		return
 	}
 

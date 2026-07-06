@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -132,10 +133,15 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 // transaction. Called from the agent's create_itinerary step for signed-in users.
 // chatID stamps the trip with its conversation so My Trips can collapse repeated
 // refinements to the latest version; an empty chatID is stored as NULL.
-func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, startDate, endDate string, locations []map[string]any) (string, error) {
+//
+// newLineage reports whether this save started a brand-new trip lineage (as
+// opposed to adding a version to an existing chat lineage). The caller uses
+// it to gate the free-cap active_trips crossing signal, which a version save
+// must never emit (specs/free-cap-instrumentation).
+func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, startDate, endDate string, locations []map[string]any) (tripID string, newLineage bool, err error) {
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
@@ -165,9 +171,26 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, 
 	if c := strings.TrimSpace(chatID); c != "" {
 		chatPtr = &c
 	}
+
+	// Detect new-lineage vs version save inside the same transaction as the
+	// insert (a chat-less save always stands alone, i.e. a new lineage).
+	// Fail-open: if the check errors, treat the lineage as existing so the
+	// free-cap signal is skipped rather than over-emitted.
+	newLineage = true
+	if chatPtr != nil {
+		exists, lerr := q.TripLineageExists(ctx, store.TripLineageExistsParams{UserID: userID, ChatID: chatPtr})
+		switch {
+		case lerr != nil:
+			log.Printf("trip lineage check failed (treating as existing lineage): %v", lerr)
+			newLineage = false
+		case exists:
+			newLineage = false
+		}
+	}
+
 	trip, err := q.CreateTrip(ctx, store.CreateTripParams{UserID: userID, Title: finalTitle, Status: "draft", ChatID: chatPtr, Summary: summaryPtr})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	maxDay := 1
@@ -177,7 +200,7 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, 
 			maxDay = int(*params.Day)
 		}
 		if _, err := q.CreateItineraryItem(ctx, params); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
@@ -199,15 +222,15 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, 
 				StartDate: startD,
 				EndDate:   endD,
 			}); err != nil {
-				return "", err
+				return "", false, err
 			}
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return trip.ID.String(), nil
+	return trip.ID.String(), newLineage, nil
 }
 
 func tripIDFromPath(r *http.Request) (uuid.UUID, bool) {

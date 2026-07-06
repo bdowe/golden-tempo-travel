@@ -96,9 +96,19 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   /// still editable.
   Future<void> _seedInitial() async {
     final w = widget;
-    final date = w.prefillDepartDate == null
+    var date = w.prefillDepartDate == null
         ? null
         : DateTime.tryParse(w.prefillDepartDate!);
+    if (date != null) {
+      // Prefill dates come from itinerary legs, which are unbounded (past
+      // trips, trips >1 year out). Clamp into the pickers' bookable window
+      // [today, today+365d] so neither date picker can be handed an
+      // out-of-range initial/first date (showDatePicker asserts on those).
+      final today = DateUtils.dateOnly(DateTime.now());
+      final windowEnd = today.add(const Duration(days: 365));
+      if (date.isBefore(today)) date = today;
+      if (date.isAfter(windowEnd)) date = windowEnd;
+    }
     if (date != null && _departDate == null) {
       setState(() => _departDate = date);
     }
@@ -207,11 +217,18 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    final first = now;
+    final last = now.add(const Duration(days: 365));
+    // Defensive initial clamp: _departDate is clamped at seed time, but keep
+    // the picker safe against any out-of-window value regardless of source.
+    var initial = _departDate ?? now.add(const Duration(days: 14));
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _departDate ?? now.add(const Duration(days: 14)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
     );
     if (picked != null) {
       setState(() {
@@ -229,8 +246,15 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   /// so return < departure is impossible to select (same-day return allowed).
   Future<void> _pickReturnDate() async {
     final now = DateTime.now();
-    final first = _departDate ?? now;
-    final last = now.add(const Duration(days: 365));
+    // Reconcile the range before handing it to the picker: a stale or
+    // prefilled departure can sit outside [today, today+365d], and
+    // showDatePicker asserts when firstDate > lastDate. Floor the start at
+    // today (no past returns), then extend the end if the departure still
+    // overruns it.
+    var first = _departDate ?? now;
+    if (first.isBefore(now)) first = now;
+    var last = now.add(const Duration(days: 365));
+    if (last.isBefore(first)) last = first;
     var initial = _returnDate ??
         _departDate?.add(const Duration(days: 7)) ??
         now.add(const Duration(days: 21));

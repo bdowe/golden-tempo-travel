@@ -81,9 +81,16 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 // Request body caps. Generous headroom over the largest legitimate payloads:
 // a full 50-location optimize-route or an admin ingest of raw research text is
 // tens of KB; /plan resends the whole chat history so it gets a wider lane.
+//
+// The /plan lane must comfortably cover everything plan_handler.go's own
+// rune caps admit: planMaxMessages (40) x planMaxMessageChars (20,000 runes)
+// of 4-byte UTF-8 is ~3.2 MiB of content plus JSON framing, so 4 MiB keeps
+// the byte lane strictly wider than the rune lane. That way conversations the
+// handler would accept (or reject with a friendly SSE error event) never die
+// here first with a bare 413, which an SSE client surfaces poorly.
 const (
 	maxRequestBodyBytes     = 256 << 10 // 256 KiB, all endpoints by default
-	planMaxRequestBodyBytes = 1 << 20   // 1 MiB for the /plan chat history
+	planMaxRequestBodyBytes = 4 << 20   // 4 MiB for the /plan chat history (see above)
 )
 
 // bodyLimitMiddleware caps request body size. It wraps the request body ONLY

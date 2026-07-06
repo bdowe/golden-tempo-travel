@@ -222,3 +222,102 @@ func TestFreeCapEventNotClientRecordable(t *testing.T) {
 		t.Fatalf("spoofed events recorded = %d, want 0", n)
 	}
 }
+
+// fakeAnthropicItineraryServer stands in for the Anthropic API for sessions
+// that finalize a trip: any request that does not yet carry a tool_result
+// gets a create_itinerary tool_use (driving plan_handler's persistTrip
+// branch), and the follow-up request (which echoes the tool result back)
+// gets a plain end_turn text answer. Keying on the request body rather than
+// a call counter keeps it deterministic when background callers (the profile
+// distiller) also hit the seam.
+func fakeAnthropicItineraryServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	textFrames := []struct{ event, data string }{
+		{"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
+		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Your itinerary is saved."}}`},
+		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7}}`},
+		{"message_stop", `{"type":"message_stop"}`},
+	}
+	toolFrames := []struct{ event, data string }{
+		{"message_start", `{"type":"message_start","message":{"id":"msg_tool","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
+		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"create_itinerary","input":{}}}`},
+		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"title\":\"Athens Weekend\",\"locations\":[{\"name\":\"Acropolis\",\"latitude\":37.97,\"longitude\":23.72,\"day\":1}]}"}}`},
+		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":9}}`},
+		{"message_stop", `{"type":"message_stop"}`},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		frames := toolFrames
+		if strings.Contains(string(body), "tool_result") {
+			frames = textFrames
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for _, f := range frames {
+			io.WriteString(w, "event: "+f.event+"\ndata: "+f.data+"\n\n")
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Version saves must never re-emit the active_trips crossing signal
+// (specs/free-cap-instrumentation: "Saving a new version of an existing trip
+// does not increase the count and can never emit"). With the cap at 1 and one
+// pre-existing lineage, the FIRST finalize of a new chat is the crossing
+// (2 lineages == cap+1) and emits once; re-finalizing the SAME chat creates
+// new versions, leaves the lineage count parked at exactly cap+1, and — the
+// regression this guards — must not emit again.
+func TestFreeCapActiveTripsVersionSaveNeverReemits(t *testing.T) {
+	resetDB(t)
+	srv := fakeAnthropicItineraryServer(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", srv.URL)
+	t.Setenv("FREE_ACTIVE_TRIPS", "1") // envInt treats 0 as invalid, so park the user at cap via a seed trip
+
+	user, token := createTestUser(t, "re-finalizer@example.com")
+	createTestTrip(t, user.ID, 1) // lineage #1: the user sits exactly at the cap
+
+	for i := 1; i <= 3; i++ {
+		rec := doJSON(t, "POST", "/api/v1/plan", token, PlanRequest{
+			ChatID:   "chat-refinalize", // SAME chat: saves 2 and 3 are versions
+			Messages: []PlanChatMessage{{Role: "user", Content: "plan athens"}},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("session %d: /plan = %d, want 200", i, rec.Code)
+		}
+		if out := rec.Body.String(); !strings.Contains(out, `"trip_id"`) {
+			t.Fatalf("session %d: stream carried no persisted trip_id: %q", i, out)
+		}
+		// trip_created still fires per version (the event stream is not what
+		// changed); poll it so the version row is committed and the signal
+		// goroutine for this save has been decided.
+		waitForEventCount(t, user.ID, "trip_created", i)
+	}
+
+	// All three finalizes landed in one lineage (plus the seed).
+	var lineages int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(DISTINCT COALESCE(chat_id, id::text)) FROM trips WHERE user_id = $1`,
+		user.ID).Scan(&lineages); err != nil {
+		t.Fatalf("lineage count: %v", err)
+	}
+	if lineages != 2 {
+		t.Fatalf("lineages = %d, want 2 (seed + one chat lineage; same-chat saves must be versions)", lineages)
+	}
+
+	// The crossing emitted exactly once — on the first save. The signal for a
+	// version save is gated out synchronously (never spawned), so after the
+	// settle window any extra emission would be visible.
+	time.Sleep(300 * time.Millisecond)
+	hits, lastCount := freeCapWouldHits(t, user.ID, "active_trips")
+	if hits != 1 {
+		t.Fatalf("active_trips would-hits = %d, want exactly 1 (version saves must not re-emit)", hits)
+	}
+	if lastCount != 2 {
+		t.Fatalf("would-hit metadata count = %d, want 2 (cap+1)", lastCount)
+	}
+}
