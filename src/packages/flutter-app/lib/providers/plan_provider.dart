@@ -383,6 +383,29 @@ class PlanNotifier extends StateNotifier<PlanState> {
     }
   }
 
+  /// Re-runs the last user turn after a failed stream. [sendMessage] appends
+  /// the user message to history before streaming, and the error paths keep it
+  /// (plus any committed partial reply), so retrying by calling [sendMessage]
+  /// again would double-append. Instead this rolls the transcript back to just
+  /// before that user message (whole-list replacement, never in-place) and
+  /// re-enters the one and only send path — exactly one copy of the user
+  /// message ends up in history and in the server payload.
+  Future<void> retryLastSend() async {
+    if (state.isStreaming || state.error == null) return;
+    final messages = state.messages;
+    final lastUser = messages.lastIndexWhere((m) => m.role == MessageRole.user);
+    if (lastUser == -1) return;
+    final failed = messages[lastUser];
+    // Cancel-before-clear: both error paths already ended the stream buffer,
+    // but never replace messages/streaming state with a flush timer live.
+    _endStreamBuffer();
+    state = state.copyWith(
+      messages: messages.sublist(0, lastUser),
+      error: null,
+    );
+    await sendMessage(failed.content, displayLabel: failed.displayLabel);
+  }
+
   void reset() {
     _chatId = null;
     _endStreamBuffer();

@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../theme/spacing.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_container.dart';
+import 'auth_screen.dart';
 
 /// The traveler's watched routes (specs/price-alerts): state at a glance,
 /// pause/resume/delete. Creation happens from flight search results.
@@ -27,6 +28,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     });
   }
 
+  /// Routes through sign-in, then loads alerts once a session exists — the
+  /// /alerts email deep link lands here signed-out on a fresh device, and a
+  /// prompt without an action is a dead end (same pattern as
+  /// shared_trip_screen's _ensureSignedIn).
+  Future<void> _signIn() async {
+    if (!ref.read(authProvider).isSignedIn) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+      );
+    }
+    if (!mounted || !ref.read(authProvider).isSignedIn) return;
+    // The isSignedIn listener in build usually kicks off the load the moment
+    // the session lands; only load here if it hasn't already.
+    final alerts = ref.read(alertsProvider);
+    if (!alerts.loaded && !alerts.loading) {
+      ref.read(alertsProvider.notifier).load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // The /alerts email deep link routes here directly, often before the
@@ -41,10 +61,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
     Widget body;
     if (!auth.isSignedIn) {
-      body = const EmptyState(
+      body = EmptyState(
         icon: Icons.notifications_none,
         title: 'Sign in to watch fares',
         message: 'Price alerts email you when a flight you care about drops.',
+        actions: [
+          FilledButton(
+            onPressed: _signIn,
+            child: const Text('Sign in'),
+          ),
+        ],
       );
     } else if (state.loading && !state.loaded) {
       body = const Center(child: CircularProgressIndicator());
