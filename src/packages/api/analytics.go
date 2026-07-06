@@ -160,6 +160,15 @@ type MetricsResponse struct {
 	EstCogsPerActiveUser float64 `json:"est_cogs_per_active_user"`
 	AlertsCreated        int64   `json:"alerts_created"`
 	AlertsTriggered      int64   `json:"alerts_triggered"`
+	// FreeCapWouldHits / FreeCapUsersAffected are the §8 cap-hit rate — the
+	// Phase-3 demand signal, keyed by cap_kind (plan_runs / active_trips).
+	// Would-hits counts crossing events (only-on-crossing, so one per user
+	// per crossing — see specs/free-cap-instrumentation); users-affected is
+	// the distinct-user cohort, the primary trigger number. Nothing is
+	// enforced anywhere — these are measurements of a cap that doesn't exist
+	// in code yet.
+	FreeCapWouldHits     map[string]int64 `json:"free_cap_would_hits"`
+	FreeCapUsersAffected map[string]int64 `json:"free_cap_users_affected"`
 }
 
 // adminMetricsHandler is GET /api/v1/admin/metrics?days= (admin only; gated
@@ -198,6 +207,8 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		AlertsCreated:        counts["alert_created"],
 		AlertsTriggered:      counts["alert_triggered"],
 		ClicksByProvider:     map[string]int64{},
+		FreeCapWouldHits:     map[string]int64{},
+		FreeCapUsersAffected: map[string]int64{},
 	}
 	if n, err := q.CountActivatedSignups(ctx, since); err == nil {
 		resp.ActivatedSignups = n
@@ -224,6 +235,12 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.PlanOutputTokens = totals.OutputTokens
 		resp.PlanCacheReadTokens = totals.CacheReadTokens
 		resp.PlanCacheCreateTokens = totals.CacheCreationTokens
+	}
+	if rows, err := q.FreeCapWouldHitCounts(ctx, since); err == nil {
+		for _, row := range rows {
+			resp.FreeCapWouldHits[row.CapKind] = row.WouldHits
+			resp.FreeCapUsersAffected[row.CapKind] = row.UsersAffected
+		}
 	}
 	if eng, err := q.UserEngagementCounts(ctx, since); err == nil {
 		resp.ActiveUsers = eng.ActiveUsers

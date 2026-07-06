@@ -127,6 +127,13 @@ class _MetricsBody extends StatelessWidget {
               caption: '${m.planSessionsAnonymous} anonymous'),
           _Stat('Agent loop cap hits', '${m.agentLoopCapHits}',
               caption: 'runaway-loop signal'),
+          _Stat('Would hit plan cap', '${m.freeCapWouldHits['plan_runs'] ?? 0}',
+              caption:
+                  '${m.freeCapUsersAffected['plan_runs'] ?? 0} users affected'),
+          _Stat(
+              'Would hit trip cap', '${m.freeCapWouldHits['active_trips'] ?? 0}',
+              caption:
+                  '${m.freeCapUsersAffected['active_trips'] ?? 0} users affected'),
           _Stat('Tokens in', _tokens(m.planInputTokens),
               caption: '${_tokens(m.planCacheReadTokens)} from cache'),
           _Stat('Tokens out', _tokens(m.planOutputTokens),

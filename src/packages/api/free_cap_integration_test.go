@@ -1,0 +1,224 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Integration coverage for specs/free-cap-instrumentation: env-lowered caps
+// drive a user across each line, and we assert (a) exactly ONE
+// free_cap_would_hit per crossing — the only-on-crossing rule's off-by-ones,
+// (b) the dashboard rollup, and (c) that every capped request still SUCCEEDS
+// (measurement only, nothing enforced).
+
+// fakeAnthropicServer stands in for the Anthropic API behind the
+// ANTHROPIC_BASE_URL seam: every /v1/messages call streams a minimal
+// text-only SSE response ending in end_turn, so a real /plan session runs
+// end-to-end through buildRouter with zero external calls.
+func fakeAnthropicServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		frames := []struct{ event, data string }{
+			{"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`},
+			{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+			{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Where would you like to go?"}}`},
+			{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+			{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7}}`},
+			{"message_stop", `{"type":"message_stop"}`},
+		}
+		for _, f := range frames {
+			io.WriteString(w, "event: "+f.event+"\ndata: "+f.data+"\n\n")
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// waitForEventCount polls until the user has exactly want events of the given
+// type. plan_session_started is recorded by a goroutine that writes any
+// crossing signal FIRST, so once the started count is visible the would-hit
+// state for that session is settled too.
+func waitForEventCount(t *testing.T, userID uuid.UUID, eventType string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n := countUserEvents(t, userID, eventType)
+		if n == want {
+			return
+		}
+		if n > want {
+			t.Fatalf("%s count = %d, exceeded expected %d", eventType, n, want)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d %s events (have %d)", want, eventType, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func countUserEvents(t *testing.T, userID uuid.UUID, eventType string) int {
+	t.Helper()
+	var n int
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM analytics_events WHERE user_id = $1 AND event_type = $2`,
+		userID, eventType).Scan(&n)
+	if err != nil {
+		t.Fatalf("countUserEvents(%s): %v", eventType, err)
+	}
+	return n
+}
+
+// freeCapWouldHits returns how many free_cap_would_hit rows the user has for
+// a cap kind, plus the recorded metadata count of the newest one (0 if none).
+func freeCapWouldHits(t *testing.T, userID uuid.UUID, capKind string) (hits, lastCount int) {
+	t.Helper()
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*), COALESCE(max((metadata->>'count')::int), 0)
+		 FROM analytics_events
+		 WHERE user_id = $1 AND event_type = 'free_cap_would_hit'
+		   AND metadata->>'cap_kind' = $2`,
+		userID, capKind).Scan(&hits, &lastCount)
+	if err != nil {
+		t.Fatalf("freeCapWouldHits(%s): %v", capKind, err)
+	}
+	return hits, lastCount
+}
+
+// plan_runs: with the cap lowered to 2, sessions 1 and 2 are free, session 3
+// is the crossing (prior count == cap) and emits exactly one signal, session
+// 4 (prior > cap) emits nothing more. Every session must succeed.
+func TestFreeCapPlanRunsCrossingSignal(t *testing.T) {
+	resetDB(t)
+	srv := fakeAnthropicServer(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", srv.URL)
+	t.Setenv("FREE_PLAN_SESSIONS_PER_MONTH", "2")
+
+	user, token := createTestUser(t, "capped@example.com")
+
+	for i := 1; i <= 4; i++ {
+		rec := doJSON(t, "POST", "/api/v1/plan", token, PlanRequest{
+			ChatID:   fmt.Sprintf("chat-%d", i),
+			Messages: []PlanChatMessage{{Role: "user", Content: "plan me a weekend trip"}},
+		})
+		// Fail-open guarantee: the request SUCCEEDS whether or not the cap
+		// would have been hit.
+		if rec.Code != http.StatusOK {
+			t.Fatalf("session %d: /plan = %d, want 200 (never rejected)", i, rec.Code)
+		}
+		out := rec.Body.String()
+		if !strings.Contains(out, `"type":"text_delta"`) || strings.Contains(out, `"type":"error"`) {
+			t.Fatalf("session %d: stream = %q, want a normal text stream with no error event", i, out)
+		}
+
+		waitForEventCount(t, user.ID, "plan_session_started", i)
+
+		wantHits := 0
+		if i >= 3 {
+			wantHits = 1 // crossing at session cap+1 = 3, and only there
+		}
+		hits, lastCount := freeCapWouldHits(t, user.ID, "plan_runs")
+		if hits != wantHits {
+			t.Fatalf("after session %d: plan_runs would-hits = %d, want %d", i, hits, wantHits)
+		}
+		if i >= 3 && lastCount != 3 {
+			t.Fatalf("would-hit metadata count = %d, want 3 (cap+1)", lastCount)
+		}
+	}
+
+	// Dashboard rollup: one crossing, one distinct user affected.
+	admin, adminToken := createTestUser(t, "metrics-admin@example.com")
+	makeAdmin(t, admin.ID)
+	rec := doJSON(t, "GET", "/api/v1/admin/metrics?days=30", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin metrics = %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	wouldHits, _ := body["free_cap_would_hits"].(map[string]any)
+	usersAffected, _ := body["free_cap_users_affected"].(map[string]any)
+	if wouldHits["plan_runs"] != float64(1) {
+		t.Fatalf("free_cap_would_hits.plan_runs = %v, want 1", wouldHits["plan_runs"])
+	}
+	if usersAffected["plan_runs"] != float64(1) {
+		t.Fatalf("free_cap_users_affected.plan_runs = %v, want 1", usersAffected["plan_runs"])
+	}
+}
+
+// active_trips: with the cap lowered to 1, the copier's first duplicate is
+// within the cap, the second is the crossing (post-creation lineages ==
+// cap+1) and emits exactly once, the third emits nothing. Every duplicate
+// must succeed.
+func TestFreeCapActiveTripsCrossingSignal(t *testing.T) {
+	resetDB(t)
+	t.Setenv("FREE_ACTIVE_TRIPS", "1")
+
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	copier, copierToken := createTestUser(t, "copier@example.com")
+	trip := createTestTrip(t, owner.ID, 2)
+	shareToken := createShare(t, ownerToken, trip.ID.String(), "")
+
+	for i := 1; i <= 3; i++ {
+		rec := doJSON(t, "POST", "/api/v1/shared/"+shareToken+"/duplicate", copierToken, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("duplicate %d = %d, want 201 (never rejected): %s", i, rec.Code, rec.Body.String())
+		}
+
+		// The duplicate-path signal is synchronous, so this is settled here.
+		wantHits := 0
+		if i >= 2 {
+			wantHits = 1 // crossing at trip cap+1 = 2, and only there
+		}
+		hits, lastCount := freeCapWouldHits(t, copier.ID, "active_trips")
+		if hits != wantHits {
+			t.Fatalf("after duplicate %d: active_trips would-hits = %d, want %d", i, hits, wantHits)
+		}
+		if i >= 2 && lastCount != 2 {
+			t.Fatalf("would-hit metadata count = %d, want 2 (cap+1)", lastCount)
+		}
+	}
+
+	// The crossing event carries the trip that crossed the line.
+	var withTrip int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM analytics_events
+		 WHERE user_id = $1 AND event_type = 'free_cap_would_hit' AND trip_id IS NOT NULL`,
+		copier.ID).Scan(&withTrip); err != nil {
+		t.Fatalf("trip_id check: %v", err)
+	}
+	if withTrip != 1 {
+		t.Fatalf("would-hit rows with trip_id = %d, want 1", withTrip)
+	}
+
+	// The owner never crossed anything.
+	if hits, _ := freeCapWouldHits(t, owner.ID, "active_trips"); hits != 0 {
+		t.Fatalf("owner would-hits = %d, want 0", hits)
+	}
+}
+
+// free_cap_would_hit is a SERVER-recorded event: the client event endpoint
+// must keep rejecting it (spoofable demand signal otherwise).
+func TestFreeCapEventNotClientRecordable(t *testing.T) {
+	resetDB(t)
+	user, token := createTestUser(t, "spoofer@example.com")
+
+	rec := doJSON(t, "POST", "/api/v1/events", token, map[string]any{
+		"event_type": "free_cap_would_hit",
+		"metadata":   map[string]any{"cap_kind": "plan_runs", "count": 999},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("client-recorded free_cap_would_hit = %d, want 400", rec.Code)
+	}
+	if n := countUserEvents(t, user.ID, "free_cap_would_hit"); n != 0 {
+		t.Fatalf("spoofed events recorded = %d, want 0", n)
+	}
+}

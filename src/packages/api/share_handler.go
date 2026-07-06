@@ -304,6 +304,11 @@ func duplicateSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Free-cap active_trips crossing signal (free_cap.go) — a duplicate is
+	// always a fresh lineage. Synchronous but strictly fail-open: it can log,
+	// never fail the request.
+	recordActiveTripsCapSignal(user.ID, copyTrip.ID)
+
 	qr := store.New(dbPool)
 	final, err := qr.GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: copyTrip.ID, UserID: user.ID})
 	if err != nil {

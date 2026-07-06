@@ -29,6 +29,22 @@ func (q *Queries) CloseItineraryItemPositionGap(ctx context.Context, arg CloseIt
 	return err
 }
 
+const countActiveTripLineagesByOwner = `-- name: CountActiveTripLineagesByOwner :one
+SELECT count(DISTINCT COALESCE(chat_id, id::text)) FROM trips WHERE user_id = $1
+`
+
+// Active trips for the free-cap signal (specs/free-cap-instrumentation):
+// one per chat lineage, the same COALESCE(chat_id, id::text) grouping
+// ListLatestTripsByOwner's DISTINCT ON uses — new versions of an existing
+// lineage don't add to the count. All saved trips count as active (no
+// archived status exists today).
+func (q *Queries) CountActiveTripLineagesByOwner(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveTripLineagesByOwner, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createItineraryItem = `-- name: CreateItineraryItem :one
 INSERT INTO itinerary_items (trip_id, position, name, place_id, address, latitude, longitude, category, time_of_day, city, day_trip_from, day, local_source_name, local_recommendation_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)

@@ -45,6 +45,16 @@ AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
           (json['est_cogs_per_active_user'] as num?)?.toDouble() ?? 0,
       alertsCreated: (json['alerts_created'] as num?)?.toInt() ?? 0,
       alertsTriggered: (json['alerts_triggered'] as num?)?.toInt() ?? 0,
+      freeCapWouldHits:
+          (json['free_cap_would_hits'] as Map<String, dynamic>?)?.map(
+                (k, e) => MapEntry(k, (e as num).toInt()),
+              ) ??
+              const {},
+      freeCapUsersAffected:
+          (json['free_cap_users_affected'] as Map<String, dynamic>?)?.map(
+                (k, e) => MapEntry(k, (e as num).toInt()),
+              ) ??
+              const {},
     );
 
 Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
@@ -75,4 +85,6 @@ Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
       'est_cogs_per_active_user': instance.estCogsPerActiveUser,
       'alerts_created': instance.alertsCreated,
       'alerts_triggered': instance.alertsTriggered,
+      'free_cap_would_hits': instance.freeCapWouldHits,
+      'free_cap_users_affected': instance.freeCapUsersAffected,
     };
