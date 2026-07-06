@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/plan_message.dart';
 import '../providers/plan_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/tracked_launch.dart';
 import 'result_summary_chip.dart';
 
 /// The plan-agent chat surface (messages, tool chips, result chips, input bar)
@@ -489,10 +489,17 @@ class ChatMessageBubble extends StatelessWidget {
 
   const ChatMessageBubble({super.key, required this.message, this.isStreaming = false});
 
-  Future<void> _openLink(String url) async {
+  Future<void> _openLink(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Agent-emitted markdown links can point at any provider, so the link
+    // host stands in as the provider label.
+    await trackedLaunchUrl(
+      context,
+      url,
+      provider: uri.host.isEmpty ? 'unknown' : uri.host,
+      surface: 'chat',
+    );
   }
 
   @override
@@ -532,7 +539,7 @@ class ChatMessageBubble extends StatelessWidget {
                   : GptMarkdown(
                       message.content,
                       style: TextStyle(color: theme.colorScheme.onSurface),
-                      onLinkTap: (url, title) => _openLink(url),
+                      onLinkTap: (url, title) => _openLink(context, url),
                     ),
             ),
             if (isStreaming) ...[

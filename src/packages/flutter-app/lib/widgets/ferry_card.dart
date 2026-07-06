@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/ferry_option.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/tracked_launch.dart';
 
 /// A ferry option: route, date, and (when available) operator/time/price,
 /// opening the Ferryhopper booking page on tap. In v1 link mode it renders as a
@@ -12,12 +12,10 @@ class FerryCard extends StatelessWidget {
 
   const FerryCard({super.key, required this.option});
 
-  Future<void> _open() async {
+  Future<void> _open(BuildContext context) async {
     if (option.bookingUrl.isEmpty) return;
-    final uri = Uri.tryParse(option.bookingUrl);
-    if (uri != null) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await trackedLaunchUrl(context, option.bookingUrl,
+        provider: 'ferryhopper', surface: 'ferry_card');
   }
 
   @override
@@ -36,7 +34,7 @@ class FerryCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: option.bookingUrl.isEmpty ? null : _open,
+        onTap: option.bookingUrl.isEmpty ? null : () => _open(context),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(

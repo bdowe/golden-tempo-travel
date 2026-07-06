@@ -14,7 +14,6 @@ import '../models/location_timing.dart';
 import '../models/route_request.dart';
 import '../models/trip_segment.dart';
 import '../providers/accommodations_provider.dart';
-import '../providers/analytics_provider.dart';
 import '../providers/transport_provider.dart';
 import '../providers/trips_provider.dart';
 import '../providers/recent_trip_provider.dart';
@@ -27,6 +26,7 @@ import '../providers/ferries_provider.dart';
 import '../providers/local_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/tracked_launch.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/booking_todo_card.dart';
@@ -2528,28 +2528,25 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// back to its external provider search link.
   VoidCallback? _openCallbackFor(BookingTodo todo) {
     // The attach-rate numerator (specs/instrumentation-events): opening any
-    // booking handoff counts as a click. Fire-and-forget; the action below
-    // proceeds immediately regardless.
-    void track(String provider) =>
-        ref.read(analyticsApiServiceProvider).recordBookingLinkClicked(
-              tripId: widget.tripId,
-              todoKey: todo.todoKey,
-              provider: provider,
-              kind: todo.kind,
-            );
-
+    // booking handoff counts as a click. External links record-then-launch via
+    // trackedLaunchUrl; the one in-app handoff (Find Flights) records via the
+    // same helper before navigating. Fire-and-forget either way.
     if (todo.kind == 'transport') {
       final ferry = _ferryLegs[todo.todoKey];
       if (ferry != null) {
-        return () {
-          track('Ferryhopper');
-          _openFerry(ferry);
-        };
+        return () => _openFerry(ferry, todo);
       }
       final leg = _flightLegs[todo.todoKey];
       if (leg != null) {
         return () {
-          track('Duffel');
+          trackBookingLinkClick(
+            context,
+            provider: 'duffel',
+            surface: 'booking_checklist',
+            tripId: widget.tripId,
+            todoKey: todo.todoKey,
+            kind: todo.kind,
+          );
           Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => FlightSearchScreen(
               prefillOrigin: leg.origin,
@@ -2563,9 +2560,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       }
     }
     if (todo.searchUrl != null) {
-      return () {
-        track(todo.provider ?? 'unknown');
-        _launch(todo.searchUrl!);
+      return () async {
+        final ok = await trackedLaunchUrl(
+          context,
+          todo.searchUrl!,
+          provider: (todo.provider ?? 'unknown').toLowerCase(),
+          surface: 'booking_checklist',
+          tripId: widget.tripId,
+          todoKey: todo.todoKey,
+          kind: todo.kind,
+        );
+        if (!ok) _showSnack('Could not open link');
       };
     }
     return null;
@@ -2575,15 +2580,26 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// correct port codes) is built server-side, so we fetch it on tap — a single
   /// quick GET — keeping the port-code map a single source of truth in the API.
   Future<void> _openFerry(
-      ({String origin, String destination, String? date}) leg) async {
+      ({String origin, String destination, String? date}) leg,
+      BookingTodo todo) async {
     try {
       final options = await ref.read(ferryApiServiceProvider).searchFerries(
             leg.origin,
             leg.destination,
             date: leg.date,
           );
+      if (!mounted) return;
       if (options.isNotEmpty && options.first.bookingUrl.isNotEmpty) {
-        await _launch(options.first.bookingUrl);
+        final ok = await trackedLaunchUrl(
+          context,
+          options.first.bookingUrl,
+          provider: 'ferryhopper',
+          surface: 'booking_checklist',
+          tripId: widget.tripId,
+          todoKey: todo.todoKey,
+          kind: todo.kind,
+        );
+        if (!ok) _showSnack('Could not open link');
         return;
       }
     } catch (_) {
@@ -2592,6 +2608,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     _showSnack('Could not open ferry search');
   }
 
+  // Raw launcher for non-booking links only (the per-item "Open in Google
+  // Maps" action) — booking handoffs must go through trackedLaunchUrl.
   Future<void> _launch(String url) async {
     final ok =
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
