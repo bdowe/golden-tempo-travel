@@ -38,16 +38,55 @@ Recorded server-side (no client involvement):
 | `trip_refined` | the agent updates an existing trip | trip id |
 | `booking_marked_booked` | user checks off a booking todo as booked | trip id, todo kind, provider |
 
-Recorded from the client (the one moment only the client can see):
+Recorded from the client (the moments only the client can see):
 
 | Event | When | Notable detail carried |
 |---|---|---|
 | `booking_link_clicked` | user opens a booking handoff link | trip id, todo id, provider, kind |
+| `landing_viewed` | a signed-out visitor renders the landing page (once per app session) | — |
 
 `booking_link_clicked` is the **attach-rate numerator** — the reason this
 feature exists. Completed bookings cannot be observed directly (affiliate
 conversions live in partner dashboards); clicks are the in-product proxy, with
 `booking_marked_booked` as the self-reported completion signal.
+
+### Anonymous client events (Wave 8)
+
+Everything above `user_registered` used to be invisible: the events endpoint
+required authentication and the client dropped events for signed-out sessions,
+so the funnel had no top. `POST /events` now also accepts **unauthenticated**
+requests, restricted to a deliberately tiny whitelist — this is a
+spam-writable surface with no identity to hold accountable, so every accepted
+type must be a moment a signed-out visitor can actually produce:
+
+| Anonymous event | Why it's on the whitelist |
+|---|---|
+| `landing_viewed` | the top of the funnel: landing-page views over signups is the first conversion number |
+| `booking_link_clicked` | signed-out booking handoffs (e.g. from future public surfaces) still count toward total clicks |
+
+There is intentionally **no** `plan_started_anonymous`: the Flutter app has no
+signed-out planning entry point (AuthGate routes signed-out visitors to the
+landing page), and anonymous direct `/plan` API calls are already recorded
+server-side as `plan_session_started` with a NULL user id (surfaced as
+`plan_sessions_anonymous`).
+
+Spam-bounding measures on the anonymous path:
+
+- **Strict rate limiter** — the anonymous route sits behind the strict per-IP
+  tier (same as `/plan` and credential routes), bounding write volume.
+- **Whitelist rejection** — an anonymous `event_type` off the whitelist is a
+  400; server-side types cannot be spoofed.
+- **`trip_id` always dropped** — ownership cannot be verified without a user,
+  and the attach-rate numerator counts DISTINCT trip ids, so anonymous events
+  are stored with `trip_id` NULL unconditionally.
+- **Metadata whitelist** — the same closed key set (`provider`, `surface`,
+  `kind`, `todo_key`), 64-char string values, provider lowercased, 2 KB cap.
+- **No silent auth downgrade** — a request presenting *any* Authorization
+  header is routed through the authenticated path and validated; an invalid
+  token is a 401, never treated as anonymous.
+- **Client-side once-per-session guard** — the app records `landing_viewed`
+  at most once per app session (a static guard, so rebuilds and sign-out
+  round trips don't re-record).
 
 ## Acceptance Criteria
 
@@ -78,23 +117,54 @@ conversions live in partner dashboards); clicks are the in-product proxy, with
 
 ### `POST /api/v1/events`
 - **Purpose:** record a client-observed event. Fire-and-forget semantics.
-- **Request:** `event_type` (must be a client-permitted type —
-  `booking_link_clicked` only for now), optional `trip_id`, optional
-  `metadata` (small, flat key/value detail: todo id, provider, kind).
-  Requires authentication.
+- **Request:** `event_type` (must be a client-permitted type), optional
+  `trip_id`, optional `metadata` (small, flat key/value detail: todo id,
+  provider, kind).
+- **Authentication:** optional, with two distinct paths matched by the
+  presence of an `Authorization` header:
+  - **Authenticated** (header present): the token is validated and the event
+    attributed to the user; the full client whitelist applies and `trip_id`
+    survives only if the caller can access the trip. An invalid token is a
+    401 — never a silent downgrade to anonymous.
+  - **Anonymous** (no header): only the anonymous whitelist
+    (`landing_viewed`, `booking_link_clicked`) is accepted; the row is stored
+    with `user_id` NULL and `trip_id` NULL unconditionally; the route sits
+    behind the strict per-IP rate limiter.
 - **Response:** `202 Accepted`, empty body — returned even when persistence is
   degraded (the event is dropped, not errored).
-- **Errors:** 401 when not authenticated; 400 when `event_type` is missing or
-  not client-permitted (server-side types cannot be spoofed through this
-  endpoint).
+- **Errors:** 401 when a presented token is invalid or expired; 400 when
+  `event_type` is missing or not permitted for the request's auth level
+  (server-side types cannot be spoofed through this endpoint); 429 when the
+  anonymous strict tier is exceeded.
 
 ### `GET /api/v1/admin/metrics?days=`
 - **Purpose:** the Phase 1 dashboard-in-an-endpoint. **Admin only.**
 - **Request:** optional `days` window (default 30).
-- **Response:** counts and rates for the window — signups, activated users and
-  activation rate, trips created, trips with ≥1 booking click and attach rate,
-  booking clicks by provider, todos marked booked, the derived metrics below,
-  plan sessions, total input/output/cache tokens, and cost estimates.
+- **Response:** counts and rates for the window — landing views (anonymous;
+  see below), signups, activated users and activation rate, trips created,
+  trips with ≥1 booking click and attach rate, booking clicks by provider,
+  todos marked booked, the derived metrics below, plan sessions, total
+  input/output/cache tokens, and cost estimates.
+
+#### Anonymous rows and the derived metrics
+
+Anonymous events (`user_id` NULL) must never distort the signed-in numbers:
+
+- **`landing_views`** counts anonymous `landing_viewed` events — the top of
+  the funnel, above signups. Client-guarded to once per app session and
+  strict-rate-limited at ingest, but still an unauthenticated count: read it
+  as directional, not audited.
+- **MAU / engagement** (`active_users`, `session_frequency_returning`,
+  `second_trip_retention`) filter `user_id IS NOT NULL` explicitly — NULL
+  rows can never group into a phantom user.
+- **Attach rate**: anonymous `booking_link_clicked` events count toward
+  `booking_clicks` and `clicks_by_provider`, but they **cannot** count toward
+  `trips_with_booking_click` (and therefore `attach_rate`) — their `trip_id`
+  is NULL by construction (dropped at ingest, ownership unverifiable), and
+  the numerator counts DISTINCT non-NULL trip ids. This is deliberate: attach
+  rate stays a signed-in, per-trip metric.
+- **`activation_rate`** joins `user_registered` to `trip_created` on
+  `user_id`; NULL never joins, so anonymous rows are inert there.
 - **Errors:** 401 unauthenticated; 403 non-admin; 503 when persistence is
   unavailable.
 
@@ -185,15 +255,22 @@ flows they describe.
   events endpoint still returns 202; nothing user-facing changes.
 - Event recording must never fail its parent flow: a failed insert during
   signup or trip save is logged server-side and swallowed.
-- Client event with an unknown or server-only `event_type` → 400.
+- Client event with an unknown or server-only `event_type` → 400 (on both the
+  authenticated and anonymous paths; the anonymous whitelist is stricter).
 - Oversized metadata is rejected or truncated safely (bounded payload).
-- Anonymous planning sessions (unauthenticated `/plan` use, if any) are not
-  recorded — events require a user.
+- A request presenting an invalid/expired token → 401, never recorded as
+  anonymous.
+- Anonymous planning sessions (unauthenticated `/plan` use) are recorded
+  server-side with a NULL user id (`plan_sessions_anonymous`); they are
+  excluded from every user-denominated metric.
 
 ## Out of Scope
 
 - Third-party analytics (PostHog, GA, etc.) and any data export.
-- Anonymous / pre-signup tracking (landing page visits, marketing funnels).
+- Broad anonymous / pre-signup tracking (marketing funnels, referrer/UTM
+  capture, anonymous identity stitching). The Wave 8 anonymous whitelist
+  covers exactly two in-product moments — nothing about the visitor is stored
+  beyond the event itself (no IP, no user agent, no fingerprint).
 - Dashboards or Flutter admin UI for metrics (endpoint only).
 - A/B testing, feature flags, experiment assignment.
 - Client-side event batching/queueing — one best-effort request per event.

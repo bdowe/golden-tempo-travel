@@ -46,6 +46,9 @@ class _RecordingAnalytics implements AnalyticsApiService {
       Future.value();
 
   @override
+  Future<void> recordLandingViewed() => Future.value();
+
+  @override
   Future<void> recordBookingLinkClicked({
     String? tripId,
     String? todoKey,

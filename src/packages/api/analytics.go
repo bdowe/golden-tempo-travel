@@ -21,13 +21,32 @@ import (
 // database down every instrumented flow behaves exactly as before and events
 // are silently dropped. No PII beyond the user id.
 
-// clientEventTypes are the only types POST /events accepts — server-side
-// types cannot be spoofed through the client endpoint.
+// clientEventTypes are the only types authenticated POST /events accepts —
+// server-side types cannot be spoofed through the client endpoint.
 var clientEventTypes = map[string]bool{
 	"booking_link_clicked": true,
 	// A place added to a trip from a browse surface (local rec, event, guide
 	// pin) — specs/add-to-itinerary. Distinguished by metadata "source".
 	"itinerary_item_added": true,
+}
+
+// anonymousClientEventTypes is the tighter whitelist for UNAUTHENTICATED
+// POST /events — the pre-signup top of the funnel. Deliberately tiny: this is
+// a spam-writable surface (no identity, only the strict per-IP limiter
+// bounding it), so only the moments a signed-out visitor can actually produce
+// are accepted:
+//   - landing_viewed        — the marketing landing page rendered (once per
+//     app session, guarded client-side).
+//   - booking_link_clicked  — a signed-out booking handoff (the attach-rate
+//     event; anonymous rows never carry a trip_id, see below).
+//
+// There is intentionally no plan_started_anonymous: the Flutter app has no
+// signed-out planning entry point, and anonymous direct /plan calls are
+// already recorded server-side as plan_session_started with a NULL user_id
+// (the plan_sessions_anonymous metric).
+var anonymousClientEventTypes = map[string]bool{
+	"landing_viewed":       true,
+	"booking_link_clicked": true,
 }
 
 // maxEventMetadataBytes caps the metadata bag (small, flat detail only).
@@ -130,16 +149,21 @@ func recordEventOpt(userID *uuid.UUID, eventType string, tripID *uuid.UUID, meta
 	}
 }
 
-// recordClientEventHandler is POST /api/v1/events — the one client-observed
-// moment (opening a booking link). Always 202 once the payload is valid, even
-// when persistence is degraded: tracking must never surface as a user error.
+// clientEventRequest is the POST /api/v1/events payload, shared by the
+// authenticated and anonymous handlers.
+type clientEventRequest struct {
+	EventType string         `json:"event_type"`
+	TripID    *string        `json:"trip_id"`
+	Metadata  map[string]any `json:"metadata"`
+}
+
+// recordClientEventHandler is authenticated POST /api/v1/events — client
+// funnel moments from signed-in users. Always 202 once the payload is valid,
+// even when persistence is degraded: tracking must never surface as a user
+// error.
 func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	var req struct {
-		EventType string         `json:"event_type"`
-		TripID    *string        `json:"trip_id"`
-		Metadata  map[string]any `json:"metadata"`
-	}
+	var req clientEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -177,6 +201,35 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// recordAnonymousClientEventHandler is unauthenticated POST /api/v1/events —
+// the pre-signup top of the funnel. Route registration (main.go) sends only
+// requests WITHOUT an Authorization header here, behind the strict per-IP
+// limiter; anything presenting a token goes through authMiddleware instead
+// (validated and attributed, or 401 — never silently downgraded to
+// anonymous).
+//
+// Spam bounding, since there is no identity to hold accountable:
+//   - event_type must be on anonymousClientEventTypes (400 otherwise);
+//   - trip_id is ALWAYS dropped — ownership cannot be verified without a
+//     user, and the attach-rate numerator counts DISTINCT trip_id, so a
+//     fabricated reference must never be stored;
+//   - metadata passes the same closed key/value whitelist as authed events;
+//   - the strict rate limiter caps write volume per IP.
+func recordAnonymousClientEventHandler(w http.ResponseWriter, r *http.Request) {
+	var req clientEventRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !anonymousClientEventTypes[req.EventType] {
+		writeJSONError(w, http.StatusBadRequest, "event_type is missing or not permitted for anonymous requests")
+		return
+	}
+	meta := sanitizeClientEventMetadata(req.Metadata)
+	go recordEventOpt(nil, req.EventType, nil, meta)
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // Claude pricing used for the dashboard's COGS estimates (USD per million
 // tokens), pinned to the model plan_handler.go actually calls. If the /plan
 // model changes, update this block in the same commit. The resulting est_*
@@ -194,13 +247,22 @@ const (
 // questions in docs/business-model.md §8 (activation, second-trip retention,
 // attach rate, COGS per active user, cap-hit rate).
 type MetricsResponse struct {
-	Days                  int              `json:"days"`
-	Signups               int64            `json:"signups"`
-	ActivatedSignups      int64            `json:"activated_signups"`
-	ActivationRate        float64          `json:"activation_rate"`
-	OnboardingsCompleted  int64            `json:"onboardings_completed"`
-	TripsCreated          int64            `json:"trips_created"`
-	TripsRefined          int64            `json:"trips_refined"`
+	Days int `json:"days"`
+	// LandingViews counts anonymous landing_viewed events — the top of the
+	// funnel, above signups. Client-guarded to once per app session and
+	// strict-rate-limited at ingest, but still an unauthenticated count:
+	// read it as directional, not audited.
+	LandingViews         int64   `json:"landing_views"`
+	Signups              int64   `json:"signups"`
+	ActivatedSignups     int64   `json:"activated_signups"`
+	ActivationRate       float64 `json:"activation_rate"`
+	OnboardingsCompleted int64   `json:"onboardings_completed"`
+	TripsCreated         int64   `json:"trips_created"`
+	TripsRefined         int64   `json:"trips_refined"`
+	// TripsWithBookingClick / AttachRate count DISTINCT non-NULL trip_id on
+	// booking_link_clicked. Anonymous clicks always have trip_id NULL (ingest
+	// drops it — ownership is unverifiable), so they appear in BookingClicks
+	// and ClicksByProvider but can never move the attach rate.
 	TripsWithBookingClick int64            `json:"trips_with_booking_click"`
 	AttachRate            float64          `json:"attach_rate"`
 	BookingClicks         int64            `json:"booking_clicks"`
@@ -274,6 +336,7 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp := MetricsResponse{
 		Days:                 days,
+		LandingViews:         counts["landing_viewed"],
 		Signups:              counts["user_registered"],
 		OnboardingsCompleted: counts["onboarding_completed"],
 		TripsCreated:         counts["trip_created"],

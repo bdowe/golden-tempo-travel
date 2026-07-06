@@ -1,0 +1,619 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+
+	anthropic "github.com/anthropics/anthropic-sdk-go"
+	"github.com/google/uuid"
+
+	"travel-route-planner/store"
+)
+
+// plan_tool_registry.go — the /plan agent's tool table. Every tool the agent
+// can call is ONE entry in planToolRegistry: the anthropic tool definition,
+// an optional availability gate, and a dispatcher. plan_handler.go generates
+// the tools slice sent to the API from this registry and dispatches tool_use
+// blocks through it; adding a tool means adding one entry here.
+//
+// ORDER MATTERS: planToolRegistry is an ordered slice, not a map, because the
+// tools array is part of the prompt-cache prefix (the system-prompt cache
+// breakpoint covers tools + system — see the Wave-6 moving-cache-breakpoint
+// work in plan_handler.go). Registry order is the serialization order; keep
+// it byte-stable so cache hits survive across iterations and sessions.
+
+// planSession carries the per-request state a tool dispatcher may need:
+// which caller this is, what trip (if any) the session is bound to, the SSE
+// writer for side events, and the mutable outcomes the handler reads back
+// (persisted trip id, whether the profile distiller already fired).
+type planSession struct {
+	ctx    context.Context
+	w      http.ResponseWriter
+	req    PlanRequest
+	client anthropic.Client
+
+	authed      bool
+	uid         uuid.UUID
+	boundTripID *uuid.UUID
+
+	// tripID is the trip this session persisted or refined (nil if none);
+	// the handler's completion instrumentation reads it.
+	tripID *uuid.UUID
+	// distilled guards the once-per-session background profile distillation.
+	distilled bool
+}
+
+// planTool is one registry entry.
+type planTool struct {
+	def anthropic.ToolParam
+	// enabled gates whether the tool is offered to the model for this
+	// session; nil means always offered.
+	enabled func(s *planSession) bool
+	// run executes the tool and returns (resultText, isError) — the payload
+	// of the tool_result block sent back to the model. Side events (done,
+	// flights, stays, ...) are emitted inside run, before the generic
+	// tool_result event.
+	run func(s *planSession, input json.RawMessage) (string, bool)
+	// noResultEvent suppresses the generic tool_result SSE event
+	// (create_itinerary emits done instead).
+	noResultEvent bool
+}
+
+func authedOnly(s *planSession) bool { return s.authed }
+
+// planToolRegistry lists every agent tool in serialization order. The
+// conditional slots keep today's order: the trip-bound section tool replaces
+// create_itinerary (a refinement can never spawn a new trip version), and the
+// personalization tools are signed-in only.
+var planToolRegistry = []planTool{
+	{def: searchPlacesTool, run: runSearchPlacesTool},
+	{def: suggestStaysTool, run: runSuggestStaysTool},
+	{def: suggestTransportTool, run: runSuggestTransportTool},
+	{def: suggestFerriesTool, run: runSuggestFerriesTool},
+	{def: searchFlightsTool, run: runSearchFlightsTool},
+	{def: searchEventsTool, run: runSearchEventsTool},
+	{def: searchLocalRecsTool, run: runSearchLocalRecsTool},
+	{def: getWeatherTool, run: func(s *planSession, input json.RawMessage) (string, bool) {
+		return runGetWeatherTool(s.ctx, input)
+	}},
+	{def: updateSectionTool, enabled: func(s *planSession) bool { return s.boundTripID != nil },
+		run: runUpdateItinerarySectionTool},
+	{def: createItineraryTool, enabled: func(s *planSession) bool { return s.boundTripID == nil },
+		run: runCreateItineraryTool, noResultEvent: true},
+	{def: savePrefsTool, enabled: authedOnly, run: runSavePreferencesTool},
+	{def: getTripTool, enabled: authedOnly, run: func(s *planSession, input json.RawMessage) (string, bool) {
+		return runGetTripTool(s.ctx, s.authed, s.uid, input)
+	}},
+	{def: addBookingTodoTool, enabled: authedOnly, run: func(s *planSession, input json.RawMessage) (string, bool) {
+		return runAddBookingTodoTool(s.ctx, s.authed, s.uid, input)
+	}},
+}
+
+// planToolByName dispatches tool_use blocks; derived from the registry so the
+// two can never drift.
+var planToolByName = func() map[string]*planTool {
+	m := make(map[string]*planTool, len(planToolRegistry))
+	for i := range planToolRegistry {
+		m[planToolRegistry[i].def.Name] = &planToolRegistry[i]
+	}
+	return m
+}()
+
+// planSessionTools generates the tools slice sent to the API, in registry
+// order, filtered to what this session may use.
+func planSessionTools(s *planSession) []anthropic.ToolUnionParam {
+	tools := make([]anthropic.ToolUnionParam, 0, len(planToolRegistry))
+	for i := range planToolRegistry {
+		pt := &planToolRegistry[i]
+		if pt.enabled == nil || pt.enabled(s) {
+			tools = append(tools, anthropic.ToolUnionParam{OfTool: &pt.def})
+		}
+	}
+	return tools
+}
+
+// --- tool definitions ---------------------------------------------------------
+
+var searchPlacesTool = anthropic.ToolParam{
+	Name:        "search_places",
+	Description: anthropic.String("Search for travel destinations, attractions, restaurants, or points of interest by name or description."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"query": map[string]any{
+				"type":        "string",
+				"description": "Search query, e.g. 'Eiffel Tower Paris' or 'best museums in Rome'",
+			},
+		},
+		Required: []string{"query"},
+	},
+}
+
+var createItineraryTool = anthropic.ToolParam{
+	Name:        "create_itinerary",
+	Description: anthropic.String("Finalize the itinerary with the chosen list of locations to visit. Call this when you have identified all the places for the trip."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"locations": map[string]any{
+				"type":        "array",
+				"description": "Ordered list of locations to visit",
+				"items":       itineraryLocationSchema,
+			},
+			"title": map[string]any{
+				"type":        "string",
+				"description": "A short, human-friendly trip name, 3–6 words (e.g. 'Luxury Paris Weekend'). Distinct from the longer summary.",
+			},
+			"summary": map[string]any{
+				"type":        "string",
+				"description": "A 1–2 sentence overview of the trip to show the user (the per-day breakdown already appears in the itinerary list, so keep this brief).",
+			},
+			"start_date": map[string]any{
+				"type":        "string",
+				"description": "The trip's first day as YYYY-MM-DD (day 1). Include it whenever the traveler has given or agreed to travel dates.",
+			},
+			"end_date": map[string]any{
+				"type":        "string",
+				"description": "The trip's last day as YYYY-MM-DD. Optional — if omitted it's derived from start_date plus the number of days in the itinerary.",
+			},
+		},
+		Required: []string{"locations"},
+	},
+}
+
+var savePrefsTool = anthropic.ToolParam{
+	Name:        "save_preferences",
+	Description: anthropic.String("Save what you learn about the traveler so future trips are personalized. Call this when the user reveals a budget level, trip pace, interests, which airport they fly from, or any other durable fact about how they travel. Only include fields you actually learned."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"budget": map[string]any{
+				"type":        "string",
+				"enum":        []string{"budget", "mid", "luxury"},
+				"description": "Overall spending level",
+			},
+			"pace": map[string]any{
+				"type":        "string",
+				"enum":        []string{"relaxed", "balanced", "packed"},
+				"description": "How packed the days should be",
+			},
+			"interests": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Theme tags, e.g. museums, food, nightlife, nature",
+			},
+			"home_airport": map[string]any{
+				"type":        "string",
+				"description": "The traveler's home/departure airport as an IATA code, e.g. BOS — save it when they mention where they usually fly from",
+			},
+			"profile_notes": map[string]any{
+				"type":        "string",
+				"description": "The COMPLETE updated traveler profile as short bullet lines — your current notes (shown in the system prompt) merged with the new fact, de-duplicated, max ~15 lines. Never send only the new fact; always send the full rewritten profile.",
+			},
+		},
+	},
+}
+
+var suggestStaysTool = anthropic.ToolParam{
+	Name:        "suggest_stays",
+	Description: anthropic.String("Give the traveler links to browse accommodations on Airbnb and Booking.com for a destination. Call this when they want lodging suggestions."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"destination": map[string]any{"type": "string", "description": "City or area, e.g. 'Paris'"},
+			"check_in":    map[string]any{"type": "string", "description": "Optional YYYY-MM-DD"},
+			"check_out":   map[string]any{"type": "string", "description": "Optional YYYY-MM-DD"},
+			"guests":      map[string]any{"type": "integer", "description": "Optional number of guests"},
+		},
+		Required: []string{"destination"},
+	},
+}
+
+var suggestTransportTool = anthropic.ToolParam{
+	Name:        "suggest_transport",
+	Description: anthropic.String("Give the traveler links to browse transport options. Call this when they need to get to or between destinations. Mode 'flight' returns Google Flights + Kayak; mode 'ground' returns Rome2Rio (covers trains, buses, cars, ferries). For travel between Greek islands, prefer suggest_ferries instead."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"mode":        map[string]any{"type": "string", "enum": []string{"flight", "ground"}, "description": "flight or ground (multimodal)"},
+			"origin":      map[string]any{"type": "string", "description": "Origin city or airport, e.g. 'NYC' or 'Paris'"},
+			"destination": map[string]any{"type": "string", "description": "Destination city or airport"},
+			"depart_date": map[string]any{"type": "string", "description": "Optional YYYY-MM-DD"},
+			"return_date": map[string]any{"type": "string", "description": "Optional YYYY-MM-DD (flights only)"},
+			"passengers":  map[string]any{"type": "integer", "description": "Optional passenger count"},
+		},
+		Required: []string{"mode", "origin", "destination"},
+	},
+}
+
+var suggestFerriesTool = anthropic.ToolParam{
+	Name:        "suggest_ferries",
+	Description: anthropic.String("Give the traveler a ferry booking link for a route between two ports/islands — use this for Greek island-hopping (e.g. Santorini→Naxos) and other ferry legs. Backed by Ferryhopper, which aggregates the major Greek operators (Blue Star, SeaJets, etc.)."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"origin":      map[string]any{"type": "string", "description": "Departure port or island, e.g. 'Santorini' or 'Piraeus'"},
+			"destination": map[string]any{"type": "string", "description": "Arrival port or island, e.g. 'Naxos'"},
+			"date":        map[string]any{"type": "string", "description": "Optional YYYY-MM-DD travel date"},
+			"passengers":  map[string]any{"type": "integer", "description": "Optional passenger count"},
+		},
+		Required: []string{"origin", "destination"},
+	},
+}
+
+var searchFlightsTool = anthropic.ToolParam{
+	Name: "search_flights",
+	Description: anthropic.String("Search real flight options between two places for given dates and present a few good ones (ranked by overall desirability). " +
+		"Ask the traveler for their departure city/airport and travel dates first if you don't know them. " +
+		"origin/destination may be city names or IATA codes. Choose optimize_for from the traveler's budget: budget→'cost', luxury→'time', otherwise 'balanced'."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"origin":       map[string]any{"type": "string", "description": "Departure city or IATA code, e.g. 'Boston' or 'BOS'"},
+			"destination":  map[string]any{"type": "string", "description": "Arrival city or IATA code"},
+			"depart_date":  map[string]any{"type": "string", "description": "YYYY-MM-DD"},
+			"return_date":  map[string]any{"type": "string", "description": "Optional YYYY-MM-DD for round trips"},
+			"adults":       map[string]any{"type": "integer", "description": "Optional, defaults to 1"},
+			"child_ages":   map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Optional ages of child travelers (one per child, 0-17) — include when the traveler mentions kids"},
+			"cabin_class":  map[string]any{"type": "string", "enum": []string{"economy", "premium_economy", "business", "first"}, "description": "Optional cabin, defaults to economy — set when the traveler asks for a specific class"},
+			"optimize_for": map[string]any{"type": "string", "enum": []string{"cost", "time", "balanced"}, "description": "Ranking emphasis"},
+		},
+		Required: []string{"origin", "destination", "depart_date"},
+	},
+}
+
+var searchEventsTool = anthropic.ToolParam{
+	Name: "search_events",
+	Description: anthropic.String("Find local events (concerts, sports, festivals, theatre/shows) happening in a city during specific dates, so the itinerary can account for what's on while the traveler is there. " +
+		"Use the city and the dates the traveler is in that city; you already know the trip's cities and dates from the itinerary. " +
+		"Present a few that fit the traveler's interests."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"city":       map[string]any{"type": "string", "description": "City name, e.g. 'Paris'"},
+			"start_date": map[string]any{"type": "string", "description": "First day to look from, YYYY-MM-DD (when the traveler arrives in the city)"},
+			"end_date":   map[string]any{"type": "string", "description": "Last day to look through, YYYY-MM-DD (when the traveler leaves the city)"},
+			"category":   map[string]any{"type": "string", "enum": []string{"music", "sports", "arts", "film", "miscellaneous"}, "description": "Optional event category filter"},
+		},
+		Required: []string{"city", "start_date", "end_date"},
+	},
+}
+
+var searchLocalRecsTool = anthropic.ToolParam{
+	Name: "search_local_recommendations",
+	Description: anthropic.String("Find hand-curated recommendations from real locals for a city — vetted spots you can't get by googling. " +
+		"ALWAYS call this FIRST for each city, before search_places. Prefer these picks over generic search results, and when you use one, cite the local by name in your reply (their name is in 'source_name'). " +
+		"When you pass a local pick into create_itinerary, copy its 'id' into local_recommendation_id and its 'source_name' into local_source_name so the saved trip credits them."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"city":     map[string]any{"type": "string", "description": "City name, e.g. 'Lisbon'"},
+			"category": map[string]any{"type": "string", "enum": []string{"attraction", "restaurant"}, "description": "Optional filter to only sights or only places to eat"},
+		},
+		Required: []string{"city"},
+	},
+}
+
+var updateSectionTool = anthropic.ToolParam{
+	Name:        "update_itinerary_section",
+	Description: anthropic.String("Replace one section of the traveler's saved itinerary in place. Pass the COMPLETE updated list of places for the targeted section, in visit order — places you omit are removed from that section. Places outside the section are untouched. Use scope 'day' for a single trip day, 'city' for one city/hub and its day trips, or 'trip' for the whole itinerary."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"scope": map[string]any{
+				"type":        "string",
+				"enum":        []string{"day", "city", "trip"},
+				"description": "Which slice of the itinerary to replace.",
+			},
+			"day": map[string]any{
+				"type":        "integer",
+				"description": "Required when scope is 'day': the 1-based trip day being replaced.",
+			},
+			"city": map[string]any{
+				"type":        "string",
+				"description": "Required when scope is 'city' (the hub city whose items are replaced); optional with scope 'day' to disambiguate when day numbers repeat across cities.",
+			},
+			"items": map[string]any{
+				"type":        "array",
+				"description": "The full replacement list for the section, in visit order. Include unchanged places with their existing coordinates and tags so they aren't lost.",
+				"items":       itineraryLocationSchema,
+			},
+		},
+		Required: []string{"scope", "items"},
+	},
+}
+
+// --- dispatchers ----------------------------------------------------------------
+
+func runSearchPlacesTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Query string `json:"query"`
+	}
+	json.Unmarshal(input, &in)
+
+	results, err := placesService.SearchPlaces(in.Query)
+	if err != nil {
+		return fmt.Sprintf("Error searching places: %v", err), true
+	}
+	b, _ := json.Marshal(results)
+	return string(b), false
+}
+
+func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Locations []map[string]any `json:"locations"`
+		Title     string           `json:"title"`
+		Summary   string           `json:"summary"`
+		StartDate string           `json:"start_date"`
+		EndDate   string           `json:"end_date"`
+	}
+	json.Unmarshal(input, &in)
+
+	// Distance-optimize the walking order within each day/time-of-day
+	// block, leaving Claude's day and time-of-day assignments intact.
+	in.Locations = reorderItineraryByDistance(in.Locations)
+
+	donePayload := map[string]any{"locations": in.Locations, "summary": in.Summary}
+	// Persist the trip only for signed-in callers; anonymous sessions
+	// stay ephemeral (no trip_id in the done event).
+	if s.authed {
+		if tripID, newLineage, err := persistTrip(s.ctx, s.uid, s.req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
+			log.Printf("failed to persist trip: %v", err)
+		} else {
+			donePayload["trip_id"] = tripID
+			if parsed, err := uuid.Parse(tripID); err == nil {
+				s.tripID = &parsed
+				go recordEvent(s.uid, "trip_created", &parsed, map[string]any{
+					"item_count": len(in.Locations),
+				})
+				// Free-cap active_trips crossing signal — only a
+				// brand-new lineage can move the lineage count; a
+				// version save of an existing chat lineage leaves
+				// it unchanged and must never emit
+				// (specs/free-cap-instrumentation).
+				if newLineage {
+					go recordActiveTripsCapSignal(s.uid, parsed)
+				}
+			}
+			// Distill what this conversation revealed about the traveler
+			// in the background — it must never delay or fail the trip.
+			// context.Background(): the request ctx dies with the handler.
+			if !s.distilled {
+				s.distilled = true
+				go distillTravelerProfile(context.Background(), s.client, s.uid, s.req.Messages)
+			}
+		}
+	}
+	sendSSE(s.w, "done", donePayload)
+	return "Itinerary created successfully.", false
+}
+
+func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Scope string           `json:"scope"`
+		Day   *int             `json:"day"`
+		City  string           `json:"city"`
+		Items []map[string]any `json:"items"`
+	}
+	json.Unmarshal(input, &in)
+
+	if s.boundTripID == nil {
+		return "This session is not bound to a saved trip; update_itinerary_section is unavailable.", true
+	}
+	// Same in-block walking-distance cleanup create_itinerary gets.
+	in.Items = reorderItineraryByDistance(in.Items)
+	if err := replaceTripSection(s.ctx, *s.boundTripID, sectionSelector{Scope: in.Scope, Day: in.Day, City: in.City}, in.Items); err != nil {
+		return fmt.Sprintf("Could not update the section: %v", err), true
+	}
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": s.boundTripID.String()})
+	s.tripID = s.boundTripID
+	go recordEvent(s.uid, "trip_refined", s.boundTripID, map[string]any{
+		"scope": in.Scope,
+	})
+	return "Section updated — the traveler's trip page has refreshed.", false
+}
+
+func runSavePreferencesTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Budget       *string  `json:"budget"`
+		Pace         *string  `json:"pace"`
+		Interests    []string `json:"interests"`
+		HomeAirport  *string  `json:"home_airport"`
+		ProfileNotes *string  `json:"profile_notes"`
+	}
+	json.Unmarshal(input, &in)
+
+	budget, _ := normalizeChoice(in.Budget, allowedBudgets, "budget")
+	pace, _ := normalizeChoice(in.Pace, allowedPaces, "pace")
+	homeAirport, _ := normalizeAirportCode(in.HomeAirport)
+	var interestsArg interface{}
+	if in.Interests != nil {
+		interestsArg = normalizeInterests(in.Interests)
+	}
+	notes := normalizeNotes(in.ProfileNotes)
+	if notes != nil && *notes == "" {
+		// The agent can never wipe notes; only the user (PUT) can clear.
+		notes = nil
+	}
+	_, err := store.New(dbPool).UpsertPreferences(s.ctx, store.UpsertPreferencesParams{
+		UserID: s.uid, Budget: budget, Pace: pace, Interests: interestsArg, HomeAirport: homeAirport, ProfileNotes: notes,
+	})
+	if err != nil {
+		return fmt.Sprintf("Could not save preferences: %v", err), true
+	}
+	var changed []string
+	if budget != nil {
+		changed = append(changed, "budget")
+	}
+	if pace != nil {
+		changed = append(changed, "pace")
+	}
+	if interestsArg != nil {
+		changed = append(changed, "interests")
+	}
+	if homeAirport != nil {
+		changed = append(changed, "home_airport")
+	}
+	if notes != nil {
+		changed = append(changed, "profile_notes")
+	}
+	if len(changed) > 0 {
+		sendSSE(s.w, "profile_updated", map[string]any{
+			"fields": changed, "notes_preview": notesPreview(notes),
+		})
+	}
+	return "Preferences saved.", false
+}
+
+func runSuggestStaysTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Destination string `json:"destination"`
+		CheckIn     string `json:"check_in"`
+		CheckOut    string `json:"check_out"`
+		Guests      int    `json:"guests"`
+	}
+	json.Unmarshal(input, &in)
+	links := providerLinks(AccommodationQuery{
+		Destination: in.Destination, CheckIn: in.CheckIn, CheckOut: in.CheckOut, Guests: in.Guests,
+	})
+	sendSSE(s.w, "stays", map[string]any{"destination": in.Destination, "links": links})
+	b, _ := json.Marshal(links)
+	return "Provided browse links: " + string(b), false
+}
+
+func runSuggestTransportTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Mode        string `json:"mode"`
+		Origin      string `json:"origin"`
+		Destination string `json:"destination"`
+		DepartDate  string `json:"depart_date"`
+		ReturnDate  string `json:"return_date"`
+		Passengers  int    `json:"passengers"`
+	}
+	json.Unmarshal(input, &in)
+	links := transportLinks(TransportQuery{
+		Mode: in.Mode, Origin: in.Origin, Destination: in.Destination,
+		DepartDate: in.DepartDate, ReturnDate: in.ReturnDate, Passengers: in.Passengers,
+	})
+	sendSSE(s.w, "transport", map[string]any{
+		"mode": in.Mode, "origin": in.Origin, "destination": in.Destination, "links": links,
+	})
+	b, _ := json.Marshal(links)
+	return "Provided browse links: " + string(b), false
+}
+
+func runSuggestFerriesTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Origin      string `json:"origin"`
+		Destination string `json:"destination"`
+		Date        string `json:"date"`
+		Passengers  int    `json:"passengers"`
+	}
+	json.Unmarshal(input, &in)
+	options := ferryService.SearchFerries(FerryQuery{
+		Origin: in.Origin, Destination: in.Destination,
+		Date: in.Date, Passengers: in.Passengers,
+	})
+	sendSSE(s.w, "ferries", map[string]any{
+		"origin": in.Origin, "destination": in.Destination, "options": options,
+	})
+	b, _ := json.Marshal(options)
+	return "Provided ferry booking link(s): " + string(b), false
+}
+
+func runSearchFlightsTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Origin      string `json:"origin"`
+		Destination string `json:"destination"`
+		DepartDate  string `json:"depart_date"`
+		ReturnDate  string `json:"return_date"`
+		Adults      int    `json:"adults"`
+		ChildAges   []int  `json:"child_ages"`
+		CabinClass  string `json:"cabin_class"`
+		OptimizeFor string `json:"optimize_for"`
+	}
+	json.Unmarshal(input, &in)
+
+	originIata := resolveIATA(s.ctx, in.Origin)
+	destIata := resolveIATA(s.ctx, in.Destination)
+	if originIata == "" || destIata == "" {
+		return fmt.Sprintf("Could not resolve %q or %q to an airport. Ask the traveler to clarify the city or airport.", in.Origin, in.Destination), true
+	}
+
+	adults := in.Adults
+	if adults < 1 {
+		adults = 1
+	}
+	offers, err := duffelService.SearchFlightOffers(s.ctx, FlightSearchRequest{
+		Origin: originIata, Destination: destIata, DepartDate: in.DepartDate,
+		ReturnDate: in.ReturnDate, Adults: adults, ChildAges: in.ChildAges,
+		CabinClass: in.CabinClass, OptimizeFor: in.OptimizeFor,
+	})
+	if err != nil {
+		return fmt.Sprintf("Error searching flights: %v", err), true
+	}
+
+	bestN := RankFlightOffers(offers, in.OptimizeFor)
+	if len(bestN) > 4 {
+		bestN = bestN[:4]
+	}
+	attachBookingURLs(bestN, FlightSearchRequest{
+		Origin: originIata, Destination: destIata,
+		DepartDate: in.DepartDate, ReturnDate: in.ReturnDate, Adults: adults,
+	})
+	if len(bestN) > 0 {
+		sendSSE(s.w, "flights", map[string]any{
+			"origin": originIata, "destination": destIata,
+			"depart_date": in.DepartDate, "optimize_for": normalizeOptimizeFor(in.OptimizeFor),
+			"offers": bestN,
+		})
+	}
+	return summarizeOffers(originIata, destIata, bestN), false
+}
+
+func runSearchEventsTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		City      string  `json:"city"`
+		StartDate string  `json:"start_date"`
+		EndDate   string  `json:"end_date"`
+		Category  *string `json:"category"`
+	}
+	json.Unmarshal(input, &in)
+
+	events, err := eventsService.SearchEvents(s.ctx, in.City, in.StartDate, in.EndDate, in.Category)
+	if len(events) > 0 {
+		sendSSE(s.w, "events", map[string]any{
+			"city":       in.City,
+			"start_date": in.StartDate,
+			"end_date":   in.EndDate,
+			"events":     events,
+		})
+	}
+
+	// Greece has no usable events API, so when the structured lookup
+	// comes back empty (or errors, e.g. no key) for a Greek city, fall
+	// back to curated Greek source links instead of nothing.
+	summary := summarizeEvents(in.City, events)
+	if len(events) == 0 && isGreekLocation(in.City) {
+		links := greekEventLinks(in.City, in.StartDate, in.EndDate)
+		sendSSE(s.w, "event_links", map[string]any{"city": in.City, "links": links})
+		b, _ := json.Marshal(links)
+		summary = "No ticketed listings via the events provider for " + in.City +
+			". Provided Greek event-discovery links: " + string(b)
+	} else if err != nil {
+		summary = fmt.Sprintf("Error searching events: %v", err)
+	}
+
+	return summary, err != nil && len(events) == 0 && !isGreekLocation(in.City)
+}
+
+func runSearchLocalRecsTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		City     string `json:"city"`
+		Category string `json:"category"`
+	}
+	json.Unmarshal(input, &in)
+
+	recs, err := localRecsService.SearchByCity(s.ctx, in.City, in.Category)
+	if len(recs) > 0 {
+		sendSSE(s.w, "local_recs", map[string]any{"city": in.City, "recommendations": recs})
+	}
+	summary := summarizeLocalRecs(in.City, recs)
+	if err != nil {
+		summary = fmt.Sprintf("Error searching local recommendations: %v", err)
+	}
+	return summary, err != nil
+}
