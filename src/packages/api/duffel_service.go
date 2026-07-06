@@ -64,6 +64,13 @@ type FlightOffer struct {
 	Segments       []FlightLeg `json:"segments"`
 	BookingURL     string      `json:"booking_url,omitempty"`
 
+	// Round-trip only: the return slice's legs and duration. Empty/zero for
+	// one-way searches. Price is always the total across all slices; the
+	// top-level Stops/DurationMin/times stay outbound-based so ranking and
+	// existing one-way consumers are unchanged.
+	ReturnSegments    []FlightLeg `json:"return_segments,omitempty"`
+	ReturnDurationMin int         `json:"return_duration_minutes,omitempty"`
+
 	// Scoring (filled by RankFlightOffers)
 	Score         float64 `json:"score"`
 	PriceScore    float64 `json:"price_score"`
@@ -228,7 +235,8 @@ func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values)
 
 // SearchFlightOffers creates a Duffel offer request (with offers returned
 // inline) and returns normalized offers (unranked). Stops/duration/times are
-// taken from the outbound slice.
+// taken from the outbound slice; on round trips the return slice is exposed
+// via ReturnSegments/ReturnDurationMin (price is always the round-trip total).
 func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearchRequest) ([]FlightOffer, error) {
 	adults := req.Adults
 	if adults < 1 {
@@ -291,6 +299,25 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		return nil, err
 	}
 
+	type duffelSegment struct {
+		Origin struct {
+			IataCode string `json:"iata_code"`
+		} `json:"origin"`
+		Destination struct {
+			IataCode string `json:"iata_code"`
+		} `json:"destination"`
+		DepartingAt      string `json:"departing_at"`
+		ArrivingAt       string `json:"arriving_at"`
+		MarketingCarrier struct {
+			Name     string `json:"name"`
+			IataCode string `json:"iata_code"`
+		} `json:"marketing_carrier"`
+		MarketingCarrierFlightNumber string `json:"marketing_carrier_flight_number"`
+	}
+	type duffelSlice struct {
+		Duration string          `json:"duration"`
+		Segments []duffelSegment `json:"segments"`
+	}
 	var result struct {
 		Data struct {
 			Offers []struct {
@@ -302,24 +329,7 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 					Name          string `json:"name"`
 					LogoSymbolURL string `json:"logo_symbol_url"`
 				} `json:"owner"`
-				Slices []struct {
-					Duration string `json:"duration"`
-					Segments []struct {
-						Origin struct {
-							IataCode string `json:"iata_code"`
-						} `json:"origin"`
-						Destination struct {
-							IataCode string `json:"iata_code"`
-						} `json:"destination"`
-						DepartingAt      string `json:"departing_at"`
-						ArrivingAt       string `json:"arriving_at"`
-						MarketingCarrier struct {
-							Name     string `json:"name"`
-							IataCode string `json:"iata_code"`
-						} `json:"marketing_carrier"`
-						MarketingCarrierFlightNumber string `json:"marketing_carrier_flight_number"`
-					} `json:"segments"`
-				} `json:"slices"`
+				Slices []duffelSlice `json:"slices"`
 			} `json:"offers"`
 		} `json:"data"`
 	}
@@ -335,41 +345,56 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		outbound := o.Slices[0]
 		segs := outbound.Segments
 
-		legs := make([]FlightLeg, 0, len(segs))
 		airlineSet := map[string]bool{}
 		airlines := []string{}
-		for _, s := range segs {
-			name := s.MarketingCarrier.Name
-			if name == "" {
-				name = s.MarketingCarrier.IataCode
+		toLegs := func(segs []duffelSegment) []FlightLeg {
+			legs := make([]FlightLeg, 0, len(segs))
+			for _, s := range segs {
+				name := s.MarketingCarrier.Name
+				if name == "" {
+					name = s.MarketingCarrier.IataCode
+				}
+				if name != "" && !airlineSet[name] {
+					airlineSet[name] = true
+					airlines = append(airlines, name)
+				}
+				legs = append(legs, FlightLeg{
+					From:         s.Origin.IataCode,
+					To:           s.Destination.IataCode,
+					Carrier:      name,
+					FlightNumber: s.MarketingCarrier.IataCode + s.MarketingCarrierFlightNumber,
+					DepartTime:   s.DepartingAt,
+					ArriveTime:   s.ArrivingAt,
+				})
 			}
-			if name != "" && !airlineSet[name] {
-				airlineSet[name] = true
-				airlines = append(airlines, name)
-			}
-			legs = append(legs, FlightLeg{
-				From:         s.Origin.IataCode,
-				To:           s.Destination.IataCode,
-				Carrier:      name,
-				FlightNumber: s.MarketingCarrier.IataCode + s.MarketingCarrierFlightNumber,
-				DepartTime:   s.DepartingAt,
-				ArriveTime:   s.ArrivingAt,
-			})
+			return legs
+		}
+		legs := toLegs(segs)
+
+		// Round-trip: normalize the return slice too so callers can render
+		// both directions. TotalAmount already covers all slices.
+		var returnLegs []FlightLeg
+		returnDur := 0
+		if len(o.Slices) > 1 && len(o.Slices[1].Segments) > 0 {
+			returnLegs = toLegs(o.Slices[1].Segments)
+			returnDur = parseISO8601Duration(o.Slices[1].Duration)
 		}
 
 		price, _ := strconv.ParseFloat(o.TotalAmount, 64)
 		offers = append(offers, FlightOffer{
-			ID:             o.ID,
-			Price:          price,
-			Currency:       o.TotalCurrency,
-			Stops:          len(segs) - 1,
-			DurationMin:    parseISO8601Duration(outbound.Duration),
-			Airlines:       airlines,
-			AirlineCode:    o.Owner.IataCode,
-			AirlineLogoURL: o.Owner.LogoSymbolURL,
-			DepartTime:     segs[0].DepartingAt,
-			ArriveTime:     segs[len(segs)-1].ArrivingAt,
-			Segments:       legs,
+			ID:                o.ID,
+			Price:             price,
+			Currency:          o.TotalCurrency,
+			Stops:             len(segs) - 1,
+			DurationMin:       parseISO8601Duration(outbound.Duration),
+			Airlines:          airlines,
+			AirlineCode:       o.Owner.IataCode,
+			AirlineLogoURL:    o.Owner.LogoSymbolURL,
+			DepartTime:        segs[0].DepartingAt,
+			ArriveTime:        segs[len(segs)-1].ArrivingAt,
+			Segments:          legs,
+			ReturnSegments:    returnLegs,
+			ReturnDurationMin: returnDur,
 		})
 		if len(offers) >= maxOffers {
 			break

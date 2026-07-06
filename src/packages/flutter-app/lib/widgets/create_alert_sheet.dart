@@ -10,6 +10,7 @@ class CreateAlertSheet extends ConsumerStatefulWidget {
   final String origin;
   final String destination;
   final String departDate; // YYYY-MM-DD
+  final String? returnDate; // YYYY-MM-DD; null = one-way
   final int adults;
   final String cabinClass;
   final double? currentPrice;
@@ -20,6 +21,7 @@ class CreateAlertSheet extends ConsumerStatefulWidget {
     required this.origin,
     required this.destination,
     required this.departDate,
+    this.returnDate,
     this.adults = 1,
     this.cabinClass = 'economy',
     this.currentPrice,
@@ -83,6 +85,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
         'origin': widget.origin,
         'destination': widget.destination,
         'depart_date': widget.departDate,
+        if (widget.returnDate != null) 'return_date': widget.returnDate,
         'adults': widget.adults,
         'cabin_class': widget.cabinClass,
         if (target != null) 'target_price': target,
@@ -121,6 +124,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
           const SizedBox(height: AppSpacing.sm),
           Text(
             '${widget.origin} → ${widget.destination} · ${widget.departDate}'
+            '${widget.returnDate != null ? ' → ${widget.returnDate}' : ''}'
             '${widget.adults > 1 ? ' · ${widget.adults} adults' : ''}'
             '${widget.cabinClass != 'economy' ? ' · ${widget.cabinClass.replaceAll('_', ' ')}' : ''}',
             style: theme.textTheme.bodyMedium

@@ -26,6 +26,14 @@ class FlightOffer {
   @JsonKey(name: 'booking_url')
   final String? bookingUrl;
 
+  /// Round-trip only: the return slice's legs and duration (empty/zero for
+  /// one-way offers). [price] is always the total across both directions;
+  /// [stops]/[durationMinutes]/[departTime]/[arriveTime] stay outbound-based.
+  @JsonKey(name: 'return_segments', defaultValue: <FlightLeg>[])
+  final List<FlightLeg> returnSegments;
+  @JsonKey(name: 'return_duration_minutes', defaultValue: 0)
+  final int returnDurationMinutes;
+
   final double score;
   @JsonKey(name: 'price_score')
   final double priceScore;
@@ -47,22 +55,50 @@ class FlightOffer {
     required this.arriveTime,
     required this.segments,
     this.bookingUrl,
+    this.returnSegments = const [],
+    this.returnDurationMinutes = 0,
     this.score = 0,
     this.priceScore = 0,
     this.durationScore = 0,
     this.stopsScore = 0,
   });
 
-  /// "5h 30m" style duration label.
-  String get durationLabel {
-    final h = durationMinutes ~/ 60;
-    final m = durationMinutes % 60;
+  /// True when the offer carries a return slice (round-trip search).
+  bool get isRoundTrip => returnSegments.isNotEmpty;
+
+  /// Stops on the return slice (0 when one-way or nonstop).
+  int get returnStops => returnSegments.isEmpty ? 0 : returnSegments.length - 1;
+
+  /// "5h 30m" style duration label for the outbound slice.
+  String get durationLabel => _fmtDuration(durationMinutes);
+
+  /// "5h 30m" style duration label for the return slice.
+  String get returnDurationLabel => _fmtDuration(returnDurationMinutes);
+
+  String get stopsLabel => _fmtStops(stops);
+
+  String get returnStopsLabel => _fmtStops(returnStops);
+
+  /// One stops label covering both directions of a round trip — "Nonstop",
+  /// "1 stop each way", or "Nonstop / 1 stop" when they differ. Falls back to
+  /// [stopsLabel] for one-way offers.
+  String get combinedStopsLabel {
+    if (!isRoundTrip) return stopsLabel;
+    if (stops == returnStops) {
+      return stops == 0 ? 'Nonstop' : '$stopsLabel each way';
+    }
+    return '$stopsLabel / $returnStopsLabel';
+  }
+
+  static String _fmtDuration(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
     if (h == 0) return '${m}m';
     if (m == 0) return '${h}h';
     return '${h}h ${m}m';
   }
 
-  String get stopsLabel => switch (stops) {
+  static String _fmtStops(int stops) => switch (stops) {
         0 => 'Nonstop',
         1 => '1 stop',
         _ => '$stops stops',
