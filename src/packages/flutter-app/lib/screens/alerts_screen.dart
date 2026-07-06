@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../theme/spacing.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_container.dart';
+import '../widgets/status_pill.dart';
 import 'auth_screen.dart';
 import '../utils/snack.dart';
 
@@ -247,20 +248,6 @@ class _AlertPill extends StatelessWidget {
       bg = theme.colorScheme.primaryContainer.withValues(alpha: 0.5);
       fg = theme.colorScheme.onPrimaryContainer;
     }
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: fg,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+    return StatusPill.custom(label: label, background: bg, foreground: fg);
   }
 }

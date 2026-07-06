@@ -4,6 +4,10 @@ import '../theme/spacing.dart';
 /// A filled tonal pill for a trip's status (Draft / Planned). Reads at a glance
 /// and stays colorblind-safe by carrying its label, not just a colored dot.
 /// Shared by the trips list and the trip-detail header.
+///
+/// [StatusPill.custom] renders the same pill chrome with an explicit label and
+/// colors (no leading icon, smaller type) for non-trip states — e.g. the price
+/// alerts screen.
 class StatusPill extends StatelessWidget {
   final String status;
 
@@ -11,23 +15,56 @@ class StatusPill extends StatelessWidget {
   /// status picker trigger). Tinted to match the label.
   final Widget? trailing;
 
-  const StatusPill({super.key, required this.status, this.trailing});
+  final String? _label;
+  final Color? _background;
+  final Color? _foreground;
+
+  const StatusPill({super.key, required this.status, this.trailing})
+      : _label = null,
+        _background = null,
+        _foreground = null;
+
+  const StatusPill.custom({
+    super.key,
+    required String label,
+    required Color background,
+    required Color foreground,
+  })  : status = '',
+        trailing = null,
+        _label = label,
+        _background = background,
+        _foreground = foreground;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isPlanned = status == 'planned';
-    final label = status.isEmpty
-        ? 'Draft'
-        : '${status[0].toUpperCase()}${status.substring(1)}';
+    final String label;
+    final Color bg;
+    final Color fg;
+    IconData? icon;
+    final TextStyle? style;
+    if (_label != null) {
+      label = _label;
+      bg = _background!;
+      fg = _foreground!;
+      style = theme.textTheme.labelSmall;
+    } else {
+      final isPlanned = status == 'planned';
+      label = status.isEmpty
+          ? 'Draft'
+          : '${status[0].toUpperCase()}${status.substring(1)}';
 
-    // Planned reads as a positive, completed state (green); anything else is a
-    // neutral surface tone so it doesn't compete for attention.
-    final Color bg = isPlanned
-        ? Colors.green.withValues(alpha: 0.15)
-        : theme.colorScheme.surfaceContainerHighest;
-    final Color fg =
-        isPlanned ? Colors.green.shade800 : theme.colorScheme.onSurfaceVariant;
+      // Planned reads as a positive, completed state (green); anything else is
+      // a neutral surface tone so it doesn't compete for attention.
+      bg = isPlanned
+          ? Colors.green.withValues(alpha: 0.15)
+          : theme.colorScheme.surfaceContainerHighest;
+      fg = isPlanned
+          ? Colors.green.shade800
+          : theme.colorScheme.onSurfaceVariant;
+      icon = isPlanned ? Icons.check_circle : Icons.edit_note;
+      style = theme.textTheme.labelMedium;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -41,15 +78,13 @@ class StatusPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isPlanned ? Icons.check_circle : Icons.edit_note,
-            size: 13,
-            color: fg,
-          ),
-          const SizedBox(width: AppSpacing.xs),
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: fg),
+            const SizedBox(width: AppSpacing.xs),
+          ],
           Text(
             label,
-            style: theme.textTheme.labelMedium?.copyWith(
+            style: style?.copyWith(
               color: fg,
               fontWeight: FontWeight.w600,
             ),
