@@ -26,6 +26,18 @@ class ApiClient {
   String get baseUrl => _baseUrl;
   http.Client get httpClient => _client;
 
+  /// Standard request headers for the JSON API: `Accept` always, a JSON
+  /// `Content-Type` when the request carries a body ([json] is true), and the
+  /// bearer token whenever a session exists. Shared by the feature services so
+  /// each one doesn't re-implement its own copy.
+  Map<String, String> jsonHeaders({bool json = false}) {
+    final h = <String, String>{'Accept': 'application/json'};
+    if (json) h['Content-Type'] = 'application/json';
+    final token = authToken;
+    if (token != null) h['Authorization'] = 'Bearer $token';
+    return h;
+  }
+
   /// Optimize a route for locations
   Future<RouteResponse> optimizeRoute(RouteRequest request) async {
     try {

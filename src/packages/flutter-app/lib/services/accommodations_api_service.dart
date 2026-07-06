@@ -9,14 +9,6 @@ class AccommodationsApiService {
 
   AccommodationsApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   Future<List<ProviderLink>> links({
     required String destination,
     String? checkIn,
@@ -30,7 +22,7 @@ class AccommodationsApiService {
       if (guests != null) 'guests': '$guests',
     };
     final uri = Uri.parse('${apiClient.baseUrl}/accommodation-links').replace(queryParameters: qp);
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list
@@ -43,7 +35,7 @@ class AccommodationsApiService {
   Future<Accommodation> add(String tripId, Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/accommodations'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 201) {
@@ -55,7 +47,7 @@ class AccommodationsApiService {
   Future<void> delete(String tripId, String accId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/accommodations/$accId'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception('Failed to delete accommodation (${res.statusCode})');

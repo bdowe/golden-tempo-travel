@@ -12,18 +12,10 @@ class FlightsApiService {
 
   FlightsApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   Future<FlightSearchResponse> searchFlights(FlightSearchRequest request) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/flights/search'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(request.toJson()),
     );
     if (res.statusCode == 200) {
@@ -49,7 +41,7 @@ class FlightsApiService {
   Future<List<Airport>> _airports(Map<String, String> params) async {
     final uri = Uri.parse('${apiClient.baseUrl}/flights/airports')
         .replace(queryParameters: params);
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (body['results'] as List<dynamic>? ?? []);

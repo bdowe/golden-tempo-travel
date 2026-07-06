@@ -11,17 +11,9 @@ class TripsApiService {
 
   TripsApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   Future<List<Trip>> listTrips() async {
     final res = await apiClient.httpClient
-        .get(Uri.parse('${apiClient.baseUrl}/trips'), headers: _headers());
+        .get(Uri.parse('${apiClient.baseUrl}/trips'), headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list.map((e) => Trip.fromJson(e as Map<String, dynamic>)).toList();
@@ -34,7 +26,7 @@ class TripsApiService {
   Future<String> startRefineSession(String tripId) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/refine'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
     );
     if (res.statusCode == 200) {
       return (jsonDecode(res.body) as Map<String, dynamic>)['chat_id'] as String;
@@ -46,7 +38,7 @@ class TripsApiService {
   Future<List<Trip>> listTripVersions(String chatId) async {
     final uri = Uri.parse('${apiClient.baseUrl}/trips/versions')
         .replace(queryParameters: {'chat_id': chatId});
-    final res = await apiClient.httpClient.get(uri, headers: _headers());
+    final res = await apiClient.httpClient.get(uri, headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
       return list.map((e) => Trip.fromJson(e as Map<String, dynamic>)).toList();
@@ -56,7 +48,7 @@ class TripsApiService {
 
   Future<Trip> getTrip(String id) async {
     final res = await apiClient.httpClient
-        .get(Uri.parse('${apiClient.baseUrl}/trips/$id'), headers: _headers());
+        .get(Uri.parse('${apiClient.baseUrl}/trips/$id'), headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       return Trip.fromJson(jsonDecode(res.body));
     }
@@ -78,7 +70,7 @@ class TripsApiService {
 
     final res = await apiClient.httpClient.patch(
       Uri.parse('${apiClient.baseUrl}/trips/$id'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 200) {
@@ -92,7 +84,7 @@ class TripsApiService {
   Future<Trip> addItineraryItem(String tripId, Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/items'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 201) {
@@ -107,7 +99,7 @@ class TripsApiService {
       {String role = 'viewer'}) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({'role': role}),
     );
     if (res.statusCode == 200 || res.statusCode == 201) {
@@ -120,7 +112,7 @@ class TripsApiService {
   Future<String> joinSharedTrip(String token) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/shared/$token/join'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
     );
     if (res.statusCode == 200) {
       return (jsonDecode(res.body) as Map<String, dynamic>)['trip_id']
@@ -133,7 +125,7 @@ class TripsApiService {
   Future<List<Trip>> listSharedWithMe() async {
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/trips/shared-with-me'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
@@ -147,7 +139,7 @@ class TripsApiService {
       listCollaborators(String tripId) async {
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode == 200) {
       final list = jsonDecode(res.body) as List<dynamic>;
@@ -166,7 +158,7 @@ class TripsApiService {
   Future<void> removeCollaborator(String tripId, String userId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators/$userId'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception('Failed to remove co-planner (${res.statusCode})');
@@ -176,7 +168,7 @@ class TripsApiService {
   Future<void> revokeShareLink(String tripId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception('Failed to revoke share link (${res.statusCode})');
@@ -187,7 +179,7 @@ class TripsApiService {
   Future<SharedTrip> getSharedTrip(String token) async {
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/shared/$token'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode == 200) {
       return SharedTrip.fromJson(jsonDecode(res.body));
@@ -199,7 +191,7 @@ class TripsApiService {
   Future<Trip> duplicateSharedTrip(String token) async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/shared/$token/duplicate'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
     );
     if (res.statusCode == 201) {
       return Trip.fromJson(jsonDecode(res.body));
@@ -212,7 +204,7 @@ class TripsApiService {
       String tripId, String itemId, Map<String, dynamic> body) async {
     final res = await apiClient.httpClient.patch(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/$itemId'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode(body),
     );
     if (res.statusCode == 200) {
@@ -224,7 +216,7 @@ class TripsApiService {
   Future<void> deleteItineraryItem(String tripId, String itemId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/$itemId'),
-      headers: _headers(),
+      headers: apiClient.jsonHeaders(),
     );
     if (res.statusCode != 204) {
       throw Exception('Failed to delete place (${res.statusCode})');
@@ -236,7 +228,7 @@ class TripsApiService {
   Future<void> reorderItineraryItems(String tripId, List<String> itemIds) async {
     final res = await apiClient.httpClient.put(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/items/order'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({'item_ids': itemIds}),
     );
     if (res.statusCode != 204) {
@@ -246,7 +238,7 @@ class TripsApiService {
 
   Future<void> deleteTrip(String id) async {
     final res = await apiClient.httpClient
-        .delete(Uri.parse('${apiClient.baseUrl}/trips/$id'), headers: _headers());
+        .delete(Uri.parse('${apiClient.baseUrl}/trips/$id'), headers: apiClient.jsonHeaders());
     if (res.statusCode != 204) {
       throw Exception('Failed to delete trip (${res.statusCode})');
     }

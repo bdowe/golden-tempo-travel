@@ -8,17 +8,9 @@ class PreferencesApiService {
 
   PreferencesApiService(this.apiClient);
 
-  Map<String, String> _headers({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
-    if (json) h['Content-Type'] = 'application/json';
-    final token = apiClient.authToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
-
   Future<TravelerPreferences> getPreferences() async {
     final res = await apiClient.httpClient
-        .get(Uri.parse('${apiClient.baseUrl}/preferences'), headers: _headers());
+        .get(Uri.parse('${apiClient.baseUrl}/preferences'), headers: apiClient.jsonHeaders());
     if (res.statusCode == 200) {
       return TravelerPreferences.fromJson(jsonDecode(res.body));
     }
@@ -34,7 +26,7 @@ class PreferencesApiService {
   }) async {
     final res = await apiClient.httpClient.put(
       Uri.parse('${apiClient.baseUrl}/preferences'),
-      headers: _headers(json: true),
+      headers: apiClient.jsonHeaders(json: true),
       body: jsonEncode({
         'budget': budget,
         'pace': pace,
