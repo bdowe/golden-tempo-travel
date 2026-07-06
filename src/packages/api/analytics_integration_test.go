@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -100,6 +101,175 @@ func TestClientEventOwnTripIDIsKept(t *testing.T) {
 	if meta["surface"] != "flight_card" {
 		t.Fatalf("surface = %v, want flight_card", meta["surface"])
 	}
+}
+
+// --- anonymous top-of-funnel events (Wave 8) ---
+
+// countAnonymousEvents counts rows with a NULL user_id for one event type.
+func countAnonymousEvents(t *testing.T, eventType string) int {
+	t.Helper()
+	var n int
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM analytics_events WHERE user_id IS NULL AND event_type = $1`,
+		eventType).Scan(&n)
+	if err != nil {
+		t.Fatalf("countAnonymousEvents(%s): %v", eventType, err)
+	}
+	return n
+}
+
+// waitForAnonymousEventCount polls for the async insert like waitForEventCount.
+func waitForAnonymousEventCount(t *testing.T, eventType string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n := countAnonymousEvents(t, eventType)
+		if n == want {
+			return
+		}
+		if n > want {
+			t.Fatalf("anonymous %s count = %d, exceeded expected %d", eventType, n, want)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d anonymous %s events (have %d)", want, eventType, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAnonymousEventWhitelistedRecordsNullUser(t *testing.T) {
+	resetDB(t)
+	rec := doJSON(t, "POST", "/api/v1/events", "", map[string]any{
+		"event_type": "landing_viewed",
+	})
+	if rec.Code != 202 {
+		t.Fatalf("anonymous POST /events = %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	waitForAnonymousEventCount(t, "landing_viewed", 1)
+
+	var tripID *string
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT trip_id::text FROM analytics_events
+		 WHERE user_id IS NULL AND event_type = 'landing_viewed'`).Scan(&tripID); err != nil {
+		t.Fatalf("row: %v", err)
+	}
+	if tripID != nil {
+		t.Fatalf("trip_id = %v, want NULL", *tripID)
+	}
+}
+
+func TestAnonymousEventNonWhitelistedRejected(t *testing.T) {
+	resetDB(t)
+	// A server-side type must not be spoofable anonymously.
+	rec := doJSON(t, "POST", "/api/v1/events", "", map[string]any{
+		"event_type": "user_registered",
+	})
+	if rec.Code != 400 {
+		t.Fatalf("anonymous POST /events (server type) = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+	if n := countAnonymousEvents(t, "user_registered"); n != 0 {
+		t.Fatalf("spoofed rows = %d, want 0", n)
+	}
+}
+
+func TestAnonymousEventTripIDAlwaysNulled(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "anon-trip-owner@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+
+	// Even a real trip id is dropped: ownership is unverifiable without a
+	// user, so anonymous clicks must never feed the attach-rate numerator.
+	rec := doJSON(t, "POST", "/api/v1/events", "", map[string]any{
+		"event_type": "booking_link_clicked",
+		"trip_id":    trip.ID.String(),
+		"metadata":   map[string]any{"provider": "Duffel", "evil_key": "nope"},
+	})
+	if rec.Code != 202 {
+		t.Fatalf("anonymous POST /events = %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	waitForAnonymousEventCount(t, "booking_link_clicked", 1)
+
+	var tripID *string
+	var meta map[string]any
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT trip_id::text, metadata FROM analytics_events
+		 WHERE user_id IS NULL AND event_type = 'booking_link_clicked'`).Scan(&tripID, &meta); err != nil {
+		t.Fatalf("row: %v", err)
+	}
+	if tripID != nil {
+		t.Fatalf("trip_id = %v, want NULL", *tripID)
+	}
+	// The #71 metadata whitelist applies to anonymous events too.
+	if meta["provider"] != "duffel" || len(meta) != 1 {
+		t.Fatalf("metadata = %v, want exactly {provider: duffel}", meta)
+	}
+
+	// And the attach-rate numerator must not have moved.
+	var n int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(DISTINCT trip_id) FROM analytics_events
+		 WHERE event_type = 'booking_link_clicked' AND trip_id IS NOT NULL`).Scan(&n); err != nil {
+		t.Fatalf("attach count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("trips_with_booking_click = %d, want 0", n)
+	}
+}
+
+func TestEventsInvalidTokenIs401NotAnonymous(t *testing.T) {
+	resetDB(t)
+	// A presented-but-invalid token must be rejected by the authed route,
+	// never silently downgraded to an anonymous write.
+	rec := doJSON(t, "POST", "/api/v1/events", "not-a-real-session", map[string]any{
+		"event_type": "landing_viewed",
+	})
+	if rec.Code != 401 {
+		t.Fatalf("POST /events with bad token = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+	if n := countAnonymousEvents(t, "landing_viewed"); n != 0 {
+		t.Fatalf("anonymous rows after 401 = %d, want 0", n)
+	}
+}
+
+func TestAnonymousEventsAreStrictRateLimited(t *testing.T) {
+	resetDB(t)
+	ip := nextTestIP()
+	limited := false
+	// Strict tier is burst 3 at 5/min: within a burst from one IP, a 429
+	// must appear well before 10 requests.
+	for i := 0; i < 10; i++ {
+		rec := doJSONFromIP(t, "POST", "/api/v1/events", "", ip, map[string]any{
+			"event_type": "landing_viewed",
+		})
+		if rec.Code == 429 {
+			limited = true
+			break
+		}
+		if rec.Code != 202 {
+			t.Fatalf("request %d = %d, want 202 or 429: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	if !limited {
+		t.Fatalf("anonymous /events never rate limited within a 10-request burst")
+	}
+}
+
+func TestAuthedEventsNotOnStrictTier(t *testing.T) {
+	resetDB(t)
+	user, token := createTestUser(t, "authed-clicker@example.com")
+	ip := nextTestIP()
+	// Authed clicks stay on the general limiter only (burst 30): a burst of
+	// 10 from one IP — over the strict tier's burst — must all be accepted.
+	for i := 0; i < 10; i++ {
+		rec := doJSONFromIP(t, "POST", "/api/v1/events", token, ip, map[string]any{
+			"event_type": "booking_link_clicked",
+			"metadata":   map[string]any{"provider": "duffel"},
+		})
+		if rec.Code != 202 {
+			t.Fatalf("authed request %d = %d, want 202: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	waitForEventCount(t, user.ID, "booking_link_clicked", 10)
 }
 
 func TestClientEventMetadataSanitized(t *testing.T) {

@@ -13,6 +13,10 @@ import '../providers/analytics_provider.dart';
 /// Returns whether the launch succeeded, so call sites can keep their own
 /// "Could not open link" handling.
 ///
+/// Signed-out clicks are recorded too: `booking_link_clicked` is on the API's
+/// anonymous whitelist, so the service sends it without an Authorization
+/// header (the server stores it with a NULL user id and drops any trip_id).
+///
 /// [provider] is who the user is being handed to (duffel, ferryhopper,
 /// ticketmaster, booking.com, airbnb, …) and [surface] is which UI element the
 /// click came from (booking_checklist, flight_card, chat, …). Keep both short:
