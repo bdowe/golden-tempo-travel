@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
+import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 
 /// Opens a modal bottom sheet with the segment-by-segment breakdown of [offer]:
@@ -192,7 +192,8 @@ class _LayoverRow extends StatelessWidget {
 /// Opens the offer's booking link (airline site or airline-filtered Google
 /// Flights) in an external tab.
 Future<void> _book(BuildContext context, String url) async {
-  final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  final ok = await trackedLaunchUrl(context, url,
+      provider: 'duffel', surface: 'flight_details');
   if (!ok && context.mounted) {
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Could not open link')));

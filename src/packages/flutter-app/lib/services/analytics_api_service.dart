@@ -13,6 +13,7 @@ class AnalyticsApiService {
     String? tripId,
     String? todoKey,
     String? provider,
+    String? surface,
     String? kind,
   }) async {
     final token = apiClient.authToken;
@@ -30,6 +31,7 @@ class AnalyticsApiService {
           'metadata': {
             if (todoKey != null) 'todo_key': todoKey,
             if (provider != null) 'provider': provider,
+            if (surface != null) 'surface': surface,
             if (kind != null) 'kind': kind,
           },
         }),

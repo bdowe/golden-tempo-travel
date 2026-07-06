@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/flight_offer.dart';
+import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import 'flight_details_sheet.dart';
 
@@ -16,8 +16,8 @@ class FlightOfferCard extends StatelessWidget {
   Future<void> _book(BuildContext context) async {
     final url = offer.bookingUrl;
     if (url == null || url.isEmpty) return;
-    final ok =
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    final ok = await trackedLaunchUrl(context, url,
+        provider: 'duffel', surface: 'flight_card');
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Could not open link')));

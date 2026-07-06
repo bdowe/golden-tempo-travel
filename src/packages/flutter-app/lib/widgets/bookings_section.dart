@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/accommodation.dart';
 import '../models/trip.dart';
 import '../models/trip_segment.dart';
 import '../theme/spacing.dart';
+import '../utils/tracked_launch.dart';
 
 /// "Your bookings" hub in trip detail: the stays and transport segments the
 /// user has actually saved (distinct from the auto-derived booking checklist).
@@ -34,11 +34,20 @@ class BookingsSection extends StatelessWidget {
         _ => Icons.route_outlined,
       };
 
-  Future<void> _open(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri != null) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  /// Opens a saved booking's own link — still a booking handoff, so it counts
+  /// toward the attach rate under the provider the user recorded (if any).
+  Future<void> _open(BuildContext context, String url,
+      {String? provider, required String kind}) async {
+    await trackedLaunchUrl(
+      context,
+      url,
+      provider: (provider == null || provider.isEmpty)
+          ? 'unknown'
+          : provider.toLowerCase(),
+      surface: 'bookings_hub',
+      tripId: trip.id,
+      kind: kind,
+    );
   }
 
   @override
@@ -98,7 +107,8 @@ class BookingsSection extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.open_in_new, size: 18),
                       tooltip: 'Open listing',
-                      onPressed: () => _open(a.url!),
+                      onPressed: () => _open(context, a.url!,
+                          provider: a.provider, kind: 'stay'),
                     ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, size: 18),
@@ -132,7 +142,8 @@ class BookingsSection extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.open_in_new, size: 18),
                       tooltip: 'Open booking',
-                      onPressed: () => _open(s.url!),
+                      onPressed: () => _open(context, s.url!,
+                          provider: s.provider, kind: 'transport'),
                     ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, size: 18),
