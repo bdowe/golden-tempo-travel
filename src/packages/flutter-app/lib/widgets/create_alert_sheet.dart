@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/alerts_provider.dart';
 import '../theme/spacing.dart';
+import '../utils/snack.dart';
 
 /// Bottom sheet that turns the current flight search into a price alert
 /// (specs/price-alerts). Seeded with the route/date/cheapest price the
@@ -94,13 +95,10 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
       });
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Watching ${widget.origin} → ${widget.destination} — we\'ll '
-                'email you on a drop'),
-          ),
-        );
+        showSnack(
+            context,
+            'Watching ${widget.origin} → ${widget.destination} — we\'ll '
+            'email you on a drop');
       }
     } catch (e) {
       setState(() {

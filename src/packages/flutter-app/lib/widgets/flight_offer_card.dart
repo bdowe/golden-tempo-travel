@@ -4,6 +4,7 @@ import '../models/flight_offer.dart';
 import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import 'flight_details_sheet.dart';
+import '../utils/snack.dart';
 
 /// A single ranked flight offer rendered as a card — airline(s), route, price,
 /// score, duration/stops, and a Book deep-link. Shared by the standalone
@@ -19,10 +20,7 @@ class FlightOfferCard extends StatelessWidget {
     if (url == null || url.isEmpty) return;
     final ok = await trackedLaunchUrl(context, url,
         provider: 'duffel', surface: 'flight_card');
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Could not open link')));
-    }
+    if (!ok && context.mounted) showSnack(context, 'Could not open link');
   }
 
   @override

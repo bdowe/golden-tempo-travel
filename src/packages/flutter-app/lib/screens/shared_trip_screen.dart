@@ -14,6 +14,7 @@ import '../widgets/gradient_app_bar.dart';
 import '../widgets/trip_map.dart';
 import 'auth_screen.dart';
 import 'trip_detail_screen.dart';
+import '../utils/snack.dart';
 
 /// Public read-only view of a shared trip, reachable at /#/share/<token>
 /// without an account. Signed-in viewers can save a copy to their own trips.
@@ -101,10 +102,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
       Navigator.of(context)
           .pushNamedAndRemoveUntil('/', (route) => false);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not save a copy: $e')));
-      }
+      if (mounted) showSnack(context, 'Could not save a copy: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -128,10 +126,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             builder: (_) => TripDetailScreen(tripId: tripId)));
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not join trip: $e')));
-      }
+      if (mounted) showSnack(context, 'Could not join trip: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

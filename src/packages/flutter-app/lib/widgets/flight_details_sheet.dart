@@ -3,6 +3,7 @@ import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
 import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
+import '../utils/snack.dart';
 
 /// Opens a modal bottom sheet with the segment-by-segment breakdown of [offer]:
 /// each leg's carrier/flight number and depart→arrive clock times, plus the
@@ -244,10 +245,7 @@ class _LayoverRow extends StatelessWidget {
 Future<void> _book(BuildContext context, String url) async {
   final ok = await trackedLaunchUrl(context, url,
       provider: 'duffel', surface: 'flight_details');
-  if (!ok && context.mounted) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Could not open link')));
-  }
+  if (!ok && context.mounted) showSnack(context, 'Could not open link');
 }
 
 /// "TAP TP204" — carrier name with flight number, de-duplicating when the

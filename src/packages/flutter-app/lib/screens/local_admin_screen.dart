@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../theme/spacing.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../utils/snack.dart';
 
 /// Admin-only console for curating local-sourced content. Three panes:
 ///   Ingest   — paste raw research text + pick a local source → AI drafts pins.
@@ -343,16 +344,10 @@ class _ReviewPaneState extends ConsumerState<_ReviewPane> {
   Future<void> _publish(String id) async {
     try {
       await ref.read(localApiServiceProvider).publish(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Published.')));
-      }
+      if (mounted) showSnack(context, 'Published.');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      if (mounted) showSnack(context, e.message);
     }
   }
 

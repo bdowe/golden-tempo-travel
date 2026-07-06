@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/legal_links.dart';
+import '../utils/snack.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   /// Whether the form opens in sign-in (true) or create-account (false) mode.
@@ -71,8 +72,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ),
     );
     if (done == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Password updated — sign in with your new password')));
+      showSnack(context, 'Password updated — sign in with your new password');
     }
   }
 

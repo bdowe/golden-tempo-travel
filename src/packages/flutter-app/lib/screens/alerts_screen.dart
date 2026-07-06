@@ -7,6 +7,7 @@ import '../theme/spacing.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_container.dart';
 import 'auth_screen.dart';
+import '../utils/snack.dart';
 
 /// The traveler's watched routes (specs/price-alerts): state at a glance,
 /// pause/resume/delete. Creation happens from flight search results.
@@ -154,10 +155,7 @@ class _AlertCard extends ConsumerWidget {
       try {
         await action();
       } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('$e')));
-        }
+        if (context.mounted) showSnack(context, '$e');
       }
     }
 

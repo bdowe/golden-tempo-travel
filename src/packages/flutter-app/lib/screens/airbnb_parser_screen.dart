@@ -8,6 +8,7 @@ import '../providers/accommodations_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/trips_provider.dart';
 import 'trip_detail_screen.dart';
+import '../utils/snack.dart';
 
 class AirbnbParserScreen extends ConsumerStatefulWidget {
   const AirbnbParserScreen({super.key});
@@ -202,9 +203,7 @@ class _AirbnbParserScreenState extends ConsumerState<AirbnbParserScreen> {
   }
 
   void _snack(String msg) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-    }
+    if (mounted) showSnack(context, msg);
   }
 
   List<Widget> _buildResults(BuildContext context, AirbnbListing listing) {
