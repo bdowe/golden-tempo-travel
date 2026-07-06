@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,46 @@ var clientEventTypes = map[string]bool{
 
 // maxEventMetadataBytes caps the metadata bag (small, flat detail only).
 const maxEventMetadataBytes = 2048
+
+// clientEventMetadataKeys is the closed set of metadata keys POST /events
+// accepts — exactly what lib/utils/tracked_launch.dart sends. Metadata feeds
+// GROUP BYs on the admin dashboard (BookingClicksByProvider), so arbitrary
+// client-chosen keys/values must not reach storage.
+var clientEventMetadataKeys = map[string]bool{
+	"provider": true,
+	"surface":  true,
+	"kind":     true,
+	"todo_key": true,
+}
+
+// maxClientMetadataValueLen caps each accepted metadata value; real values
+// are short slugs ("duffel", "booking_checklist").
+const maxClientMetadataValueLen = 64
+
+// sanitizeClientEventMetadata keeps only whitelisted keys whose values are
+// non-empty strings within the length cap; everything else is dropped
+// (best-effort tracking, never an error). provider is lowercased because the
+// dashboard groups on it verbatim.
+func sanitizeClientEventMetadata(in map[string]any) map[string]any {
+	var out map[string]any
+	for k, v := range in {
+		if !clientEventMetadataKeys[k] {
+			continue
+		}
+		s, ok := v.(string)
+		if !ok || s == "" || len(s) > maxClientMetadataValueLen {
+			continue
+		}
+		if k == "provider" {
+			s = strings.ToLower(s)
+		}
+		if out == nil {
+			out = map[string]any{}
+		}
+		out[k] = s
+	}
+	return out
+}
 
 // recordEvent writes one analytics event. Fire-and-forget semantics: errors
 // are logged, never returned — callers must not branch on instrumentation.
@@ -97,7 +138,26 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 			tripID = &tid
 		}
 	}
-	go recordEvent(user.ID, req.EventType, tripID, req.Metadata)
+	meta := sanitizeClientEventMetadata(req.Metadata)
+	go func() {
+		// Best-effort trip validation off the response path: attach-rate
+		// counts DISTINCT trip_id, so a fabricated/foreign UUID must not be
+		// stored. A trip_id survives only when the trip exists and the caller
+		// may access it (owner or editor collaborator — the same
+		// GetEditableTripByID gate the trip endpoints use); any mismatch or
+		// lookup error nulls the reference instead of rejecting the event.
+		// Skipped in degraded mode (recordEvent drops the event then anyway).
+		if tripID != nil && dbPool != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if _, err := store.New(dbPool).GetEditableTripByID(ctx, store.GetEditableTripByIDParams{
+				ID: *tripID, UserID: user.ID,
+			}); err != nil {
+				tripID = nil
+			}
+			cancel()
+		}
+		recordEvent(user.ID, req.EventType, tripID, meta)
+	}()
 	w.WriteHeader(http.StatusAccepted)
 }
 

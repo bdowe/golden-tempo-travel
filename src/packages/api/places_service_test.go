@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -92,5 +93,49 @@ func TestPlacesServiceSingletonSafeWithoutKey(t *testing.T) {
 	}
 	if _, err := svc.GetPlaceDetails("p1"); err == nil {
 		t.Fatal("GetPlaceDetails without key must error")
+	}
+}
+
+// failingTransport fails every round trip at the transport level, the way a
+// DNS failure / upstream outage / client timeout does. http.Client wraps such
+// failures in a *url.Error whose string embeds the full request URL — query
+// secrets included — which is exactly what redactTransportError must strip.
+type failingTransport struct{}
+
+func (failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errFakeTransport
+}
+
+var errFakeTransport = fmt.Errorf("dial tcp 1.2.3.4:443: connection refused")
+
+// Transport-level failures must never put the Google key (sent as a `key=`
+// query param) into the error chain: these errors are surfaced to /plan tool
+// results and, pre-redaction, were echoed by public handlers.
+func TestPlacesTransportErrorsOmitAPIKey(t *testing.T) {
+	const secret = "SECRET-GOOGLE-KEY"
+	svc := NewGooglePlacesService()
+	svc.APIKey = secret
+	svc.Client = &http.Client{Transport: failingTransport{}}
+
+	calls := []struct {
+		name string
+		call func() error
+	}{
+		{"SearchPlaces", func() error { _, err := svc.SearchPlaces("louvre"); return err }},
+		{"GetPlaceAutocomplete", func() error { _, err := svc.GetPlaceAutocomplete("lou"); return err }},
+		{"GetPlaceDetails", func() error { _, err := svc.GetPlaceDetails("p1"); return err }},
+	}
+	for _, c := range calls {
+		err := c.call()
+		if err == nil {
+			t.Fatalf("%s: expected a transport error", c.name)
+		}
+		msg := err.Error()
+		if strings.Contains(msg, secret) || strings.Contains(msg, "key=") {
+			t.Fatalf("%s: error leaks the API key: %q", c.name, msg)
+		}
+		if !strings.Contains(msg, "connection refused") {
+			t.Fatalf("%s: redaction lost the underlying cause: %q", c.name, msg)
+		}
 	}
 }

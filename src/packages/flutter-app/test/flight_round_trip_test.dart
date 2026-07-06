@@ -436,6 +436,49 @@ void main() {
       expect(flights.requests.last.returnDate, isNull);
     });
 
+    // Prefill dates come from itinerary legs and are unbounded; before the
+    // Wave 7 sweep a departure outside [today, today+365d] made the return
+    // picker's firstDate exceed its lastDate — a DatePickerDialog assertion
+    // crash (debug) / broken calendar (release).
+    testWidgets(
+        'prefilled departure beyond the 365-day window is clamped and the '
+        'return picker still opens', (tester) async {
+      final farOut = DateTime.now().add(const Duration(days: 400));
+      await pumpScreen(tester, _fmt(farOut));
+
+      // The departure was clamped to the window's end, not kept raw.
+      final windowEnd =
+          DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 365));
+      expect(find.text(_fmt(farOut)), findsNothing);
+      expect(find.text(_fmt(windowEnd)), findsOneWidget);
+
+      // The return picker opens and a return can be picked without asserting.
+      await tester.tap(find.text('Return (optional)'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      // Depart == window end, so the only pickable return is that same day.
+      expect(find.text('Return (optional)'), findsNothing);
+      expect(find.text(_fmt(windowEnd)), findsNWidgets(2));
+    });
+
+    testWidgets('prefilled past departure is floored at today', (tester) async {
+      final past = DateTime.now().subtract(const Duration(days: 30));
+      await pumpScreen(tester, _fmt(past));
+
+      final today = DateUtils.dateOnly(DateTime.now());
+      expect(find.text(_fmt(past)), findsNothing);
+      expect(find.text(_fmt(today)), findsOneWidget);
+
+      await tester.tap(find.text('Return (optional)'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Return (optional)'), findsNothing);
+    });
+
     testWidgets('moving departure past the return clears the return',
         (tester) async {
       final depart = DateTime.now().add(const Duration(days: 30));
