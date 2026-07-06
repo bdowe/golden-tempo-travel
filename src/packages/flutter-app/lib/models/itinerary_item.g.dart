@@ -20,6 +20,8 @@ ItineraryItem _$ItineraryItemFromJson(Map<String, dynamic> json) =>
       city: json['city'] as String?,
       dayTripFrom: json['day_trip_from'] as String?,
       day: (json['day'] as num?)?.toInt(),
+      localSourceName: json['local_source_name'] as String?,
+      localRecommendationId: json['local_recommendation_id'] as String?,
     );
 
 Map<String, dynamic> _$ItineraryItemToJson(ItineraryItem instance) =>
@@ -36,4 +38,6 @@ Map<String, dynamic> _$ItineraryItemToJson(ItineraryItem instance) =>
       'city': instance.city,
       'day_trip_from': instance.dayTripFrom,
       'day': instance.day,
+      'local_source_name': instance.localSourceName,
+      'local_recommendation_id': instance.localRecommendationId,
     };

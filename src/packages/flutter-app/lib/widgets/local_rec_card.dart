@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/local_recommendation.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import 'add_to_trip_sheet.dart';
 
 /// A single locally-sourced recommendation: the place, the local's pull-quote,
 /// their actionable tip, and attribution (face + name + credibility). This is the
@@ -10,7 +11,11 @@ import '../theme/spacing.dart';
 class LocalRecCard extends StatelessWidget {
   final LocalRecommendation rec;
 
-  const LocalRecCard({super.key, required this.rec});
+  /// When set, the card shows an "Add to trip" action (signed-in users only —
+  /// pass null for anonymous sessions).
+  final VoidCallback? onAddToTrip;
+
+  const LocalRecCard({super.key, required this.rec, this.onAddToTrip});
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +138,8 @@ class LocalRecCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (onAddToTrip != null)
+                  AddToTripButton(onPressed: onAddToTrip!, color: accent),
               ],
             ),
           ],

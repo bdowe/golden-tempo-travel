@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"travel-route-planner/store"
 )
 
@@ -99,6 +101,144 @@ func TestItemCrossUserIsolation(t *testing.T) {
 	// Sanity: the owner still can.
 	if rec := doJSON(t, "PATCH", base+"/items/"+itemID, ownerToken, map[string]any{"name": "Mine"}); rec.Code != http.StatusOK {
 		t.Fatalf("owner patch after intrusion attempts = %d", rec.Code)
+	}
+}
+
+// Local-source attribution snapshots on the public create path
+// (specs/add-to-itinerary): persisted verbatim, returned on reads, optional,
+// UUID-shape-validated but never existence-checked.
+func TestItemCreateWithLocalSnapshots(t *testing.T) {
+	resetDB(t)
+	owner, token := createTestUser(t, "owner@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	base := "/api/v1/trips/" + trip.ID.String()
+
+	// The id deliberately does not exist in local_recommendations — snapshots
+	// survive pin archival by design, so a dangling UUID must be accepted.
+	recID := uuid.NewString()
+	add := doJSON(t, "POST", base+"/items", token, map[string]any{
+		"name": "Tasca da Ana", "latitude": 38.71, "longitude": -9.14,
+		"city": "Lisbon", "category": "restaurant",
+		"local_source_name":       "Ana",
+		"local_recommendation_id": recID,
+	})
+	if add.Code != http.StatusCreated {
+		t.Fatalf("add = %d: %s", add.Code, add.Body.String())
+	}
+
+	// Persisted in the store row.
+	items, err := store.New(dbPool).GetItineraryItemsByTrip(context.Background(), trip.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, it := range items {
+		if it.Name != "Tasca da Ana" {
+			continue
+		}
+		found = true
+		if it.LocalSourceName == nil || *it.LocalSourceName != "Ana" {
+			t.Fatalf("stored local_source_name = %v, want Ana", it.LocalSourceName)
+		}
+		if !it.LocalRecommendationID.Valid || uuid.UUID(it.LocalRecommendationID.Bytes).String() != recID {
+			t.Fatalf("stored local_recommendation_id = %v, want %s", it.LocalRecommendationID, recID)
+		}
+	}
+	if !found {
+		t.Fatalf("added item not found in store")
+	}
+
+	// Returned on the trip response (both the create response and GET).
+	get := doJSON(t, "GET", base, token, nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("get trip = %d: %s", get.Code, get.Body.String())
+	}
+	var foundInResp bool
+	for _, raw := range decode(t, get)["items"].([]any) {
+		m := raw.(map[string]any)
+		if m["name"] != "Tasca da Ana" {
+			continue
+		}
+		foundInResp = true
+		if m["local_source_name"] != "Ana" || m["local_recommendation_id"] != recID {
+			t.Fatalf("response snapshots = %v / %v, want Ana / %s",
+				m["local_source_name"], m["local_recommendation_id"], recID)
+		}
+	}
+	if !foundInResp {
+		t.Fatalf("added item missing from trip response: %s", get.Body.String())
+	}
+}
+
+func TestItemCreateSnapshotsOptionalAndValidated(t *testing.T) {
+	resetDB(t)
+	owner, token := createTestUser(t, "owner@example.com")
+	trip := createTestTrip(t, owner.ID, 0)
+	base := "/api/v1/trips/" + trip.ID.String()
+
+	// Snapshots absent: item persists with NULLs and the response omits them.
+	add := doJSON(t, "POST", base+"/items", token, map[string]any{
+		"name": "Plain Stop", "latitude": 1.0, "longitude": 2.0,
+	})
+	if add.Code != http.StatusCreated {
+		t.Fatalf("plain add = %d: %s", add.Code, add.Body.String())
+	}
+	items, err := store.New(dbPool).GetItineraryItemsByTrip(context.Background(), trip.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].LocalSourceName != nil || items[0].LocalRecommendationID.Valid {
+		t.Fatalf("plain item grew snapshots: %+v", items[0])
+	}
+
+	// Malformed recommendation id: 400, nothing created.
+	bad := doJSON(t, "POST", base+"/items", token, map[string]any{
+		"name": "Bad Rec", "latitude": 1.0, "longitude": 2.0,
+		"local_recommendation_id": "not-a-uuid",
+	})
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("malformed rec id = %d, want 400: %s", bad.Code, bad.Body.String())
+	}
+
+	// Blank strings are treated as absent, not stored as empties.
+	blank := doJSON(t, "POST", base+"/items", token, map[string]any{
+		"name": "Blank Snap", "latitude": 1.0, "longitude": 2.0,
+		"local_source_name": "  ", "local_recommendation_id": "",
+	})
+	if blank.Code != http.StatusCreated {
+		t.Fatalf("blank snapshots add = %d: %s", blank.Code, blank.Body.String())
+	}
+	items, err = store.New(dbPool).GetItineraryItemsByTrip(context.Background(), trip.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.Name == "Blank Snap" && (it.LocalSourceName != nil || it.LocalRecommendationID.Valid) {
+			t.Fatalf("blank snapshots stored: %+v", it)
+		}
+	}
+}
+
+func TestItemCreateWithSnapshotsForeignTripRejected(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "owner@example.com")
+	_, intruderToken := createTestUser(t, "intruder@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+
+	rec := doJSON(t, "POST", "/api/v1/trips/"+trip.ID.String()+"/items", intruderToken, map[string]any{
+		"name": "Sneaky", "latitude": 1.0, "longitude": 2.0,
+		"local_source_name":       "Ana",
+		"local_recommendation_id": uuid.NewString(),
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("foreign trip add = %d, want 404", rec.Code)
+	}
+	items, err := store.New(dbPool).GetItineraryItemsByTrip(context.Background(), trip.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("foreign add persisted: %d items", len(items))
 	}
 }
 

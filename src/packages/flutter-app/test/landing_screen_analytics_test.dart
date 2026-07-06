@@ -29,6 +29,13 @@ class _CountingAnalytics implements AnalyticsApiService {
     String? kind,
   }) =>
       Future.value();
+
+  @override
+  Future<void> recordItineraryItemAdded({
+    required String tripId,
+    required String source,
+  }) =>
+      Future.value();
 }
 
 Widget _harness(_CountingAnalytics analytics) {
@@ -83,6 +90,13 @@ class _ThrowingAnalytics implements AnalyticsApiService {
     String? provider,
     String? surface,
     String? kind,
+  }) =>
+      Future.value();
+
+  @override
+  Future<void> recordItineraryItemAdded({
+    required String tripId,
+    required String source,
   }) =>
       Future.value();
 }

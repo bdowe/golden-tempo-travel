@@ -33,6 +33,7 @@ import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
+import '../widgets/add_to_trip_sheet.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
 import '../widgets/empty_state.dart';
@@ -1136,7 +1137,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               ),
             ),
             for (final g in guides) _guideChip(g, theme),
-            for (final r in recs.take(6)) LocalRecCard(rec: r),
+            for (final r in recs.take(6))
+              LocalRecCard(
+                rec: r,
+                onAddToTrip: () =>
+                    _addToTrip(AddToTripPayload.fromLocalRec(r)),
+              ),
           ],
         );
       }),
@@ -1265,7 +1271,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 header,
-                for (final e in events.take(5)) EventCard(event: e),
+                for (final e in events.take(5))
+                  EventCard(
+                    event: e,
+                    onAddToTrip: () =>
+                        _addToTrip(AddToTripPayload.fromEvent(e)),
+                  ),
               ],
             );
           },
@@ -1571,13 +1582,50 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         ),
       );
 
+  /// Opens the add-to-trip picker for a browsed place (local rec / event) with
+  /// this trip preselected, then refreshes in place when the add landed here.
+  Future<void> _addToTrip(AddToTripPayload payload) async {
+    final added =
+        await showAddToTripSheet(context, payload, currentTripId: widget.tripId);
+    if (added != null && added.id == widget.tripId) _load(silent: true);
+  }
+
   Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme) =>
       Padding(
         padding: EdgeInsets.only(left: indentLeft),
         child: ListTile(
           leading: _itemLeading(item.category, item.position),
           title: Text(item.name),
-          subtitle: item.address != null ? Text(item.address!) : null,
+          subtitle: (item.address != null || item.localSourceName != null)
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item.address != null) Text(item.address!),
+                    // The local-source credit line: who vouched for this place
+                    // (snapshot; shown for agent- and browse-added items alike).
+                    if (item.localSourceName != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified,
+                              size: 13, color: AppColors.toolLocal),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Recommended by ${item.localSourceName}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.toolLocal,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                )
+              : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -25,6 +25,9 @@ import (
 // server-side types cannot be spoofed through the client endpoint.
 var clientEventTypes = map[string]bool{
 	"booking_link_clicked": true,
+	// A place added to a trip from a browse surface (local rec, event, guide
+	// pin) — specs/add-to-itinerary. Distinguished by metadata "source".
+	"itinerary_item_added": true,
 }
 
 // anonymousClientEventTypes is the tighter whitelist for UNAUTHENTICATED
@@ -58,6 +61,16 @@ var clientEventMetadataKeys = map[string]bool{
 	"surface":  true,
 	"kind":     true,
 	"todo_key": true,
+	"source":   true,
+}
+
+// clientEventSourceValues is the closed value set for the "source" metadata
+// key (itinerary_item_added) — it feeds dashboard GROUP BYs, so free-form
+// client values are dropped, not stored.
+var clientEventSourceValues = map[string]bool{
+	"local_rec": true,
+	"event":     true,
+	"guide_pin": true,
 }
 
 // maxClientMetadataValueLen caps each accepted metadata value; real values
@@ -80,6 +93,9 @@ func sanitizeClientEventMetadata(in map[string]any) map[string]any {
 		}
 		if k == "provider" {
 			s = strings.ToLower(s)
+		}
+		if k == "source" && !clientEventSourceValues[s] {
+			continue
 		}
 		if out == nil {
 			out = map[string]any{}

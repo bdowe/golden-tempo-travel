@@ -34,6 +34,11 @@ type ItineraryItemResponse struct {
 	City        *string `json:"city,omitempty"`
 	DayTripFrom *string `json:"day_trip_from,omitempty"`
 	Day         *int    `json:"day,omitempty"`
+	// Local-source attribution snapshots (specs/add-to-itinerary): who
+	// recommended this place and which pin it came from. Nullable, no FK —
+	// they survive pin archival by design.
+	LocalSourceName       *string `json:"local_source_name,omitempty"`
+	LocalRecommendationID *string `json:"local_recommendation_id,omitempty"`
 }
 
 var allowedItemCategories = map[string]bool{"attraction": true, "restaurant": true}
@@ -89,6 +94,33 @@ func int32PtrToIntPtr(p *int32) *int {
 	return &v
 }
 
+func pgUUIDToStringPtr(u pgtype.UUID) *string {
+	if !u.Valid {
+		return nil
+	}
+	s := uuid.UUID(u.Bytes).String()
+	return &s
+}
+
+func toItineraryItemResponse(it store.ItineraryItem) ItineraryItemResponse {
+	return ItineraryItemResponse{
+		ID:                    it.ID.String(),
+		Position:              int(it.Position),
+		Name:                  it.Name,
+		PlaceID:               it.PlaceID,
+		Address:               it.Address,
+		Latitude:              it.Latitude,
+		Longitude:             it.Longitude,
+		Category:              it.Category,
+		TimeOfDay:             it.TimeOfDay,
+		City:                  it.City,
+		DayTripFrom:           it.DayTripFrom,
+		Day:                   int32PtrToIntPtr(it.Day),
+		LocalSourceName:       it.LocalSourceName,
+		LocalRecommendationID: pgUUIDToStringPtr(it.LocalRecommendationID),
+	}
+}
+
 func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment, bookingTodos []store.BookingTodo) TripResponse {
 	resp := TripResponse{
 		ID:        t.ID.String(),
@@ -102,20 +134,7 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 		UpdatedAt: t.UpdatedAt,
 	}
 	for _, it := range items {
-		resp.Items = append(resp.Items, ItineraryItemResponse{
-			ID:          it.ID.String(),
-			Position:    int(it.Position),
-			Name:        it.Name,
-			PlaceID:     it.PlaceID,
-			Address:     it.Address,
-			Latitude:    it.Latitude,
-			Longitude:   it.Longitude,
-			Category:    it.Category,
-			TimeOfDay:   it.TimeOfDay,
-			City:        it.City,
-			DayTripFrom: it.DayTripFrom,
-			Day:         int32PtrToIntPtr(it.Day),
-		})
+		resp.Items = append(resp.Items, toItineraryItemResponse(it))
 	}
 	for _, a := range accommodations {
 		resp.Accommodations = append(resp.Accommodations, toAccommodationResponse(a))

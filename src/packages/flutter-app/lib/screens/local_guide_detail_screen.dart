@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/local_guide.dart';
 import '../models/local_recommendation.dart';
+import '../providers/auth_provider.dart';
 import '../providers/local_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../widgets/add_to_trip_sheet.dart';
 import '../widgets/app_map.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
@@ -61,6 +63,11 @@ class LocalGuideDetailScreen extends ConsumerWidget {
           fallback: guide,
           pins: data.recommendations,
           theme: theme,
+          // Add-to-trip needs an account (guides browse stays public).
+          onAddPin: ref.watch(authProvider).isSignedIn
+              ? (pin) => showAddToTripSheet(
+                  context, AddToTripPayload.fromLocalRec(pin, source: 'guide_pin'))
+              : null,
         ),
       ),
     );
@@ -72,12 +79,14 @@ class _GuideBody extends StatelessWidget {
   final LocalGuide fallback;
   final List<LocalRecommendation> pins;
   final ThemeData theme;
+  final void Function(LocalRecommendation pin)? onAddPin;
 
   const _GuideBody({
     required this.guide,
     required this.fallback,
     required this.pins,
     required this.theme,
+    this.onAddPin,
   });
 
   String _pick(String primary, String secondary) =>
@@ -182,7 +191,12 @@ class _GuideBody extends StatelessWidget {
             _GuideMap(pins: mapped),
             const SizedBox(height: AppSpacing.sm),
           ],
-          for (final pin in pins) LocalRecCard(rec: pin),
+          for (final pin in pins)
+            LocalRecCard(
+              rec: pin,
+              onAddToTrip:
+                  onAddPin == null ? null : () => onAddPin!(pin),
+            ),
         ] else ...[
           const SizedBox(height: AppSpacing.xl),
           EmptyState(

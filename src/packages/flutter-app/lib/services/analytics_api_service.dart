@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'api_client.dart';
 
 /// First-party analytics: records the client-observed funnel moments (the
-/// landing page rendering, opening a booking link). Strictly fire-and-forget —
+/// landing page rendering, opening a booking link, adding a browsed place to
+/// a trip). Strictly fire-and-forget —
 /// failures are swallowed, tracking must never slow down or break the
 /// experience.
 class AnalyticsApiService {
@@ -17,6 +18,21 @@ class AnalyticsApiService {
     'landing_viewed',
     'booking_link_clicked',
   };
+
+  /// Records a place added to a trip from a browse surface
+  /// (specs/add-to-itinerary). [source] is one of the server's closed set:
+  /// 'local_rec', 'event', or 'guide_pin'. Authed-only: _record drops it
+  /// for anonymous sessions since it isn't on the anonymous whitelist.
+  Future<void> recordItineraryItemAdded({
+    required String tripId,
+    required String source,
+  }) {
+    return _record(
+      'itinerary_item_added',
+      tripId: tripId,
+      metadata: {'source': source},
+    );
+  }
 
   /// The attach-rate numerator: a booking handoff link was opened. Sent
   /// anonymously when signed out (the server drops trip_id for anonymous

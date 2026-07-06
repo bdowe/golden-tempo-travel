@@ -3,13 +3,19 @@ import '../models/event.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
+import 'add_to_trip_sheet.dart';
 
 /// A single local event: name, when, venue/category, opening the ticket/info
 /// page externally on tap. Styled to sit beside itinerary and booking rows.
 class EventCard extends StatelessWidget {
   final Event event;
 
-  const EventCard({super.key, required this.event});
+  /// When set, the card shows an "Add to trip" action (signed-in users only —
+  /// pass null for anonymous sessions). Kept separate from the card's tap,
+  /// which opens the ticket page.
+  final VoidCallback? onAddToTrip;
+
+  const EventCard({super.key, required this.event, this.onAddToTrip});
 
   Future<void> _open(BuildContext context) async {
     if (event.url.isEmpty) return;
@@ -75,6 +81,8 @@ class EventCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onAddToTrip != null)
+                AddToTripButton(onPressed: onAddToTrip!, color: accent),
               if (event.url.isNotEmpty)
                 Icon(Icons.open_in_new,
                     size: 16, color: theme.colorScheme.onSurfaceVariant),
