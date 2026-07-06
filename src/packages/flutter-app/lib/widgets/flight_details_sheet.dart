@@ -33,15 +33,21 @@ class _FlightDetailsSheet extends StatelessWidget {
     final from = segments.isNotEmpty ? segments.first.from : '';
     final to = segments.isNotEmpty ? segments.last.to : '';
 
+    // One-way: a flat segment list. Round-trip: an Outbound and a Return
+    // section, each with its own duration/stops summary.
     final rows = <Widget>[];
-    for (var i = 0; i < segments.length; i++) {
-      rows.add(_SegmentRow(leg: segments[i]));
-      if (i < segments.length - 1) {
-        rows.add(_LayoverRow(
-          airport: segments[i].to,
-          duration: _layover(segments[i], segments[i + 1]),
-        ));
-      }
+    if (offer.isRoundTrip) {
+      rows.add(_DirectionHeader(
+          label: 'Outbound',
+          detail: '${offer.durationLabel} · ${offer.stopsLabel}'));
+      rows.addAll(_sliceRows(offer.segments));
+      rows.add(const Divider(height: 24));
+      rows.add(_DirectionHeader(
+          label: 'Return',
+          detail: '${offer.returnDurationLabel} · ${offer.returnStopsLabel}'));
+      rows.addAll(_sliceRows(offer.returnSegments));
+    } else {
+      rows.addAll(_sliceRows(segments));
     }
 
     return SafeArea(
@@ -63,7 +69,7 @@ class _FlightDetailsSheet extends StatelessWidget {
                     const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '$from → $to',
+                      offer.isRoundTrip ? '$from ⇄ $to' : '$from → $to',
                       style: theme.textTheme.titleLarge
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
@@ -72,7 +78,9 @@ class _FlightDetailsSheet extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '${offer.durationLabel} · ${offer.stopsLabel}',
+                offer.isRoundTrip
+                    ? 'Round trip'
+                    : '${offer.durationLabel} · ${offer.stopsLabel}',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -97,6 +105,48 @@ class _FlightDetailsSheet extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Segment rows for one slice, with layover rows between consecutive legs.
+List<Widget> _sliceRows(List<FlightLeg> segments) {
+  final rows = <Widget>[];
+  for (var i = 0; i < segments.length; i++) {
+    rows.add(_SegmentRow(leg: segments[i]));
+    if (i < segments.length - 1) {
+      rows.add(_LayoverRow(
+        airport: segments[i].to,
+        duration: _layover(segments[i], segments[i + 1]),
+      ));
+    }
+  }
+  return rows;
+}
+
+/// Section header for one direction of a round trip, e.g.
+/// "Outbound · 7h 30m · Nonstop".
+class _DirectionHeader extends StatelessWidget {
+  final String label;
+  final String detail;
+  const _DirectionHeader({required this.label, required this.detail});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Text(label,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          Text(detail,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        ],
       ),
     );
   }
