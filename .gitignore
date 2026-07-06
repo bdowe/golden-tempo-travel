@@ -60,3 +60,13 @@ temp/
 # Air live reload (if you use it later)
 .air.toml
 tmp/
+
+# Local-content seeding corpus (specs/local-content-seeding): real research
+# never lands in git — only the format README and the _example fixture do.
+content/*
+!content/local/
+content/local/*
+!content/local/README.md
+!content/local/_example/
+# seeder ledgers are machine state, never committed (including the fixture's)
+.ingested
