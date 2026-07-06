@@ -9,6 +9,23 @@ SELECT event_type, count(*)::bigint AS n FROM analytics_events
 WHERE created_at >= $1
 GROUP BY event_type;
 
+-- name: CountEventsByTypeAndUserSince :one
+-- Per-user event count for a trailing window — the free-cap crossing check
+-- (specs/free-cap-instrumentation). Counting off analytics_events undercounts
+-- in degraded mode; acceptable for a demand signal (see the spec).
+SELECT count(*) FROM analytics_events
+WHERE event_type = $1 AND user_id = $2 AND created_at >= $3;
+
+-- name: FreeCapWouldHitCounts :many
+-- Dashboard rollup for free_cap_would_hit: crossings observed plus the
+-- distinct users affected, per cap_kind (plan_runs / active_trips).
+SELECT COALESCE(metadata->>'cap_kind', 'unknown')::text AS cap_kind,
+       count(*)::bigint AS would_hits,
+       count(DISTINCT user_id)::bigint AS users_affected
+FROM analytics_events
+WHERE event_type = 'free_cap_would_hit' AND created_at >= $1
+GROUP BY 1;
+
 -- name: CountActivatedSignups :one
 -- Users who registered in the window and have saved at least one trip (ever).
 SELECT count(DISTINCT r.user_id) FROM analytics_events r

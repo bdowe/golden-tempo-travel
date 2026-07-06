@@ -34,6 +34,8 @@ void main() {
       estCogsPerActiveUser: 0.21,
       alertsCreated: 5,
       alertsTriggered: 1,
+      freeCapWouldHits: {'plan_runs': 3, 'active_trips': 1},
+      freeCapUsersAffected: {'plan_runs': 2, 'active_trips': 1},
     );
 
     await tester.pumpWidget(
@@ -58,6 +60,11 @@ void main() {
     expect(find.text('\$0.21'), findsOneWidget); // est. cost / active user
     expect(find.text('Claude only, estimate'), findsOneWidget);
     expect(find.text('Agent loop cap hits'), findsOneWidget);
+    expect(find.text('Would hit plan cap'), findsOneWidget);
+    expect(find.text('2 users affected'), findsOneWidget); // plan_runs cohort
+    expect(find.text('Would hit trip cap'), findsOneWidget);
+    expect(
+        find.text('1 users affected'), findsOneWidget); // active_trips cohort
     expect(find.text('Clicks by provider'), findsOneWidget);
     expect(find.text('booking'), findsOneWidget);
     expect(find.text('Price alerts'), findsOneWidget);

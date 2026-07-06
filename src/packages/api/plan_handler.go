@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
 
 	"travel-route-planner/store"
@@ -91,7 +90,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	client := newAnthropicClient(apiKey)
 
 	// Resolve the caller once: anonymous sessions get no personalization and no
 	// preference-writing tool; signed-in sessions get both.
@@ -110,7 +109,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	if authed {
 		planUID = &uid
 	}
-	go recordEventOpt(planUID, "plan_session_started", nil, map[string]any{"authenticated": authed})
+	// Also runs the free-cap plan_runs crossing check (free_cap.go) — one
+	// count query, entirely off the SSE hot path, skipped when unauthed or
+	// degraded.
+	go recordPlanSessionStart(planUID, authed)
 	defer func() {
 		recordEventOpt(planUID, "plan_session_completed", planTripID, map[string]any{
 			"authenticated":         authed,
@@ -505,6 +507,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 							go recordEvent(uid, "trip_created", &parsed, map[string]any{
 								"item_count": len(in.Locations),
 							})
+							// Free-cap active_trips crossing signal — a new
+							// lineage may take the user past the cap; new
+							// versions of an existing lineage never do.
+							go recordActiveTripsCapSignal(uid, parsed)
 						}
 						// Distill what this conversation revealed about the traveler
 						// in the background — it must never delay or fail the trip.

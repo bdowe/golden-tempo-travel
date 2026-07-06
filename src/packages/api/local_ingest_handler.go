@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 
-	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
@@ -143,7 +141,7 @@ func ingestLocalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Extract structured drafts.
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	client := newAnthropicClient(apiKey)
 	content, err := extractLocalContent(r.Context(), client, city, req.RawText)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "extraction failed: "+err.Error())

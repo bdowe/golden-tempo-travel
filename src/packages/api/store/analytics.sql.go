@@ -58,6 +58,27 @@ func (q *Queries) CountActivatedSignups(ctx context.Context, createdAt time.Time
 	return count, err
 }
 
+const countEventsByTypeAndUserSince = `-- name: CountEventsByTypeAndUserSince :one
+SELECT count(*) FROM analytics_events
+WHERE event_type = $1 AND user_id = $2 AND created_at >= $3
+`
+
+type CountEventsByTypeAndUserSinceParams struct {
+	EventType string      `json:"event_type"`
+	UserID    pgtype.UUID `json:"user_id"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+// Per-user event count for a trailing window — the free-cap crossing check
+// (specs/free-cap-instrumentation). Counting off analytics_events undercounts
+// in degraded mode; acceptable for a demand signal (see the spec).
+func (q *Queries) CountEventsByTypeAndUserSince(ctx context.Context, arg CountEventsByTypeAndUserSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countEventsByTypeAndUserSince, arg.EventType, arg.UserID, arg.CreatedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countEventsByTypeGrouped = `-- name: CountEventsByTypeGrouped :many
 SELECT event_type, count(*)::bigint AS n FROM analytics_events
 WHERE created_at >= $1
@@ -123,6 +144,43 @@ func (q *Queries) CreateAnalyticsEvent(ctx context.Context, arg CreateAnalyticsE
 		arg.Metadata,
 	)
 	return err
+}
+
+const freeCapWouldHitCounts = `-- name: FreeCapWouldHitCounts :many
+SELECT COALESCE(metadata->>'cap_kind', 'unknown')::text AS cap_kind,
+       count(*)::bigint AS would_hits,
+       count(DISTINCT user_id)::bigint AS users_affected
+FROM analytics_events
+WHERE event_type = 'free_cap_would_hit' AND created_at >= $1
+GROUP BY 1
+`
+
+type FreeCapWouldHitCountsRow struct {
+	CapKind       string `json:"cap_kind"`
+	WouldHits     int64  `json:"would_hits"`
+	UsersAffected int64  `json:"users_affected"`
+}
+
+// Dashboard rollup for free_cap_would_hit: crossings observed plus the
+// distinct users affected, per cap_kind (plan_runs / active_trips).
+func (q *Queries) FreeCapWouldHitCounts(ctx context.Context, createdAt time.Time) ([]FreeCapWouldHitCountsRow, error) {
+	rows, err := q.db.Query(ctx, freeCapWouldHitCounts, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FreeCapWouldHitCountsRow
+	for rows.Next() {
+		var i FreeCapWouldHitCountsRow
+		if err := rows.Scan(&i.CapKind, &i.WouldHits, &i.UsersAffected); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const planSessionTotals = `-- name: PlanSessionTotals :one

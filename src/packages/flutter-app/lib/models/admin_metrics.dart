@@ -73,6 +73,16 @@ class AdminMetrics {
   @JsonKey(name: 'alerts_triggered')
   final int alertsTriggered;
 
+  /// Free-cap would-hit crossings per cap kind (plan_runs / active_trips) —
+  /// the Phase-3 demand signal. Measurement only; nothing is enforced.
+  @JsonKey(name: 'free_cap_would_hits')
+  final Map<String, int> freeCapWouldHits;
+
+  /// Distinct users who crossed each cap at least once in the window — the
+  /// cohort size the paid-tier trigger reads.
+  @JsonKey(name: 'free_cap_users_affected')
+  final Map<String, int> freeCapUsersAffected;
+
   const AdminMetrics({
     this.days = 30,
     this.signups = 0,
@@ -100,6 +110,8 @@ class AdminMetrics {
     this.estCogsPerActiveUser = 0,
     this.alertsCreated = 0,
     this.alertsTriggered = 0,
+    this.freeCapWouldHits = const {},
+    this.freeCapUsersAffected = const {},
   });
 
   factory AdminMetrics.fromJson(Map<String, dynamic> json) =>
