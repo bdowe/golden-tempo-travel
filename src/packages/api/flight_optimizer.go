@@ -82,6 +82,18 @@ func scheduleSignature(o FlightOffer) string {
 	for i := 0; i < len(o.Segments)-1; i++ {
 		parts = append(parts, o.Segments[i].To) // connecting airport
 	}
+	// Round trips: the return slice is part of the perceived schedule. Without
+	// it, same-outbound offers differing only in return legs collapse to the
+	// cheapest — discarding exactly the alternatives that total-duration/stops
+	// ranking exists to rank.
+	if len(o.ReturnSegments) > 0 {
+		rFirst := o.ReturnSegments[0]
+		rLast := o.ReturnSegments[len(o.ReturnSegments)-1]
+		parts = append(parts, "R", rFirst.From, rLast.To, rFirst.DepartTime, rLast.ArriveTime)
+		for i := 0; i < len(o.ReturnSegments)-1; i++ {
+			parts = append(parts, o.ReturnSegments[i].To)
+		}
+	}
 	return strings.Join(parts, "|")
 }
 

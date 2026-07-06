@@ -119,13 +119,17 @@ Future<Trip?> showAddToTripSheet(
     ),
   );
   if (trip != null && context.mounted) {
+    // Capture the navigator now: the snackbar outlives a route pop (root
+    // ScaffoldMessenger), so resolving it inside onPressed would look up a
+    // deactivated context. NavigatorState outlives the launching route.
+    final navigator = Navigator.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Added to ${trip.title}'),
       action: trip.id == currentTripId
           ? null
           : SnackBarAction(
               label: 'View trip',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              onPressed: () => navigator.push(MaterialPageRoute(
                 builder: (_) => TripDetailScreen(tripId: trip.id),
               )),
             ),

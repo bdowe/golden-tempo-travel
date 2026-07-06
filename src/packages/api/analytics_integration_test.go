@@ -293,9 +293,10 @@ func TestAnonymousEventsAreStrictRateLimited(t *testing.T) {
 	resetDB(t)
 	ip := nextTestIP()
 	limited := false
-	// Strict tier is burst 3 at 5/min: within a burst from one IP, a 429
-	// must appear well before 10 requests.
-	for i := 0; i < 10; i++ {
+	// Anonymous /events has its own bucket (burst 5 at 10/min — separate from
+	// the strict tier so pre-signup pings can't 429 /auth/register): within a
+	// burst from one IP, a 429 must appear well before 20 requests.
+	for i := 0; i < 20; i++ {
 		rec := doJSONFromIP(t, "POST", "/api/v1/events", "", ip, map[string]any{
 			"event_type": "landing_viewed",
 		})
@@ -308,7 +309,31 @@ func TestAnonymousEventsAreStrictRateLimited(t *testing.T) {
 		}
 	}
 	if !limited {
-		t.Fatalf("anonymous /events never rate limited within a 10-request burst")
+		t.Fatalf("anonymous /events never rate limited within a 20-request burst")
+	}
+}
+
+// TestAnonymousEventsDoNotDrainAuthBudget pins the review fix: a visitor's
+// pre-signup analytics pings must not consume the strict bucket that
+// /auth/register depends on at the conversion moment.
+func TestAnonymousEventsDoNotDrainAuthBudget(t *testing.T) {
+	resetDB(t)
+	ip := nextTestIP()
+	for i := 0; i < 3; i++ {
+		rec := doJSONFromIP(t, "POST", "/api/v1/events", "", ip, map[string]any{
+			"event_type": "booking_link_clicked",
+		})
+		if rec.Code != 202 {
+			t.Fatalf("event %d = %d, want 202", i+1, rec.Code)
+		}
+	}
+	rec := doJSONFromIP(t, "POST", "/api/v1/auth/register", "", ip, map[string]any{
+		"email":    "converts@example.com",
+		"password": "a-strong-password-1",
+		"name":     "Converting Visitor",
+	})
+	if rec.Code == 429 {
+		t.Fatalf("register 429 after anonymous analytics pings — events drained the auth budget")
 	}
 }
 

@@ -1586,7 +1586,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _addToTrip(AddToTripPayload payload) async {
     final added =
         await showAddToTripSheet(context, payload, currentTripId: widget.tripId);
-    if (added != null && added.id == widget.tripId) _load(silent: true);
+    // _refresh(), not a bare silent _load(): it serializes with any reload the
+    // refine panel has in flight, so a pre-add snapshot can't land after us
+    // and momentarily erase the just-added item.
+    if (added != null && added.id == widget.tripId) _refresh();
   }
 
   Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme) =>

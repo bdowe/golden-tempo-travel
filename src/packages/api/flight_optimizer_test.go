@@ -124,6 +124,27 @@ func roundTrip(id string, price float64, from, to, dep, arr string, dur, stops, 
 	return o
 }
 
+// Same outbound paired with different return slices must NOT collapse in
+// dedup: pre-fix, scheduleSignature hashed only o.Segments, so the cheapest
+// pairing swallowed the alternatives that total-duration ranking exists to
+// rank (Wave-8 review finding).
+func TestDedupKeepsSameOutboundDifferentReturns(t *testing.T) {
+	// Identical outbound; A = nonstop 8h return at $600, B = 2-leg 20h return
+	// at $550. Price-keyed dedup on an outbound-only signature keeps only B.
+	a := roundTrip("fast-return", 600, "JFK", "CDG", "T1", "T2", 420, 0, 480, 1)
+	b := roundTrip("slow-return", 550, "JFK", "CDG", "T1", "T2", 420, 0, 1200, 2)
+
+	got := dedupBySchedule([]FlightOffer{a, b})
+	if len(got) != 2 {
+		t.Fatalf("dedup collapsed distinct return slices: kept %d offers, want 2", len(got))
+	}
+
+	ranked := RankFlightOffers([]FlightOffer{a, b}, "time")
+	if ranked[0].ID != "fast-return" {
+		t.Errorf("time ranking picked %q, want fast-return", ranked[0].ID)
+	}
+}
+
 // Round-trip "time" ranking must use TOTAL duration (outbound + return), not
 // outbound alone: a fast-outbound/slow-return offer with the larger total must
 // lose to a slow-outbound/fast-return offer with the smaller total.
