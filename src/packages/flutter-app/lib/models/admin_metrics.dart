@@ -2,6 +2,50 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'admin_metrics.g.dart';
 
+/// One provider-call counter pair: billable upstream calls vs cache hits.
+/// PROCESS-LIFETIME on the API side — resets on every restart/deploy, and is
+/// NOT scoped to the dashboard's days window.
+@JsonSerializable()
+class UpstreamCallCounts {
+  final int upstream;
+  @JsonKey(name: 'cache_hits')
+  final int cacheHits;
+
+  const UpstreamCallCounts({this.upstream = 0, this.cacheHits = 0});
+
+  factory UpstreamCallCounts.fromJson(Map<String, dynamic> json) =>
+      _$UpstreamCallCountsFromJson(json);
+  Map<String, dynamic> toJson() => _$UpstreamCallCountsToJson(this);
+}
+
+/// Mirror of the API's places_calls_since_process_start object: per-class
+/// Google Places call counters plus the estimated upstream spend (list-price
+/// estimate, not a bill). Process-lifetime — see [UpstreamCallCounts].
+@JsonSerializable()
+class PlacesCalls {
+  final UpstreamCallCounts search;
+  final UpstreamCallCounts autocomplete;
+  final UpstreamCallCounts details;
+  @JsonKey(name: 'est_places_cost_usd')
+  final double estPlacesCostUsd;
+
+  const PlacesCalls({
+    this.search = const UpstreamCallCounts(),
+    this.autocomplete = const UpstreamCallCounts(),
+    this.details = const UpstreamCallCounts(),
+    this.estPlacesCostUsd = 0,
+  });
+
+  int get totalUpstream =>
+      search.upstream + autocomplete.upstream + details.upstream;
+  int get totalCacheHits =>
+      search.cacheHits + autocomplete.cacheHits + details.cacheHits;
+
+  factory PlacesCalls.fromJson(Map<String, dynamic> json) =>
+      _$PlacesCallsFromJson(json);
+  Map<String, dynamic> toJson() => _$PlacesCallsToJson(this);
+}
+
 /// Mirror of the API's MetricsResponse (GET /admin/metrics?days=) — the
 /// Phase-1 growth funnel: activation, attach rate, retention, AI cost.
 @JsonSerializable()
@@ -83,6 +127,17 @@ class AdminMetrics {
   @JsonKey(name: 'free_cap_users_affected')
   final Map<String, int> freeCapUsersAffected;
 
+  /// PROCESS-LIFETIME Google Places call counters + estimated spend, reset on
+  /// every API restart/deploy — NOT scoped to the days window like the rest
+  /// of this model. Nullable: absent on API builds older than this field.
+  @JsonKey(name: 'places_calls_since_process_start')
+  final PlacesCalls? placesCallsSinceProcessStart;
+
+  /// PROCESS-LIFETIME Ticketmaster call counters (free tier — quota/cache
+  /// visibility, no cost estimate). Nullable: absent on older API builds.
+  @JsonKey(name: 'events_calls_since_process_start')
+  final UpstreamCallCounts? eventsCallsSinceProcessStart;
+
   const AdminMetrics({
     this.days = 30,
     this.signups = 0,
@@ -112,6 +167,8 @@ class AdminMetrics {
     this.alertsTriggered = 0,
     this.freeCapWouldHits = const {},
     this.freeCapUsersAffected = const {},
+    this.placesCallsSinceProcessStart,
+    this.eventsCallsSinceProcessStart,
   });
 
   factory AdminMetrics.fromJson(Map<String, dynamic> json) =>

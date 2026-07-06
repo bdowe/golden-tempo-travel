@@ -9,8 +9,33 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// upstreamCallCounters tracks billable upstream calls vs cache hits for one
+// endpoint class of a provider service. PROCESS-LIFETIME: counters start at
+// zero on boot and reset on every restart/deploy — they are telemetry for
+// directional spend visibility, not audited, window-scoped analytics (nothing
+// here is persisted). Atomic adds only, so the hot path takes no locks and
+// gains no contention.
+type upstreamCallCounters struct {
+	upstream  atomic.Int64
+	cacheHits atomic.Int64
+}
+
+// UpstreamCallCounts is the JSON snapshot of one counter pair, as exposed by
+// the admin metrics endpoint.
+type UpstreamCallCounts struct {
+	Upstream  int64 `json:"upstream"`
+	CacheHits int64 `json:"cache_hits"`
+}
+
+// snapshot reads both counters. The two loads are not a single atomic unit,
+// which is fine for a dashboard tile.
+func (c *upstreamCallCounters) snapshot() UpstreamCallCounts {
+	return UpstreamCallCounts{Upstream: c.upstream.Load(), CacheHits: c.cacheHits.Load()}
+}
 
 // redactTransportError strips the request URL from transport-level HTTP
 // errors before they enter an error chain. http.Client failures come back as
@@ -40,6 +65,16 @@ type GooglePlacesService struct {
 	searchCache       *ttlCache[[]PlaceSearchResult]
 	autocompleteCache *ttlCache[[]PlaceAutocompleteResult]
 	detailsCache      *ttlCache[*PlaceDetailsResult]
+
+	// Process-lifetime call counters per endpoint class (see
+	// upstreamCallCounters — reset on restart, atomic, never persisted).
+	// "upstream" increments at the exact point an HTTP request to Google is
+	// issued (the billable moment); "cacheHits" where the TTL cache
+	// short-circuits. Snapshotted by the admin metrics endpoint for
+	// directional Places-spend visibility.
+	searchCalls       upstreamCallCounters
+	autocompleteCalls upstreamCallCounters
+	detailsCalls      upstreamCallCounters
 }
 
 // PlaceSearchResult represents a place from Google Places API
@@ -114,6 +149,7 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 
 	cacheKey := strings.ToLower(strings.TrimSpace(query))
 	if cached, ok := gps.searchCache.get(cacheKey); ok {
+		gps.searchCalls.cacheHits.Add(1)
 		return cached, nil
 	}
 
@@ -123,6 +159,7 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 	params.Add("query", query)
 	params.Add("key", gps.APIKey)
 
+	gps.searchCalls.upstream.Add(1)
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to search places: %w", redactTransportError(err))
@@ -186,6 +223,7 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 
 	cacheKey := strings.ToLower(strings.TrimSpace(input))
 	if cached, ok := gps.autocompleteCache.get(cacheKey); ok {
+		gps.autocompleteCalls.cacheHits.Add(1)
 		return cached, nil
 	}
 
@@ -194,6 +232,7 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 	params.Add("input", input)
 	params.Add("key", gps.APIKey)
 
+	gps.autocompleteCalls.upstream.Add(1)
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get autocomplete: %w", redactTransportError(err))
@@ -242,6 +281,7 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 	}
 
 	if cached, ok := gps.detailsCache.get(placeID); ok {
+		gps.detailsCalls.cacheHits.Add(1)
 		return cached, nil
 	}
 
@@ -251,6 +291,7 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 	params.Add("fields", "place_id,name,formatted_address,geometry,types,rating,price_level,opening_hours,website,formatted_phone_number")
 	params.Add("key", gps.APIKey)
 
+	gps.detailsCalls.upstream.Add(1)
 	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get place details: %w", redactTransportError(err))

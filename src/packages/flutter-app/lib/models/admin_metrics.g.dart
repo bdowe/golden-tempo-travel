@@ -6,6 +6,41 @@ part of 'admin_metrics.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+UpstreamCallCounts _$UpstreamCallCountsFromJson(Map<String, dynamic> json) =>
+    UpstreamCallCounts(
+      upstream: (json['upstream'] as num?)?.toInt() ?? 0,
+      cacheHits: (json['cache_hits'] as num?)?.toInt() ?? 0,
+    );
+
+Map<String, dynamic> _$UpstreamCallCountsToJson(UpstreamCallCounts instance) =>
+    <String, dynamic>{
+      'upstream': instance.upstream,
+      'cache_hits': instance.cacheHits,
+    };
+
+PlacesCalls _$PlacesCallsFromJson(Map<String, dynamic> json) => PlacesCalls(
+      search: json['search'] == null
+          ? const UpstreamCallCounts()
+          : UpstreamCallCounts.fromJson(json['search'] as Map<String, dynamic>),
+      autocomplete: json['autocomplete'] == null
+          ? const UpstreamCallCounts()
+          : UpstreamCallCounts.fromJson(
+              json['autocomplete'] as Map<String, dynamic>),
+      details: json['details'] == null
+          ? const UpstreamCallCounts()
+          : UpstreamCallCounts.fromJson(
+              json['details'] as Map<String, dynamic>),
+      estPlacesCostUsd: (json['est_places_cost_usd'] as num?)?.toDouble() ?? 0,
+    );
+
+Map<String, dynamic> _$PlacesCallsToJson(PlacesCalls instance) =>
+    <String, dynamic>{
+      'search': instance.search,
+      'autocomplete': instance.autocomplete,
+      'details': instance.details,
+      'est_places_cost_usd': instance.estPlacesCostUsd,
+    };
+
 AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
       days: (json['days'] as num?)?.toInt() ?? 30,
       signups: (json['signups'] as num?)?.toInt() ?? 0,
@@ -55,6 +90,16 @@ AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
                 (k, e) => MapEntry(k, (e as num).toInt()),
               ) ??
               const {},
+      placesCallsSinceProcessStart: json['places_calls_since_process_start'] ==
+              null
+          ? null
+          : PlacesCalls.fromJson(
+              json['places_calls_since_process_start'] as Map<String, dynamic>),
+      eventsCallsSinceProcessStart: json['events_calls_since_process_start'] ==
+              null
+          ? null
+          : UpstreamCallCounts.fromJson(
+              json['events_calls_since_process_start'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
@@ -87,4 +132,6 @@ Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
       'alerts_triggered': instance.alertsTriggered,
       'free_cap_would_hits': instance.freeCapWouldHits,
       'free_cap_users_affected': instance.freeCapUsersAffected,
+      'places_calls_since_process_start': instance.placesCallsSinceProcessStart,
+      'events_calls_since_process_start': instance.eventsCallsSinceProcessStart,
     };

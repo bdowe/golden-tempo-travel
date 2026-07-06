@@ -36,6 +36,14 @@ void main() {
       alertsTriggered: 1,
       freeCapWouldHits: {'plan_runs': 3, 'active_trips': 1},
       freeCapUsersAffected: {'plan_runs': 2, 'active_trips': 1},
+      placesCallsSinceProcessStart: PlacesCalls(
+        search: UpstreamCallCounts(upstream: 100, cacheHits: 400),
+        autocomplete: UpstreamCallCounts(upstream: 50, cacheHits: 10),
+        details: UpstreamCallCounts(upstream: 25, cacheHits: 5),
+        estPlacesCostUsd: 3.77,
+      ),
+      eventsCallsSinceProcessStart:
+          UpstreamCallCounts(upstream: 9, cacheHits: 3),
     );
 
     await tester.pumpWidget(
@@ -67,6 +75,43 @@ void main() {
         find.text('1 users affected'), findsOneWidget); // active_trips cohort
     expect(find.text('Clicks by provider'), findsOneWidget);
     expect(find.text('booking'), findsOneWidget);
+    expect(find.text('Price alerts'), findsOneWidget);
+
+    // Provider-call counters: honestly labeled as since-restart, with the
+    // per-class breakdown and the Places cost estimate.
+    expect(find.text('Provider APIs (since restart)'), findsOneWidget);
+    expect(find.text('Places API (since restart)'), findsOneWidget);
+    expect(find.text('175'), findsOneWidget); // total upstream
+    expect(find.text('415 cache hits · est. \$3.77'), findsOneWidget);
+    expect(find.text('100 search'), findsOneWidget);
+    expect(find.text('50 autocomplete · 25 details'), findsOneWidget);
+    expect(find.text('Events API (since restart)'), findsOneWidget);
+    expect(find.text('3 cache hits · free tier'), findsOneWidget);
+  });
+
+  testWidgets('omits provider-call section when the API predates it',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // An older API omits the *_since_process_start fields entirely — the
+    // model must parse (nullable) and the screen must skip the section.
+    final metrics = AdminMetrics.fromJson(const {'days': 30, 'signups': 1});
+    expect(metrics.placesCallsSinceProcessStart, isNull);
+    expect(metrics.eventsCallsSinceProcessStart, isNull);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          adminMetricsProvider(30).overrideWith((ref) async => metrics),
+        ],
+        child: const MaterialApp(home: AdminMetricsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Provider APIs (since restart)'), findsNothing);
     expect(find.text('Price alerts'), findsOneWidget);
   });
 

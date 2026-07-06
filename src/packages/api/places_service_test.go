@@ -52,6 +52,15 @@ func TestSearchPlacesServedFromCache(t *testing.T) {
 	if len(first) != 1 || len(second) != 1 || second[0].PlaceID != "p1" {
 		t.Fatalf("cached result mismatch: first=%v second=%v", first, second)
 	}
+
+	// The COGS counters must mirror what actually happened: one billable
+	// upstream call (the miss), one cache hit (no upstream increment).
+	if got := svc.searchCalls.snapshot(); got.Upstream != 1 || got.CacheHits != 1 {
+		t.Fatalf("search counters = %+v, want upstream=1 cache_hits=1", got)
+	}
+	if got := svc.autocompleteCalls.snapshot(); got.Upstream != 0 || got.CacheHits != 0 {
+		t.Fatalf("autocomplete counters moved on a search-only path: %+v", got)
+	}
 }
 
 func TestGetPlaceDetailsServedFromCache(t *testing.T) {
@@ -72,6 +81,50 @@ func TestGetPlaceDetailsServedFromCache(t *testing.T) {
 	}
 	if got == nil || got.Name != "Louvre Museum" {
 		t.Fatalf("cached details mismatch: %+v", got)
+	}
+	if c := svc.detailsCalls.snapshot(); c.Upstream != 1 || c.CacheHits != 1 {
+		t.Fatalf("details counters = %+v, want upstream=1 cache_hits=1", c)
+	}
+}
+
+const fakeAutocompleteJSON = `{"status":"OK","predictions":[{"place_id":"p1","description":"Louvre Museum, Paris","types":["museum"]}]}`
+
+func TestAutocompleteCountersTrackMissAndHit(t *testing.T) {
+	rt := &countingTransport{body: fakeAutocompleteJSON}
+	svc := NewGooglePlacesService()
+	svc.APIKey = "test-key"
+	svc.Client = &http.Client{Transport: rt}
+
+	if _, err := svc.GetPlaceAutocomplete("louvre"); err != nil {
+		t.Fatalf("first autocomplete failed: %v", err)
+	}
+	if _, err := svc.GetPlaceAutocomplete(" LOUVRE "); err != nil {
+		t.Fatalf("second autocomplete failed: %v", err)
+	}
+	if rt.calls != 1 {
+		t.Fatalf("Google called %d times, want 1", rt.calls)
+	}
+	if c := svc.autocompleteCalls.snapshot(); c.Upstream != 1 || c.CacheHits != 1 {
+		t.Fatalf("autocomplete counters = %+v, want upstream=1 cache_hits=1", c)
+	}
+}
+
+// placesCallsSnapshot must price exactly the UPSTREAM counts (cache hits are
+// free) with the per-class constants — the dashboard's est_places_cost_usd.
+func TestPlacesCallsSnapshotPricing(t *testing.T) {
+	svc := NewGooglePlacesService()
+	svc.searchCalls.upstream.Add(1000)       // $32
+	svc.searchCalls.cacheHits.Add(500)       // free
+	svc.autocompleteCalls.upstream.Add(1000) // $2.83
+	svc.detailsCalls.upstream.Add(1000)      // $17
+
+	snap := placesCallsSnapshot(svc)
+	if snap.Search.Upstream != 1000 || snap.Search.CacheHits != 500 {
+		t.Fatalf("search snapshot = %+v", snap.Search)
+	}
+	want := 32.0 + 2.83 + 17.0
+	if diff := snap.EstPlacesCostUSD - want; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("est_places_cost_usd = %v, want %v", snap.EstPlacesCostUSD, want)
 	}
 }
 
