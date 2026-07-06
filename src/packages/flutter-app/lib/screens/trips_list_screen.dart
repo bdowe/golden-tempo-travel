@@ -6,6 +6,7 @@ import '../utils/trip_format.dart';
 import '../widgets/account_menu.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/offline_banner.dart';
 import '../widgets/status_pill.dart';
 import '../models/trip.dart';
 import '../providers/auth_provider.dart';
@@ -91,6 +92,21 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
             ],
           ],
         ),
+      );
+    }
+
+    // Offline: the list is a cached copy — pin the banner above it so the
+    // staleness (and the way back online) is always visible.
+    final offlineSince = state.offlineSince;
+    if (offlineSince != null) {
+      body = Column(
+        children: [
+          OfflineBanner(
+            savedAt: offlineSince,
+            onRetry: () => ref.read(tripsProvider.notifier).loadTrips(),
+          ),
+          Expanded(child: body),
+        ],
       );
     }
 
