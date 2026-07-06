@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
 )
 
@@ -140,6 +141,18 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 				"stack", string(debug.Stack()),
 			)
 			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+			// Report the panic to Sentry after the response is written so
+			// the synchronous flush never delays the client. Guarded on
+			// sentryEnabled: with SENTRY_DSN unset this branch never runs
+			// and the recovery path is unchanged. (Hub.Recover and
+			// Hub.Flush are also no-ops on an uninitialized hub —
+			// sentry-go v0.47.0 hub.go:323-326 and hub.go:356-360 return
+			// early when no client is bound — the guard is belt and
+			// braces.)
+			if sentryEnabled {
+				sentry.CurrentHub().Recover(rec)
+				sentry.Flush(2 * time.Second)
+			}
 		}()
 		next.ServeHTTP(w, r)
 	})

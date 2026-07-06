@@ -29,6 +29,75 @@ func TestRecoveryMiddlewareReturns500JSON(t *testing.T) {
 	}
 }
 
+// With SENTRY_DSN unset (sentryEnabled false, hub uninitialized), a panic
+// must still produce the exact JSON 500 the client always got — byte for
+// byte — proving the Sentry integration is fully inert when disabled.
+func TestRecoveryMiddleware500ShapeUnchangedWithoutSentry(t *testing.T) {
+	if sentryEnabled {
+		t.Fatal("precondition: sentryEnabled must be false in tests")
+	}
+	h := recoveryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom without sentry")
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/anything", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	// Exact wire shape of writeJSONError (json.Encoder adds the newline).
+	want := `{"message":"internal server error","status":"error"}` + "\n"
+	if rec.Body.String() != want {
+		t.Fatalf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
+
+// When Sentry is enabled, the panic is reported — and the 500 response is
+// still identical.
+func TestRecoveryMiddlewareReportsPanicToSentry(t *testing.T) {
+	transport := bindFakeSentry(t)
+	sentryEnabled = true
+
+	h := recoveryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom with sentry")
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/anything", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	want := `{"message":"internal server error","status":"error"}` + "\n"
+	if rec.Body.String() != want {
+		t.Fatalf("body = %q, want %q", rec.Body.String(), want)
+	}
+
+	events := transport.captured()
+	if len(events) == 0 {
+		t.Fatal("no sentry events captured for a panic with sentry enabled")
+	}
+	// A string panic value surfaces as the event message (an error value
+	// would surface as an Exception); accept either.
+	found := false
+	for _, e := range events {
+		if strings.Contains(e.Message, "boom with sentry") {
+			found = true
+		}
+		for _, ex := range e.Exception {
+			if strings.Contains(ex.Value, "boom with sentry") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no captured event carries the panic value; got %d events", len(events))
+	}
+}
+
 func TestRecoveryMiddlewareServesAfterPanic(t *testing.T) {
 	calls := 0
 	h := recoveryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

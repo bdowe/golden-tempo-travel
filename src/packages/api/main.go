@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gorilla/mux"
 )
 
@@ -503,11 +504,67 @@ func summarizeStructure(node interface{}, depth int) interface{} {
 	}
 }
 
+// sentryEnabled records whether sentry.Init succeeded. Every Sentry call site
+// outside sentry_slog.go is guarded on it, so with SENTRY_DSN unset the
+// binary takes the exact same code paths as before Sentry existed. (sentry-go
+// is also internally safe uninitialized — Hub.Recover/Flush/CaptureEvent
+// no-op when no client is bound — but the guard keeps the hot paths free of
+// even those calls.)
+var sentryEnabled bool
+
+// initSentry configures Sentry error alerting from the environment:
+//
+//	SENTRY_DSN      — enables Sentry when set; unset => fully inert
+//	GO_ENV          — Sentry environment tag (default "production")
+//	SENTRY_RELEASE  — release tag (CI sets this to the git SHA; default empty)
+//
+// Following the repo convention, a bad DSN degrades to inert with a warning
+// rather than failing startup. Returns whether Sentry is enabled.
+func initSentry() bool {
+	dsn := os.Getenv("SENTRY_DSN")
+	if dsn == "" {
+		slog.Info("sentry inert: SENTRY_DSN not set")
+		return false
+	}
+	environment := os.Getenv("GO_ENV")
+	if environment == "" {
+		environment = "production"
+	}
+	release := os.Getenv("SENTRY_RELEASE")
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:         dsn,
+		Environment: environment,
+		Release:     release,
+	}); err != nil {
+		slog.Warn("sentry inert: init failed", "error", err)
+		return false
+	}
+	sentryEnabled = true
+	slog.Info("sentry enabled", "environment", environment, "release", release)
+	return true
+}
+
 func main() {
 	// slog is the canonical logger; SetDefault also routes the stdlib log
 	// package through the same handler, so existing log.Printf call sites
 	// keep working and share the format.
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	textHandler := slog.NewTextHandler(os.Stderr, nil)
+	slog.SetDefault(slog.New(textHandler))
+
+	// Sentry error alerting is opt-in via SENTRY_DSN (missing config =>
+	// degraded mode, never fatal — here "degraded" is simply "inert": no
+	// goroutines, no network, no wrapped log handler). When enabled, Error-
+	// and-above slog records are teed to Sentry and recoveryMiddleware
+	// reports panics.
+	if initSentry() {
+		slog.SetDefault(slog.New(newSentrySlogHandler(textHandler)))
+		// Best-effort flush of buffered events on return from main. Note the
+		// server has no graceful-shutdown hook today (startServer ends in
+		// log.Fatal, which skips deferred calls), so the flush that matters
+		// in practice is the one in recoveryMiddleware; this defer covers a
+		// future graceful-shutdown path for free.
+		defer sentry.Flush(2 * time.Second)
+	}
 
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
