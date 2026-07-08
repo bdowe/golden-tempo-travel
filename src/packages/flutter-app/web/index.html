@@ -56,8 +56,8 @@
   <meta name="theme-color" content="#00695C">
 
   <!--
-    Boot splash shown while flutter.js + main.dart.js download and the engine
-    starts. Pixel-matched to the in-app SplashScreen (lib/screens/
+    Boot splash shown while flutter_bootstrap.js + main.dart.js download and
+    the engine starts. Pixel-matched to the in-app SplashScreen (lib/screens/
     splash_screen.dart) — same gradient, badge geometry, and spinner position —
     so the flutter-first-frame handoff reads as one continuous screen. If you
     change dimensions here, change splash_screen.dart too.
@@ -122,12 +122,6 @@
     @keyframes splash-spin { to { transform: rotate(360deg); } }
   </style>
 
-  <script>
-    // The value below is injected by flutter build, do not touch.
-    const serviceWorkerVersion = null;
-  </script>
-  <!-- This script adds the flutter initialization JS code -->
-  <script src="flutter.js" defer></script>
 </head>
 <body>
   <div id="splash">
@@ -138,20 +132,6 @@
   </div>
 
   <script>
-    window.addEventListener('load', function(ev) {
-      // Download main.dart.js
-      _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
-        onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
-            appRunner.runApp();
-          });
-        }
-      });
-    });
-
     // Fade the boot splash out once Flutter paints its first frame (the in-app
     // SplashScreen, pixel-matched to the markup above).
     window.addEventListener('flutter-first-frame', function () {
@@ -163,5 +143,12 @@
       setTimeout(remove, 600); // fallback if transitionend never fires
     });
   </script>
+
+  <!-- Flutter initialization: build-generated bootstrap (inlines the loader,
+       the build config, and the injected service-worker version — verified in
+       build/web/flutter_bootstrap.js). Replaces the deprecated
+       serviceWorkerVersion/loadEntrypoint pattern, which Flutter 3.35 warns
+       about at build time. -->
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
