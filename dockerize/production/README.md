@@ -11,17 +11,34 @@ Cloudflare edge IPs.
 ```
 /opt/goldentempo/
 ├── docker-compose.yml        # this directory's compose file
-├── .env                      # secrets: API keys, POSTGRES_PASSWORD, DATABASE_URL (PR A2)
+├── .env                      # secrets — copy .env.sample and fill in (chmod 600)
 ├── .image_tag                # IMAGE_TAG=<sha> of the live deploy (written by CI)
+├── backup.sh                 # nightly pg_dump + prune + optional rclone off-site copy
 ├── nginx/
 │   ├── prod.conf             # TLS server blocks (mounted over conf.d/default.conf)
 │   └── cloudflare-realip.conf# CF ranges + real_ip_header (mounted into conf.d/)
-└── backups/                  # pg_dump output
+└── backups/                  # backup.sh output (gzipped pg_dump custom format)
 
 /etc/goldentempo/certs/
 ├── origin.crt                # Cloudflare Origin CA certificate (goldentempo.co + *.goldentempo.co)
 └── origin.key                # its private key (chmod 600, root-owned)
 ```
+
+## Environment / secrets
+
+All runtime configuration lives in one file: `/opt/goldentempo/.env`
+(`cp .env.sample .env`, fill in, `chmod 600`). It is used two ways:
+
+1. **Compose interpolation** — `POSTGRES_PASSWORD` (required, no default:
+   `docker compose config` fails fast if it's missing) and `IMAGE_TAG`.
+2. **`env_file` passthrough into the api** — provider keys, SMTP, Sentry,
+   `PUBLIC_*`, tuning vars. See `.env.sample` for the annotated inventory
+   of what's required vs degraded-mode-optional.
+
+`DATABASE_URL` is **not** set in `.env` — the compose file composes it from
+`POSTGRES_PASSWORD` (so api and postgres can never disagree) with
+`sslmode=disable`, which is safe because 5432 is never published to the
+host; it exists only on the private compose network.
 
 ## How config reaches the containers
 
@@ -94,9 +111,27 @@ docker compose up -d --force-recreate gateway
 docker compose ps
 docker compose logs -f gateway api
 
-# DB backup before risky deploys
-docker compose exec postgres pg_dump -U travel travel_planner > backups/$(date +%F).sql
+# DB backup before risky deploys (same script cron runs nightly)
+./backup.sh
 ```
+
+## Backups & restore
+
+`backup.sh` dumps the database (`pg_dump -Fc | gzip`) into `backups/`,
+prunes dumps older than 14 days, and — when `rclone` is installed with an
+`r2:goldentempo-backups` remote configured — copies the new dump off-site
+(otherwise it warns and still exits 0). Nightly cron (as root):
+
+```cron
+10 4 * * * /opt/goldentempo/backup.sh >> /var/log/goldentempo-backup.log 2>&1
+```
+
+Paths/services are overridable via env (`COMPOSE_FILE`, `COMPOSE_PROJECT`,
+`BACKUP_DIR`, …) — see the header of `backup.sh`.
+
+To restore a dump, follow [`restore.md`](restore.md): verify the dump in a
+fresh scratch volume first, then swap it under the live stack and confirm
+`/api/v1/health` reports `database: ok`.
 
 ## Sanity checks after a deploy
 
