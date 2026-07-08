@@ -22,6 +22,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 # Final stage
 FROM alpine:latest
 
+# Release identifier for Sentry (main.go reads SENTRY_RELEASE). CI passes the
+# git SHA via --build-arg; local builds leave it empty (Sentry omits release).
+ARG SENTRY_RELEASE=
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
+
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates
 
