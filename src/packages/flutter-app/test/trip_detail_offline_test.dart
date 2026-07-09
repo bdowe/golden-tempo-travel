@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,6 +62,14 @@ T _labeledButton<T extends ButtonStyleButton>(
       of: find.text(label),
       matching: find.bySubtype<T>(),
     ));
+
+/// Crosses the RefreshIndicator's arm threshold to fire a quiet _load.
+Future<void> _triggerRefresh(WidgetTester tester) async {
+  await tester.fling(
+      find.byType(CustomScrollView), const Offset(0, 400), 1000);
+  await tester.pump(); // start the indicator
+  await tester.pump(const Duration(seconds: 1)); // cross the arm threshold
+}
 
 Future<void> _pumpDetail(
     WidgetTester tester, _QueuedTripsApiService service, TripCache cache) {
@@ -174,5 +184,103 @@ void main() {
     expect(find.text('Could not load this trip'), findsOneWidget);
     expect(find.textContaining('Offline — showing saved copy from'),
         findsNothing);
+  });
+
+  testWidgets(
+      'quiet network failure (pull-to-refresh) enters offline mode without '
+      'swapping the on-screen trip', (WidgetTester tester) async {
+    final cache = TripCache('u1');
+    final service = _QueuedTripsApiService(
+        [_trip('Athens Trip (live)'), http.ClientException('down')]);
+
+    await _pumpDetail(tester, service, cache);
+    await tester.pumpAndSettle();
+    expect(find.text('Athens Trip (live)'), findsWidgets);
+
+    // Plant a divergent, older cache entry AFTER the initial load's
+    // write-through, so a swap-from-cache would be visible and the banner's
+    // timestamp provably comes from the cache entry, not DateTime.now().
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'trip_cache.u1.trip.t1',
+      jsonEncode({
+        'saved_at': DateTime.now()
+            .subtract(const Duration(days: 2))
+            .toIso8601String(),
+        'trip': _trip('Cached Stale Copy').toJson(),
+      }),
+    );
+
+    await _triggerRefresh(tester);
+    await tester.pumpAndSettle();
+    expect(service.calls, 2);
+
+    // Offline mode entered: banner up, dated from the cache entry.
+    expect(find.textContaining('Offline — showing saved copy from'),
+        findsOneWidget);
+    expect(find.textContaining('2 days ago'), findsOneWidget);
+    // The on-screen trip is untouched — never swapped for the cached copy.
+    expect(find.text('Athens Trip (live)'), findsWidgets);
+    expect(find.text('Cached Stale Copy'), findsNothing);
+    expect(find.text('Could not load this trip'), findsNothing);
+
+    // Mutation affordances are guarded, same as a loud offline entry.
+    final refine = _labeledButton<FilledButton>(tester, 'Refine with AI');
+    expect(refine.onPressed, isNull);
+    final addPlace = _labeledButton<TextButton>(tester, 'Add place');
+    expect(addPlace.onPressed, isNull);
+  });
+
+  testWidgets('quiet NON-network failure stays fully silent',
+      (WidgetTester tester) async {
+    final cache = TripCache('u1');
+    final service = _QueuedTripsApiService(
+        [_trip('Athens Trip'), Exception('Failed to load trip (500)')]);
+
+    await _pumpDetail(tester, service, cache);
+    await tester.pumpAndSettle();
+
+    await _triggerRefresh(tester);
+    await tester.pumpAndSettle();
+    expect(service.calls, 2);
+
+    // No banner, no error page, mutations still armed — the PR #51/#53
+    // silent-refresh invariant for transient server errors.
+    expect(find.textContaining('Offline — showing saved copy from'),
+        findsNothing);
+    expect(find.text('Could not load this trip'), findsNothing);
+    expect(find.text('Athens Trip'), findsWidgets);
+    final refine = _labeledButton<FilledButton>(tester, 'Refine with AI');
+    expect(refine.onPressed, isNotNull);
+  });
+
+  testWidgets(
+      'a successful load after a quiet offline entry clears the banner',
+      (WidgetTester tester) async {
+    final cache = TripCache('u1');
+    final service = _QueuedTripsApiService([
+      _trip('Athens Trip'),
+      http.ClientException('down'),
+      _trip('Athens Trip (back online)'),
+    ]);
+
+    await _pumpDetail(tester, service, cache);
+    await tester.pumpAndSettle();
+
+    await _triggerRefresh(tester);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Offline — showing saved copy from'),
+        findsOneWidget);
+
+    // Reconnect: another pull-to-refresh succeeds and exits offline mode.
+    await _triggerRefresh(tester);
+    await tester.pumpAndSettle();
+    expect(service.calls, 3);
+
+    expect(find.textContaining('Offline — showing saved copy from'),
+        findsNothing);
+    expect(find.text('Athens Trip (back online)'), findsWidgets);
+    final refine = _labeledButton<FilledButton>(tester, 'Refine with AI');
+    expect(refine.onPressed, isNotNull, reason: 'back online — re-enabled');
   });
 }

@@ -93,10 +93,19 @@ Client-side cache only (no server entities):
   existing "Could not load trips" empty state shows.
 - **Trip detail:** loads live as today. On a network-level failure of the
   initial (loud) load with a cached copy present, the saved detail renders
-  with the banner above the scroll area and mutations disabled. Silent
-  refreshes keep their existing behavior (failures keep showing the current
-  trip quietly). A later successful load clears the banner and re-enables
-  everything.
+  with the banner above the scroll area and mutations disabled. A silent
+  refresh that fails at the **network level** (e.g. pull-to-refresh while
+  offline) also enters offline mode — banner shown, mutations disabled —
+  but keeps the trip already on screen (it is at least as fresh as the
+  cache; nothing is swapped in). This closes the original v1 asymmetry
+  where the detail screen's pull-to-refresh failed silently while the
+  trips list flipped into offline mode for the same gesture. Two carve-outs
+  remain deliberate: silent refreshes that fail with a **non-network**
+  error stay fully silent (the current trip keeps showing — transient
+  server errors during a streaming turn must not flash error UI), and the
+  offline flip is skipped while the AI refine panel is open (its refreshes
+  are driven by a live SSE stream, so the connection is demonstrably up).
+  A later successful load clears the banner and re-enables everything.
 - **Staleness:** relative time ("just now", "N minutes/hours/days ago"),
   computed from the saved-at timestamp at render time.
 
