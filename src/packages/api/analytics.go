@@ -309,11 +309,20 @@ type MetricsResponse struct {
 	// booking_link_clicked. Anonymous clicks always have trip_id NULL (ingest
 	// drops it — ownership is unverifiable), so they appear in BookingClicks
 	// and ClicksByProvider but can never move the attach rate.
-	TripsWithBookingClick int64            `json:"trips_with_booking_click"`
-	AttachRate            float64          `json:"attach_rate"`
-	BookingClicks         int64            `json:"booking_clicks"`
-	ClicksByProvider      map[string]int64 `json:"clicks_by_provider"`
-	TodosMarkedBooked     int64            `json:"todos_marked_booked"`
+	TripsWithBookingClick int64   `json:"trips_with_booking_click"`
+	AttachRate            float64 `json:"attach_rate"`
+	// BookingClicks stays the TOTAL (authenticated + anonymous) for backward
+	// compatibility; BookingClicksAnonymous is the user_id IS NULL slice —
+	// unauthenticated ingest, rate-limit bounded but unaudited, so
+	// partner-facing reads should quote total minus anonymous (Wave-8 security
+	// review). Same split for ClicksByProvider / ClicksByProviderAnonymous
+	// (parallel maps off one grouped query; the anonymous map carries only
+	// providers with >= 1 anonymous click).
+	BookingClicksAnonymous    int64            `json:"booking_clicks_anonymous"`
+	BookingClicks             int64            `json:"booking_clicks"`
+	ClicksByProvider          map[string]int64 `json:"clicks_by_provider"`
+	ClicksByProviderAnonymous map[string]int64 `json:"clicks_by_provider_anonymous"`
+	TodosMarkedBooked         int64            `json:"todos_marked_booked"`
 	// SecondTripRetention answers the business model's actual retention
 	// question: users who created >= 2 trips at least 7 days apart in the
 	// window (the Phase 3 "retention proven across >= 2 trips" trigger).
@@ -382,29 +391,35 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	q := store.New(dbPool)
 
 	// One GROUP BY round trip replaces the previous per-type count queries.
+	// anonCounts is the same rows' user_id IS NULL slice (a FILTER column,
+	// not another query) — today only booking_link_clicked reads it.
 	counts := map[string]int64{}
+	anonCounts := map[string]int64{}
 	if rows, err := q.CountEventsByTypeGrouped(ctx, since); err == nil {
 		for _, row := range rows {
 			counts[row.EventType] = row.N
+			anonCounts[row.EventType] = row.NAnonymous
 		}
 	} else {
 		log.Printf("metrics: grouped counts: %v", err)
 	}
 
 	resp := MetricsResponse{
-		Days:                 days,
-		LandingViews:         counts["landing_viewed"],
-		Signups:              counts["user_registered"],
-		OnboardingsCompleted: counts["onboarding_completed"],
-		TripsCreated:         counts["trip_created"],
-		TripsRefined:         counts["trip_refined"],
-		BookingClicks:        counts["booking_link_clicked"],
-		TodosMarkedBooked:    counts["booking_marked_booked"],
-		AlertsCreated:        counts["alert_created"],
-		AlertsTriggered:      counts["alert_triggered"],
-		ClicksByProvider:     map[string]int64{},
-		FreeCapWouldHits:     map[string]int64{},
-		FreeCapUsersAffected: map[string]int64{},
+		Days:                      days,
+		LandingViews:              counts["landing_viewed"],
+		Signups:                   counts["user_registered"],
+		OnboardingsCompleted:      counts["onboarding_completed"],
+		TripsCreated:              counts["trip_created"],
+		TripsRefined:              counts["trip_refined"],
+		BookingClicks:             counts["booking_link_clicked"],
+		BookingClicksAnonymous:    anonCounts["booking_link_clicked"],
+		TodosMarkedBooked:         counts["booking_marked_booked"],
+		AlertsCreated:             counts["alert_created"],
+		AlertsTriggered:           counts["alert_triggered"],
+		ClicksByProvider:          map[string]int64{},
+		ClicksByProviderAnonymous: map[string]int64{},
+		FreeCapWouldHits:          map[string]int64{},
+		FreeCapUsersAffected:      map[string]int64{},
 	}
 	if n, err := q.CountActivatedSignups(ctx, since); err == nil {
 		resp.ActivatedSignups = n
@@ -421,6 +436,9 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	if rows, err := q.BookingClicksByProvider(ctx, since); err == nil {
 		for _, row := range rows {
 			resp.ClicksByProvider[row.Provider] = row.Clicks
+			if row.AnonymousClicks > 0 {
+				resp.ClicksByProviderAnonymous[row.Provider] = row.AnonymousClicks
+			}
 		}
 	}
 	if totals, err := q.PlanSessionTotals(ctx, since); err == nil {

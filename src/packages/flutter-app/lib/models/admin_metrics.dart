@@ -51,6 +51,12 @@ class PlacesCalls {
 @JsonSerializable()
 class AdminMetrics {
   final int days;
+
+  /// Anonymous landing_viewed count — the top of the funnel, above signups.
+  /// Directional only (unauthenticated, rate-limit bounded). Nullable: absent
+  /// on API builds older than this field, and the tile is hidden then.
+  @JsonKey(name: 'landing_views')
+  final int? landingViews;
   final int signups;
   @JsonKey(name: 'activated_signups')
   final int activatedSignups;
@@ -66,10 +72,22 @@ class AdminMetrics {
   final int tripsWithBookingClick;
   @JsonKey(name: 'attach_rate')
   final double attachRate;
+  /// Total booking-link clicks, authenticated + anonymous (unchanged field).
   @JsonKey(name: 'booking_clicks')
   final int bookingClicks;
+
+  /// The user_id-NULL slice of [bookingClicks] — signed-out clicks, rate-limit
+  /// bounded but unaudited, split out so partner-facing reads can discount
+  /// them. Nullable: absent on older API builds (caption hidden then).
+  @JsonKey(name: 'booking_clicks_anonymous')
+  final int? bookingClicksAnonymous;
   @JsonKey(name: 'clicks_by_provider')
   final Map<String, int> clicksByProvider;
+
+  /// Anonymous slice of [clicksByProvider] (parallel map; only providers with
+  /// >= 1 anonymous click appear). Nullable: absent on older API builds.
+  @JsonKey(name: 'clicks_by_provider_anonymous')
+  final Map<String, int>? clicksByProviderAnonymous;
   @JsonKey(name: 'todos_marked_booked')
   final int todosMarkedBooked;
 
@@ -140,6 +158,7 @@ class AdminMetrics {
 
   const AdminMetrics({
     this.days = 30,
+    this.landingViews,
     this.signups = 0,
     this.activatedSignups = 0,
     this.activationRate = 0,
@@ -149,7 +168,9 @@ class AdminMetrics {
     this.tripsWithBookingClick = 0,
     this.attachRate = 0,
     this.bookingClicks = 0,
+    this.bookingClicksAnonymous,
     this.clicksByProvider = const {},
+    this.clicksByProviderAnonymous,
     this.todosMarkedBooked = 0,
     this.secondTripRetention = 0,
     this.sessionFrequencyReturning = 0,

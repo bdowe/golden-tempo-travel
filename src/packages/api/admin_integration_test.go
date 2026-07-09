@@ -95,6 +95,23 @@ func insertEvent(t *testing.T, userID uuid.UUID, eventType string, at time.Time,
 	}
 }
 
+// insertAnonymousEvent writes an analytics event with a NULL user_id, the way
+// the anonymous /events ingest stores landing_viewed and signed-out
+// booking_link_clicked rows.
+func insertAnonymousEvent(t *testing.T, eventType string, at time.Time, metadata string) {
+	t.Helper()
+	var meta any
+	if metadata != "" {
+		meta = metadata
+	}
+	_, err := dbPool.Exec(context.Background(),
+		`INSERT INTO analytics_events (user_id, event_type, metadata, created_at)
+		 VALUES (NULL, $1, $2, $3)`, eventType, meta, at)
+	if err != nil {
+		t.Fatalf("insertAnonymousEvent(%s): %v", eventType, err)
+	}
+}
+
 // insertTripCreated writes a trip_created event carrying its trip_id, the way
 // plan_handler records it — second_trip_retention dedupes by the referenced
 // trip's lineage, so the linkage matters.
@@ -160,6 +177,15 @@ func TestAdminMetricsValues(t *testing.T) {
 	insertEvent(t, userA.ID, "plan_session_completed", now,
 		`{"input_tokens":1000000,"output_tokens":1000000,"cache_read_tokens":0,"cache_creation_tokens":0,"max_iterations_hit":true}`)
 
+	// Top-of-funnel + the booking-click split: one anonymous landing view, one
+	// AUTHED booking click and one ANONYMOUS booking click on the same
+	// provider. booking_clicks stays the total (2); the anonymous slice (1)
+	// must surface in booking_clicks_anonymous and clicks_by_provider_anonymous
+	// without disturbing the clicks_by_provider totals.
+	insertAnonymousEvent(t, "landing_viewed", now, "")
+	insertEvent(t, userA.ID, "booking_link_clicked", now, `{"provider":"duffel"}`)
+	insertAnonymousEvent(t, "booking_link_clicked", now, `{"provider":"duffel"}`)
+
 	rec := doJSON(t, "GET", "/api/v1/admin/metrics?days=30", adminToken, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("admin metrics = %d: %s", rec.Code, rec.Body.String())
@@ -170,6 +196,9 @@ func TestAdminMetricsValues(t *testing.T) {
 	for field, want := range map[string]float64{
 		"signups":                     3,
 		"trips_created":               6,
+		"landing_views":               1,
+		"booking_clicks":              2, // total: 1 authed + 1 anonymous
+		"booking_clicks_anonymous":    1,
 		"second_trip_retention":       1, // A only: B lacks the 7-day gap, C's gap is within one lineage
 		"session_frequency_returning": 0, // A's sessions all on one day
 		"active_users":                1,
@@ -187,6 +216,16 @@ func TestAdminMetricsValues(t *testing.T) {
 
 	if body["est_cost_model"] != "claude-sonnet-4-6" {
 		t.Errorf("est_cost_model = %v, want claude-sonnet-4-6", body["est_cost_model"])
+	}
+
+	// Per-provider split: totals keep counting everyone; the anonymous map is
+	// the user_id IS NULL slice of the SAME grouped query (no extra round
+	// trip — the dashboard load must stay at 7 queries).
+	if byProvider, ok := body["clicks_by_provider"].(map[string]any); !ok || byProvider["duffel"] != float64(2) {
+		t.Errorf("clicks_by_provider = %v, want duffel: 2", body["clicks_by_provider"])
+	}
+	if anon, ok := body["clicks_by_provider_anonymous"].(map[string]any); !ok || anon["duffel"] != float64(1) {
+		t.Errorf("clicks_by_provider_anonymous = %v, want duffel: 1", body["clicks_by_provider_anonymous"])
 	}
 
 	// The old, misleading field names must be gone.

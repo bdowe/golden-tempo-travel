@@ -43,6 +43,7 @@ Map<String, dynamic> _$PlacesCallsToJson(PlacesCalls instance) =>
 
 AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
       days: (json['days'] as num?)?.toInt() ?? 30,
+      landingViews: (json['landing_views'] as num?)?.toInt(),
       signups: (json['signups'] as num?)?.toInt() ?? 0,
       activatedSignups: (json['activated_signups'] as num?)?.toInt() ?? 0,
       activationRate: (json['activation_rate'] as num?)?.toDouble() ?? 0,
@@ -54,11 +55,17 @@ AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
           (json['trips_with_booking_click'] as num?)?.toInt() ?? 0,
       attachRate: (json['attach_rate'] as num?)?.toDouble() ?? 0,
       bookingClicks: (json['booking_clicks'] as num?)?.toInt() ?? 0,
+      bookingClicksAnonymous:
+          (json['booking_clicks_anonymous'] as num?)?.toInt(),
       clicksByProvider:
           (json['clicks_by_provider'] as Map<String, dynamic>?)?.map(
                 (k, e) => MapEntry(k, (e as num).toInt()),
               ) ??
               const {},
+      clicksByProviderAnonymous:
+          (json['clicks_by_provider_anonymous'] as Map<String, dynamic>?)?.map(
+        (k, e) => MapEntry(k, (e as num).toInt()),
+      ),
       todosMarkedBooked: (json['todos_marked_booked'] as num?)?.toInt() ?? 0,
       secondTripRetention:
           (json['second_trip_retention'] as num?)?.toInt() ?? 0,
@@ -105,6 +112,7 @@ AdminMetrics _$AdminMetricsFromJson(Map<String, dynamic> json) => AdminMetrics(
 Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
     <String, dynamic>{
       'days': instance.days,
+      'landing_views': instance.landingViews,
       'signups': instance.signups,
       'activated_signups': instance.activatedSignups,
       'activation_rate': instance.activationRate,
@@ -114,7 +122,9 @@ Map<String, dynamic> _$AdminMetricsToJson(AdminMetrics instance) =>
       'trips_with_booking_click': instance.tripsWithBookingClick,
       'attach_rate': instance.attachRate,
       'booking_clicks': instance.bookingClicks,
+      'booking_clicks_anonymous': instance.bookingClicksAnonymous,
       'clicks_by_provider': instance.clicksByProvider,
+      'clicks_by_provider_anonymous': instance.clicksByProviderAnonymous,
       'todos_marked_booked': instance.todosMarkedBooked,
       'second_trip_retention': instance.secondTripRetention,
       'session_frequency_returning': instance.sessionFrequencyReturning,

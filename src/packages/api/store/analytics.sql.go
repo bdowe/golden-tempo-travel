@@ -13,7 +13,9 @@ import (
 )
 
 const bookingClicksByProvider = `-- name: BookingClicksByProvider :many
-SELECT COALESCE(left(metadata->>'provider', 64), 'unknown')::text AS provider, count(*) AS clicks
+SELECT COALESCE(left(metadata->>'provider', 64), 'unknown')::text AS provider,
+       count(*) AS clicks,
+       count(*) FILTER (WHERE user_id IS NULL)::bigint AS anonymous_clicks
 FROM analytics_events
 WHERE event_type = 'booking_link_clicked' AND created_at >= $1
 GROUP BY 1 ORDER BY clicks DESC, provider
@@ -21,13 +23,17 @@ LIMIT 20
 `
 
 type BookingClicksByProviderRow struct {
-	Provider string `json:"provider"`
-	Clicks   int64  `json:"clicks"`
+	Provider        string `json:"provider"`
+	Clicks          int64  `json:"clicks"`
+	AnonymousClicks int64  `json:"anonymous_clicks"`
 }
 
 // provider is client-supplied (sanitized at ingest since Wave 7, but older
 // rows predate that): left(..., 64) + LIMIT 20 bound the admin dashboard's
 // rollup against arbitrary historical values.
+// anonymous_clicks (user_id IS NULL — unauthenticated ingest, rate-limit
+// bounded but unaudited) rides the same GROUP BY so partner-facing reads can
+// discount it without a second round trip.
 func (q *Queries) BookingClicksByProvider(ctx context.Context, createdAt time.Time) ([]BookingClicksByProviderRow, error) {
 	rows, err := q.db.Query(ctx, bookingClicksByProvider, createdAt)
 	if err != nil {
@@ -37,7 +43,7 @@ func (q *Queries) BookingClicksByProvider(ctx context.Context, createdAt time.Ti
 	var items []BookingClicksByProviderRow
 	for rows.Next() {
 		var i BookingClicksByProviderRow
-		if err := rows.Scan(&i.Provider, &i.Clicks); err != nil {
+		if err := rows.Scan(&i.Provider, &i.Clicks, &i.AnonymousClicks); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -84,18 +90,26 @@ func (q *Queries) CountEventsByTypeAndUserSince(ctx context.Context, arg CountEv
 }
 
 const countEventsByTypeGrouped = `-- name: CountEventsByTypeGrouped :many
-SELECT event_type, count(*)::bigint AS n FROM analytics_events
+SELECT event_type,
+       count(*)::bigint AS n,
+       count(*) FILTER (WHERE user_id IS NULL)::bigint AS n_anonymous
+FROM analytics_events
 WHERE created_at >= $1
 GROUP BY event_type
 `
 
 type CountEventsByTypeGroupedRow struct {
-	EventType string `json:"event_type"`
-	N         int64  `json:"n"`
+	EventType  string `json:"event_type"`
+	N          int64  `json:"n"`
+	NAnonymous int64  `json:"n_anonymous"`
 }
 
 // All per-type counts for the metrics window in one round trip (the dashboard
 // previously issued one CountEventsByType query per headline number).
+// n_anonymous is the user_id IS NULL slice of each type — today only
+// booking_link_clicked can be mixed (landing_viewed is all-anonymous,
+// everything else all-authenticated), but the FILTER costs nothing and keeps
+// the split exact (unlike summing BookingClicksByProvider, which is LIMITed).
 func (q *Queries) CountEventsByTypeGrouped(ctx context.Context, createdAt time.Time) ([]CountEventsByTypeGroupedRow, error) {
 	rows, err := q.db.Query(ctx, countEventsByTypeGrouped, createdAt)
 	if err != nil {
@@ -105,7 +119,7 @@ func (q *Queries) CountEventsByTypeGrouped(ctx context.Context, createdAt time.T
 	var items []CountEventsByTypeGroupedRow
 	for rows.Next() {
 		var i CountEventsByTypeGroupedRow
-		if err := rows.Scan(&i.EventType, &i.N); err != nil {
+		if err := rows.Scan(&i.EventType, &i.N, &i.NAnonymous); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
