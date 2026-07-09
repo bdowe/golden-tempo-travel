@@ -163,9 +163,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       // Loud path + network-level failure: fall back to the cached copy and
       // render it read-only. HTTP errors (403/404/500) never reach here —
       // isNetworkError excludes them — so a revoked or deleted trip can't
-      // resurrect from a stale copy. Quiet failures keep their existing
-      // behavior: the stale trip stays; the next refresh or a loud load will
-      // surface a persistent problem.
+      // resurrect from a stale copy.
       if (mounted && !quiet && TripCache.isNetworkError(e)) {
         final cached = await ref.read(tripCacheProvider).readTrip(widget.tripId);
         if (cached != null && mounted) {
@@ -177,6 +175,32 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           });
           return; // finally still clears _loading
         }
+      }
+      // Quiet path + network-level failure on the trip already on screen
+      // (pull-to-refresh while offline): flip into offline mode — banner +
+      // mutation guards — instead of completing the indicator silently with
+      // edits still armed. The on-screen trip is at least as fresh as the
+      // cache (every successful load writes through), so keep it; only the
+      // offline state changes. Skipped while the refine panel is open: its
+      // quiet refreshes are driven by trip_updated events on a live SSE
+      // stream, so declaring the app offline mid-conversation would
+      // contradict the working connection and strand the panel (which is
+      // never allowed to observe offline mode — see _openRefine). Quiet
+      // NON-network failures stay fully silent: a transient server error
+      // during a streaming turn must not flash error UI (PR #51/#53).
+      if (mounted &&
+          quiet &&
+          !_panelOpen &&
+          _trip?.id == widget.tripId &&
+          TripCache.isNetworkError(e)) {
+        final cached =
+            await ref.read(tripCacheProvider).readTrip(widget.tripId);
+        if (mounted) {
+          // The cache entry's timestamp is when the on-screen data was
+          // fetched (write-through); fall back to "now" on a cache miss.
+          setState(() => _offlineSince = cached?.savedAt ?? DateTime.now());
+        }
+        return;
       }
       if (mounted && !quiet) setState(() => _error = e.toString());
     } finally {
