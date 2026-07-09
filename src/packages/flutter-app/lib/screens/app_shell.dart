@@ -104,7 +104,7 @@ const List<Widget> _tabRoots = [
 ];
 
 /// The Golden Tempo Travel brand mark for the top of the rail — the persistent
-/// Site ID (Krug). The metronome mark on a light badge so it fits the narrow
+/// Site ID (Krug). The horseshoe mark on a light badge so it fits the narrow
 /// rail and the black/gold artwork reads on the surface.
 class _RailBrand extends StatelessWidget {
   const _RailBrand();

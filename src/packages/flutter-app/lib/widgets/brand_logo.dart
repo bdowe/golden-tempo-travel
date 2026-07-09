@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../theme/spacing.dart';
 
-/// Golden Tempo Travel brand mark. Two forms:
-/// - [BrandLogo.lockup] — the full metronome + wordmark image, for spots with
+/// Golden Tempo Travel brand mark: a horse head inside an omega-shaped gold
+/// horseshoe (the company is named for the horse whose Derby win funded it).
+/// Two forms:
+/// - [BrandLogo.lockup] — the full horseshoe + wordmark image, for spots with
 ///   horizontal room (app-bar titles).
-/// - [BrandLogo.mark] — the metronome icon only, for tight spots (nav rail,
+/// - [BrandLogo.mark] — the horseshoe icon only, for tight spots (nav rail,
 ///   hero badge).
 ///
 /// The artwork is black + gold on a transparent background, so it needs a light
@@ -19,13 +21,13 @@ class BrandLogo extends StatelessWidget {
   final double _height;
   final bool _isLockup;
 
-  /// Full lockup (metronome + "GOLDEN TEMPO" wordmark), sized by [height].
+  /// Full lockup (horseshoe mark + "GOLDEN TEMPO" wordmark), sized by [height].
   const BrandLogo.lockup({super.key, double height = 36})
       : _asset = _lockupAsset,
         _height = height,
         _isLockup = true;
 
-  /// Metronome mark only, rendered as a [size]×[size] square.
+  /// Horseshoe mark only, rendered as a [size]×[size] square.
   const BrandLogo.mark({super.key, double size = 28})
       : _asset = _markAsset,
         _height = size,
@@ -38,11 +40,11 @@ class BrandLogo extends StatelessWidget {
       height: _height,
       fit: BoxFit.contain,
       semanticLabel: 'Golden Tempo Travel',
-      // Degrade gracefully until the logo art is added to assets/images/: the
-      // mark falls back to a metronome glyph, the lockup to the wordmark.
+      // Degrade gracefully if the image asset fails to load: the mark falls
+      // back to a horse-head glyph, the lockup to the wordmark.
       errorBuilder: (context, _, __) => _isLockup
           ? _WordmarkFallback(height: _height)
-          : Icon(MdiIcons.metronome, size: _height, color: Colors.black87),
+          : Icon(MdiIcons.horseVariant, size: _height, color: Colors.black87),
     );
   }
 }
@@ -57,7 +59,7 @@ class _WordmarkFallback extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(MdiIcons.metronome, size: height, color: Colors.black87),
+        Icon(MdiIcons.horseVariant, size: height, color: Colors.black87),
         const SizedBox(width: AppSpacing.sm),
         Text(
           'Golden Tempo',
