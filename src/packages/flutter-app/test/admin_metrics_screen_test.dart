@@ -15,13 +15,16 @@ void main() {
 
     const metrics = AdminMetrics(
       days: 30,
+      landingViews: 350,
       signups: 42,
       activatedSignups: 21,
       activationRate: 0.5,
       tripsCreated: 30,
       attachRate: 0.15,
       bookingClicks: 12,
+      bookingClicksAnonymous: 3,
       clicksByProvider: {'booking': 8, 'airbnb': 4},
+      clicksByProviderAnonymous: {'booking': 3},
       secondTripRetention: 7,
       activeUsers: 60,
       planSessions: 100,
@@ -57,6 +60,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('42'), findsOneWidget); // signups
+    expect(find.text('Landing views'), findsOneWidget);
+    expect(find.text('350'), findsOneWidget);
+    expect(find.text('directional — anonymous, rate-limit bounded'),
+        findsOneWidget);
+    // Booking-clicks tile carries the anonymous share as its caption.
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('3 anonymous'), findsOneWidget);
     expect(find.text('50.0%'), findsOneWidget); // activation rate
     expect(find.text('15.0%'), findsOneWidget); // attach rate
     expect(find.text('40 anonymous'), findsOneWidget);
@@ -100,6 +110,11 @@ void main() {
     final metrics = AdminMetrics.fromJson(const {'days': 30, 'signups': 1});
     expect(metrics.placesCallsSinceProcessStart, isNull);
     expect(metrics.eventsCallsSinceProcessStart, isNull);
+    // Same tolerance for the funnel-completion fields (Wave 10): null when
+    // absent, and the landing tile / anonymous caption are hidden below.
+    expect(metrics.landingViews, isNull);
+    expect(metrics.bookingClicksAnonymous, isNull);
+    expect(metrics.clicksByProviderAnonymous, isNull);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -112,6 +127,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Provider APIs (since restart)'), findsNothing);
+    expect(find.text('Landing views'), findsNothing);
+    expect(find.textContaining('anonymous, rate-limit bounded'), findsNothing);
     expect(find.text('Price alerts'), findsOneWidget);
   });
 

@@ -5,7 +5,14 @@ VALUES ($1, $2, $3, $4);
 -- name: CountEventsByTypeGrouped :many
 -- All per-type counts for the metrics window in one round trip (the dashboard
 -- previously issued one CountEventsByType query per headline number).
-SELECT event_type, count(*)::bigint AS n FROM analytics_events
+-- n_anonymous is the user_id IS NULL slice of each type — today only
+-- booking_link_clicked can be mixed (landing_viewed is all-anonymous,
+-- everything else all-authenticated), but the FILTER costs nothing and keeps
+-- the split exact (unlike summing BookingClicksByProvider, which is LIMITed).
+SELECT event_type,
+       count(*)::bigint AS n,
+       count(*) FILTER (WHERE user_id IS NULL)::bigint AS n_anonymous
+FROM analytics_events
 WHERE created_at >= $1
 GROUP BY event_type;
 
@@ -40,7 +47,12 @@ WHERE event_type = 'booking_link_clicked' AND trip_id IS NOT NULL AND created_at
 -- provider is client-supplied (sanitized at ingest since Wave 7, but older
 -- rows predate that): left(..., 64) + LIMIT 20 bound the admin dashboard's
 -- rollup against arbitrary historical values.
-SELECT COALESCE(left(metadata->>'provider', 64), 'unknown')::text AS provider, count(*) AS clicks
+-- anonymous_clicks (user_id IS NULL — unauthenticated ingest, rate-limit
+-- bounded but unaudited) rides the same GROUP BY so partner-facing reads can
+-- discount it without a second round trip.
+SELECT COALESCE(left(metadata->>'provider', 64), 'unknown')::text AS provider,
+       count(*) AS clicks,
+       count(*) FILTER (WHERE user_id IS NULL)::bigint AS anonymous_clicks
 FROM analytics_events
 WHERE event_type = 'booking_link_clicked' AND created_at >= $1
 GROUP BY 1 ORDER BY clicks DESC, provider

@@ -142,9 +142,10 @@ Spam-bounding measures on the anonymous path:
 - **Request:** optional `days` window (default 30).
 - **Response:** counts and rates for the window — landing views (anonymous;
   see below), signups, activated users and activation rate, trips created,
-  trips with ≥1 booking click and attach rate, booking clicks by provider,
-  todos marked booked, the derived metrics below, plan sessions, total
-  input/output/cache tokens, and cost estimates.
+  trips with ≥1 booking click and attach rate, booking clicks by provider
+  (totals plus the anonymous split; see below), todos marked booked, the
+  derived metrics below, plan sessions, total input/output/cache tokens, and
+  cost estimates.
 
 #### Anonymous rows and the derived metrics
 
@@ -163,6 +164,19 @@ Anonymous events (`user_id` NULL) must never distort the signed-in numbers:
   is NULL by construction (dropped at ingest, ownership unverifiable), and
   the numerator counts DISTINCT non-NULL trip ids. This is deliberate: attach
   rate stays a signed-in, per-trip metric.
+- **Booking-click anonymous split** (`booking_clicks_anonymous`,
+  `clicks_by_provider_anonymous`): `booking_clicks` and `clicks_by_provider`
+  remain **totals** (authenticated + anonymous — backward compatible), and
+  the `user_id IS NULL` slice is exposed alongside them. Rationale (Wave-8
+  security review): anonymous clicks are unauthenticated writes — rate-limit
+  bounded but spoofable at per-IP-limiter cost — so any partner-facing claim
+  ("N clicks sent to provider X") must be quotable as *total minus anonymous*,
+  not just the conflated total. Both splits are FILTER columns on the
+  existing grouped queries, not extra round trips (the dashboard's 7-query
+  load budget holds); `booking_clicks_anonymous` comes from the per-type
+  grouped count (exact — not a sum of the LIMITed per-provider rows), and
+  `clicks_by_provider_anonymous` is a parallel map carrying only providers
+  with ≥ 1 anonymous click.
 - **`activation_rate`** joins `user_registered` to `trip_created` on
   `user_id`; NULL never joins, so anonymous rows are inert there.
 - **Errors:** 401 unauthenticated; 403 non-admin; 503 when persistence is

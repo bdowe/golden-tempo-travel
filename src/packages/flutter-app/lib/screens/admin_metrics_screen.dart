@@ -92,6 +92,11 @@ class _MetricsBody extends StatelessWidget {
         const SectionHeader(title: 'Funnel'),
         const SizedBox(height: AppSpacing.sm),
         _TileGrid(tiles: [
+          // Hidden (not zero) when the API predates landing_views — null
+          // means "old API", 0 means "no views".
+          if (m.landingViews != null)
+            _Stat('Landing views', '${m.landingViews}',
+                caption: 'directional — anonymous, rate-limit bounded'),
           _Stat('Signups', '${m.signups}'),
           _Stat('Activated', '${m.activatedSignups}',
               caption: _pct(m.activationRate)),
@@ -109,7 +114,13 @@ class _MetricsBody extends StatelessWidget {
           _Stat('Trips refined', '${m.tripsRefined}'),
           _Stat('Attach rate', _pct(m.attachRate),
               caption: '${m.tripsWithBookingClick} trips w/ click'),
-          _Stat('Booking clicks', '${m.bookingClicks}'),
+          // The anonymous share (signed-out clicks, rate-limit bounded but
+          // unaudited) rides as a caption so partner-facing reads can
+          // discount it; caption absent on APIs that predate the split.
+          _Stat('Booking clicks', '${m.bookingClicks}',
+              caption: m.bookingClicksAnonymous != null
+                  ? '${m.bookingClicksAnonymous} anonymous'
+                  : null),
           _Stat('Marked booked', '${m.todosMarkedBooked}'),
         ]),
         if (m.clicksByProvider.isNotEmpty) ...[
