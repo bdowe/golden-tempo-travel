@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http/httptest"
 	"os"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 
 	"travel-route-planner/store"
@@ -50,18 +53,30 @@ func requireDB(t *testing.T) {
 }
 
 // resetDB truncates all application tables so each test starts clean.
+// The TRUNCATE can deadlock (SQLSTATE 40P01) with fire-and-forget analytics
+// goroutines still committing from the previous test — retry briefly rather
+// than flaking the suite.
 func resetDB(t *testing.T) {
 	t.Helper()
 	requireDB(t)
-	_, err := dbPool.Exec(context.Background(), `TRUNCATE
-		users, sessions, trips, itinerary_items, traveler_preferences,
-		accommodations, trip_segments, booking_todos, trip_shares,
-		trip_collaborators, email_tokens, analytics_events, price_alerts,
-		local_sources, local_recommendations, local_guides,
-		local_guide_recommendations, local_source_material CASCADE`)
-	if err != nil {
-		t.Fatalf("resetDB: %v", err)
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		_, err = dbPool.Exec(context.Background(), `TRUNCATE
+			users, sessions, trips, itinerary_items, traveler_preferences,
+			accommodations, trip_segments, booking_todos, trip_shares,
+			trip_collaborators, email_tokens, analytics_events, price_alerts,
+			local_sources, local_recommendations, local_guides,
+			local_guide_recommendations, local_source_material CASCADE`)
+		if err == nil {
+			return
+		}
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "40P01" {
+			break
+		}
+		time.Sleep(time.Duration(50*(attempt+1)) * time.Millisecond)
 	}
+	t.Fatalf("resetDB: %v", err)
 }
 
 // testIPCounter hands every request a unique client IP. clientIP() trusts the
