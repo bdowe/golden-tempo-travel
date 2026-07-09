@@ -166,6 +166,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                   height: 240,
                   child: TripMap(
                     items: items,
+                    accommodations: trip.accommodations ?? const [],
                     selectedPosition: _selectedPosition,
                     onPinTap: (pos) =>
                         setState(() => _selectedPosition = pos),

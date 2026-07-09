@@ -4,18 +4,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+import '../models/accommodation.dart';
 import '../models/itinerary_item.dart';
 import '../theme/app_colors.dart';
+import '../utils/trip_format.dart';
 import 'app_map.dart';
 
 /// Plots a trip's itinerary on a satellite basemap: a numbered, category-tinted
 /// pin per place, a route line connecting them in itinerary order, auto-fit to
 /// the trip's extent. Tapping a pin calls [onPinTap] with that item's position.
 /// When [selectedPosition] changes the camera recenters on that place.
+/// [accommodations] render as distinct stay markers (see [_StayPin]) that join
+/// the auto-fit bounds but stay out of the route line and numbering.
 class TripMap extends StatefulWidget {
   final List<ItineraryItem> items;
   final int? selectedPosition;
   final void Function(int position)? onPinTap;
+
+  /// Stays to plot alongside the itinerary. Entries without coordinates are
+  /// skipped; the default keeps existing call sites unchanged.
+  final List<Accommodation> accommodations;
 
   /// Label text (e.g. "12 min") for the within-city leg leaving the item at the
   /// given position. Drawn at the midpoint of that segment. Empty => no labels.
@@ -27,6 +35,7 @@ class TripMap extends StatefulWidget {
     this.selectedPosition,
     this.onPinTap,
     this.segmentLabels = const {},
+    this.accommodations = const [],
   });
 
   @override
@@ -122,7 +131,17 @@ class _TripMapState extends State<TripMap> {
       }
     }
 
-    if (mapped.isEmpty) {
+    // Stays with real coordinates (null means "not geocoded"; 0,0 is junk).
+    final stays = <({Accommodation stay, LatLng point})>[];
+    for (final a in widget.accommodations) {
+      final lat = a.latitude;
+      final lng = a.longitude;
+      if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+        stays.add((stay: a, point: LatLng(lat, lng)));
+      }
+    }
+
+    if (mapped.isEmpty && stays.isEmpty) {
       return Container(
         color: theme.colorScheme.surfaceContainerHighest,
         alignment: Alignment.center,
@@ -135,6 +154,8 @@ class _TripMapState extends State<TripMap> {
     }
 
     final points = mapped.map((m) => m.point).toList();
+    // Camera framing covers stays too; the route polyline sticks to [points].
+    final fitPoints = [...points, for (final s in stays) s.point];
     final selected = _selectedPoint();
 
     // Travel-time labels at the midpoint of each within-city leg (only between
@@ -198,17 +219,17 @@ class _TripMapState extends State<TripMap> {
             interactionOptions: interaction,
             backgroundColor: appMapBackground,
           )
-        : points.length == 1
+        : fitPoints.length == 1
             // Single point: bounds collapse, so center with a sensible zoom.
             ? MapOptions(
-                initialCenter: points.first,
+                initialCenter: fitPoints.first,
                 initialZoom: 13,
                 interactionOptions: interaction,
                 backgroundColor: appMapBackground,
               )
             : MapOptions(
                 initialCameraFit: CameraFit.bounds(
-                  bounds: LatLngBounds.fromPoints(points),
+                  bounds: LatLngBounds.fromPoints(fitPoints),
                   padding: const EdgeInsets.all(32),
                 ),
                 interactionOptions: interaction,
@@ -241,6 +262,26 @@ class _TripMapState extends State<TripMap> {
               ),
             if (arrowMarkers.isNotEmpty) MarkerLayer(markers: arrowMarkers),
             if (labelMarkers.isNotEmpty) MarkerLayer(markers: labelMarkers),
+            // Stays live in their own layer, outside the clusterer: a trip has
+            // few of them and "where am I sleeping" should never collapse into
+            // an anonymous count bubble with sightseeing pins. Drawn beneath
+            // the numbered pins so the primary interaction stays on top.
+            if (stays.isNotEmpty)
+              MarkerLayer(
+                markers: [
+                  for (final s in stays)
+                    Marker(
+                      point: s.point,
+                      width: 26,
+                      height: 26,
+                      child: _StayPin(
+                        name: s.stay.name,
+                        dates: tripDateRange(
+                            s.stay.checkIn, s.stay.checkOut),
+                      ),
+                    ),
+                ],
+              ),
             MarkerClusterLayerWidget(
               options: MarkerClusterLayerOptions(
                 maxClusterRadius: 45,
@@ -294,7 +335,7 @@ class _TripMapState extends State<TripMap> {
               MapControlButton(
                 icon: Icons.center_focus_strong,
                 tooltip: 'Reset map',
-                onTap: () => _fitToTrip(points),
+                onTap: () => _fitToTrip(fitPoints),
               ),
             ],
           ),
@@ -437,6 +478,45 @@ class _Pin extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A stay (accommodation) marker: a rounded square with a bed glyph in the
+/// stays accent color, deliberately unlike the circular numbered itinerary
+/// pins. Stays sit outside the position-based selection sync, so a tap shows
+/// a self-contained tooltip (name + dates) instead of driving [TripMap.onPinTap].
+class _StayPin extends StatelessWidget {
+  final String name;
+
+  /// Pre-formatted check-in – check-out range; null when dates are missing.
+  final String? dates;
+
+  const _StayPin({required this.name, this.dates});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: dates == null ? name : '$name\n$dates',
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        // Same white ring + shadow treatment as _Pin so it reads as part of
+        // the family, but square where itinerary pins are round.
+        decoration: BoxDecoration(
+          color: AppColors.toolAirbnb,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Icon(Icons.hotel, size: 14, color: Colors.white),
       ),
     );
   }

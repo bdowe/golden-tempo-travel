@@ -2342,6 +2342,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                   borderRadius: AppRadius.lgAll,
                                   child: TripMap(
                                     items: _filtered(trip),
+                                    accommodations:
+                                        trip.accommodations ?? const [],
                                     selectedPosition: _selectedPosition,
                                     segmentLabels: _segmentLabels(),
                                     onPinTap: (pos) {
