@@ -12,6 +12,17 @@ import '../services/api_client.dart';
 import '../services/plan_service.dart';
 import 'api_client_provider.dart';
 
+/// A user message waiting to be sent once the in-flight turn finishes.
+/// [id] is a notifier-local monotonic id — stable identity for remove buttons
+/// and widget keys while the queue head is popped by the drain.
+class QueuedMessage {
+  final int id;
+  final String text;
+  final String? displayLabel;
+
+  const QueuedMessage({required this.id, required this.text, this.displayLabel});
+}
+
 class PlanState {
   final List<PlanMessage> messages;
   final bool isStreaming;
@@ -31,6 +42,10 @@ class PlanState {
   final List<LocalRecommendation>? localRecs;
   final String? localRecsCity;
   final String? error;
+
+  /// Messages the user sent while a turn was streaming, waiting FIFO to be
+  /// sent. Always replaced whole, never mutated in place.
+  final List<QueuedMessage> queuedMessages;
 
   /// Short excerpt of profile notes the agent just saved (server
   /// `profile_updated` event); shown as a transient "Noted" chip in the chat.
@@ -64,6 +79,7 @@ class PlanState {
     this.localRecs,
     this.localRecsCity,
     this.error,
+    this.queuedMessages = const [],
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
     this.tripUpdatedThisTurn = false,
@@ -88,6 +104,7 @@ class PlanState {
     Object? localRecs = _sentinel,
     Object? localRecsCity = _sentinel,
     Object? error = _sentinel,
+    List<QueuedMessage>? queuedMessages,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
     bool? tripUpdatedThisTurn,
@@ -113,6 +130,7 @@ class PlanState {
       localRecs: localRecs == _sentinel ? this.localRecs : localRecs as List<LocalRecommendation>?,
       localRecsCity: localRecsCity == _sentinel ? this.localRecsCity : localRecsCity as String?,
       error: error == _sentinel ? this.error : error as String?,
+      queuedMessages: queuedMessages ?? this.queuedMessages,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
       tripUpdateCount: tripUpdateCount ?? this.tripUpdateCount,
@@ -135,6 +153,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
   // is stamped with it server-side so refinements collapse to one trip in My
   // Trips instead of spawning duplicate drafts. Regenerated on reset().
   String? _chatId;
+
+  // Identity source for QueuedMessage.id.
+  int _nextQueuedId = 0;
 
   PlanNotifier(this._service, this._apiClient, {this.tripId}) : super(const PlanState());
 
@@ -197,9 +218,44 @@ class PlanNotifier extends StateNotifier<PlanState> {
     }).toList();
   }
 
-  Future<void> sendMessage(String text, {String? displayLabel}) async {
-    if (state.isStreaming) return;
+  /// Sends [text], or queues it if a turn is already streaming (or a backlog
+  /// exists post-error). Queued messages drain FIFO as each turn completes
+  /// successfully; the returned future completes once the whole chain settles.
+  Future<void> sendMessage(String text, {String? displayLabel}) {
+    if (state.isStreaming || state.queuedMessages.isNotEmpty) {
+      state = state.copyWith(queuedMessages: [
+        ...state.queuedMessages,
+        QueuedMessage(id: _nextQueuedId++, text: text, displayLabel: displayLabel),
+      ]);
+      // Idle with a backlog (post-error state): an explicit send is fresh user
+      // intent — start draining now. FIFO holds because the new message went
+      // to the back and the drain pops the head.
+      if (!state.isStreaming) return _drainQueue();
+      return Future.value();
+    }
+    return _sendNow(text, displayLabel: displayLabel);
+  }
 
+  /// Removes a not-yet-sent queued message by its [QueuedMessage.id].
+  void removeQueued(int id) {
+    state = state.copyWith(
+      queuedMessages: state.queuedMessages.where((m) => m.id != id).toList(),
+    );
+  }
+
+  /// Pops the queue head and sends it. Dequeues BEFORE sending and bypasses
+  /// the [sendMessage] gatekeeper — otherwise the still-queued head would be
+  /// re-enqueued at the back. Chained by each turn's success tail; errors stop
+  /// the chain with the remainder still queued.
+  Future<void> _drainQueue() async {
+    if (!mounted) return;
+    if (state.isStreaming || state.queuedMessages.isEmpty) return;
+    final next = state.queuedMessages.first;
+    state = state.copyWith(queuedMessages: state.queuedMessages.sublist(1));
+    await _sendNow(next.text, displayLabel: next.displayLabel);
+  }
+
+  Future<void> _sendNow(String text, {String? displayLabel}) async {
     _chatId ??= _newChatId();
 
     final userMessage = PlanMessage(
@@ -371,6 +427,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
         streamingText: null,
         activeTools: [],
       );
+
+      // Success is the only drain point: after an error the queue stays put
+      // (visible next to the error banner) until the user retries or resends.
+      await _drainQueue();
     } catch (e) {
       _endStreamBuffer();
       if (!mounted) return;
@@ -403,7 +463,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
       messages: messages.sublist(0, lastUser),
       error: null,
     );
-    await sendMessage(failed.content, displayLabel: failed.displayLabel);
+    // _sendNow, not sendMessage: with a post-error backlog the gatekeeper
+    // would enqueue the retried turn at the BACK. The retried turn must run
+    // first; on success its tail drains the queue.
+    await _sendNow(failed.content, displayLabel: failed.displayLabel);
   }
 
   void reset() {
