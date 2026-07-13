@@ -107,12 +107,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   Widget build(BuildContext context) {
     final messages = ref.watch(widget.state.select((s) => s.messages));
     final isStreaming = ref.watch(widget.state.select((s) => s.isStreaming));
-    final isEmpty = ref.watch(widget.state
-        .select((s) => s.messages.isEmpty && s.streamingText == null));
+    final isEmpty = ref.watch(widget.state.select((s) =>
+        s.messages.isEmpty && s.streamingText == null && s.queuedMessages.isEmpty));
 
     ref.listen(widget.state.select((s) => s.streamingText),
         (_, __) => _scrollToBottom());
     ref.listen(widget.state.select((s) => s.messages.length),
+        (_, __) => _scrollToBottom());
+    ref.listen(widget.state.select((s) => s.queuedMessages.length),
         (_, __) => _scrollToBottom());
 
     return Column(
@@ -157,7 +159,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         ),
         _InputBar(
           controller: _controller,
-          enabled: !isStreaming,
+          isStreaming: isStreaming,
           hint: widget.inputHint,
           onSend: _send,
         ),
@@ -196,6 +198,9 @@ class _ChatTail extends StatelessWidget {
         if (footerBuilder != null)
           _ChatFooter(state: state, footerBuilder: footerBuilder!),
         _ErrorBanner(state: state, notifier: notifier),
+        // Last: queued messages read as "up next", below the current turn and
+        // any error it produced.
+        _QueuedMessages(state: state, notifier: notifier),
       ],
     );
   }
@@ -505,6 +510,99 @@ class _ErrorBanner extends ConsumerWidget {
   }
 }
 
+/// User messages queued while a turn streams, rendered below the tail as
+/// dimmed "up next" bubbles with a remove affordance. Kept out of the
+/// committed-messages ListView so its append-only index keys stay valid.
+class _QueuedMessages extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+  final ProviderListenable<PlanNotifier> notifier;
+
+  const _QueuedMessages({required this.state, required this.notifier});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Identity select works because the notifier replaces the list whole.
+    final queued = ref.watch(state.select((s) => s.queuedMessages));
+    if (queued.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final m in queued)
+          _QueuedBubble(
+            key: ValueKey('queued-${m.id}'),
+            message: m,
+            onRemove: () => ref.read(notifier).removeQueued(m.id),
+          ),
+      ],
+    );
+  }
+}
+
+class _QueuedBubble extends StatelessWidget {
+  final QueuedMessage message;
+  final VoidCallback onRemove;
+
+  const _QueuedBubble({super.key, required this.message, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary.withValues(alpha: 0.45),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(4),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    message.displayLabel ?? message.text,
+                    style: TextStyle(color: theme.colorScheme.onPrimary),
+                  ),
+                  Text(
+                    'Queued',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onPrimary.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Remove queued message',
+              onPressed: onRemove,
+              icon: Icon(
+                Icons.close,
+                size: 16,
+                color: theme.colorScheme.onPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ChatMessageBubble extends StatelessWidget {
   final PlanMessage message;
   final bool isStreaming;
@@ -617,13 +715,13 @@ class _StreamingCursorState extends State<_StreamingCursor>
 
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
-  final bool enabled;
+  final bool isStreaming;
   final String hint;
   final VoidCallback onSend;
 
   const _InputBar({
     required this.controller,
-    required this.enabled,
+    required this.isStreaming,
     required this.hint,
     required this.onSend,
   });
@@ -648,12 +746,11 @@ class _InputBar extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
-              enabled: enabled,
               maxLines: null,
               textInputAction: TextInputAction.send,
-              onSubmitted: enabled ? (_) => onSend() : null,
+              onSubmitted: (_) => onSend(),
               decoration: InputDecoration(
-                hintText: enabled ? hint : 'Thinking...',
+                hintText: isStreaming ? 'Ask a follow-up…' : hint,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
@@ -666,7 +763,7 @@ class _InputBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           IconButton.filled(
-            onPressed: enabled ? onSend : null,
+            onPressed: onSend,
             icon: const Icon(Icons.send),
           ),
         ],
