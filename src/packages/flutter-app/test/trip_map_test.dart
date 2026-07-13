@@ -81,6 +81,53 @@ void main() {
     expect(tooltips, contains('Left Bank Flat')); // no dates -> name only
   });
 
+  testWidgets('custom emptyLabel renders when nothing is mappable',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(const TripMap(items: [], emptyLabel: 'No mapped places on Day 3')),
+    );
+    await tester.pump();
+
+    expect(find.text('No mapped places on Day 3'), findsOneWidget);
+    expect(find.text('No mapped places'), findsNothing);
+  });
+
+  testWidgets('default emptyLabel keeps the existing message',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(_host(const TripMap(items: [])));
+    await tester.pump();
+
+    expect(find.text('No mapped places'), findsOneWidget);
+  });
+
+  testWidgets('changing fitSignature re-fits without crashing (smoke)',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(TripMap(items: items, fitSignature: 'all')),
+    );
+    await tester.pump();
+
+    // Filtered down to one item under a new signature: the post-frame re-fit
+    // must run against the live controller without throwing.
+    await tester.pumpWidget(
+      _host(TripMap(items: [items.first], fitSignature: 'day-1')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(TripMap), findsOneWidget);
+
+    // Signature change while nothing is mappable (empty state, no live map)
+    // must be a no-op, not a crash.
+    await tester.pumpWidget(
+      _host(const TripMap(items: [], fitSignature: 'day-2')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No mapped places'), findsOneWidget);
+  });
+
   testWidgets('stays alone (no mapped items) still render a map',
       (WidgetTester tester) async {
     const stays = [
