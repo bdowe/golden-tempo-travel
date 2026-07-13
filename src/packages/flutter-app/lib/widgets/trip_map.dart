@@ -29,6 +29,17 @@ class TripMap extends StatefulWidget {
   /// given position. Drawn at the midpoint of that segment. Empty => no labels.
   final Map<int, String> segmentLabels;
 
+  /// When this value changes (by `==`), the camera re-fits to the current
+  /// trip extent after the next frame. Lets callers that filter [items] /
+  /// [accommodations] upstream (e.g. a day-chip selection) reframe the view
+  /// without remounting the map by key, which would flash tiles. The default
+  /// (never changing) keeps existing call sites unchanged.
+  final Object? fitSignature;
+
+  /// Message shown when nothing is mappable (no items or stays with
+  /// coordinates). The default keeps existing call sites unchanged.
+  final String emptyLabel;
+
   const TripMap({
     super.key,
     required this.items,
@@ -36,6 +47,8 @@ class TripMap extends StatefulWidget {
     this.onPinTap,
     this.segmentLabels = const {},
     this.accommodations = const [],
+    this.fitSignature,
+    this.emptyLabel = 'No mapped places',
   });
 
   @override
@@ -100,9 +113,35 @@ class _TripMapState extends State<TripMap> {
     } catch (_) {}
   }
 
+  /// Every coordinate the camera should frame: mapped items plus geocoded
+  /// stays. Mirrors the fitPoints assembled in [build].
+  List<LatLng> _fitPoints() {
+    final points = <LatLng>[
+      for (final it in widget.items)
+        if (_hasCoords(it)) LatLng(it.latitude, it.longitude),
+    ];
+    for (final a in widget.accommodations) {
+      final lat = a.latitude;
+      final lng = a.longitude;
+      if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+        points.add(LatLng(lat, lng));
+      }
+    }
+    return points;
+  }
+
   @override
   void didUpdateWidget(covariant TripMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.fitSignature != oldWidget.fitSignature) {
+      // Re-fit after the frame that renders the new (filtered) content, so
+      // the controller sees the updated layout. No-op when nothing is
+      // mappable (the empty state has no live map to move).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _fitToTrip(_fitPoints());
+      });
+    }
     if (widget.selectedPosition != null &&
         widget.selectedPosition != oldWidget.selectedPosition) {
       final target = _selectedPoint();
@@ -146,7 +185,7 @@ class _TripMapState extends State<TripMap> {
         color: theme.colorScheme.surfaceContainerHighest,
         alignment: Alignment.center,
         child: Text(
-          'No mapped places',
+          widget.emptyLabel,
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),

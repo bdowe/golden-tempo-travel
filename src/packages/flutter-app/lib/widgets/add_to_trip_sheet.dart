@@ -9,6 +9,7 @@ import '../providers/trips_provider.dart';
 import '../screens/trip_detail_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/trip_days.dart';
 
 /// What a browse surface (local rec card, event card, guide pin) hands the
 /// add-to-trip sheet: the place fields that map onto an itinerary item, the
@@ -199,30 +200,17 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
   /// no start date, the date doesn't parse, or it lands outside the trip.
   int? _eventDayFor(Trip trip) {
     final eventDate = DateTime.tryParse(widget.payload.eventDate ?? '');
-    final start = DateTime.tryParse(trip.startDate ?? '');
-    if (eventDate == null || start == null) return null;
-    final day = eventDate.difference(start).inDays + 1;
-    if (day < 1) return null;
-    final end = DateTime.tryParse(trip.endDate ?? '');
-    if (end != null && day > end.difference(start).inDays + 1) return null;
-    return day;
+    if (eventDate == null) return null;
+    return tripDayOn(trip.startDate, trip.endDate, eventDate);
   }
 
   /// How many day chips to offer: the later of the highest tagged item day and
   /// the trip's date span (so an empty dated trip still offers its real days).
-  int _dayCount(Trip trip) {
-    var max = 0;
-    for (final it in trip.items ?? const <ItineraryItem>[]) {
-      if (it.day != null && it.day! > max) max = it.day!;
-    }
-    final start = DateTime.tryParse(trip.startDate ?? '');
-    final end = DateTime.tryParse(trip.endDate ?? '');
-    if (start != null && end != null) {
-      final span = end.difference(start).inDays + 1;
-      if (span > max) max = span;
-    }
-    return max;
-  }
+  int _dayCount(Trip trip) => dayCount(
+        trip.startDate,
+        trip.endDate,
+        (trip.items ?? const <ItineraryItem>[]).map((it) => it.day),
+      );
 
   /// Already on the chosen trip? Matched by recommendation id when the payload
   /// carries one, with a case-insensitive name fallback (events have no id).
