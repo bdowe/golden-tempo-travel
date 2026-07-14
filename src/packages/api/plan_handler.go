@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -24,19 +25,26 @@ const planMaxIterations = 15
 
 // planMaxMessages / planMaxMessageChars bound the resent conversation history.
 // Every agent-loop iteration (up to planMaxIterations) re-pays input tokens on
-// the full history, so an unbounded history multiplies token cost by up to
-// 15x. Both caps sit far above anything the Flutter chat UI produces (a few
-// dozen short turns, plus one long itinerary-context first message on refine);
-// hitting them means a runaway or abusive client. Violations return a friendly
-// SSE `error` event, not a 500.
+// the full history, so these bounds are a hard cost lever. The working limit
+// is compaction (plan_compactor.go): histories reaching planCompactThreshold
+// are summarized down before the turn runs, and an updated client keeps its
+// wire history small by resending the summary instead of the folded messages.
+// planMaxMessages is only the backstop above that — old clients that ignore
+// the compaction events get re-compacted server-side every turn until this
+// cap, so hitting it means a runaway or abusive client. Violations return a
+// friendly SSE `error` event, not a 500.
 const (
-	planMaxMessages     = 40
+	planMaxMessages     = 60
 	planMaxMessageChars = 20000
 )
 
 type PlanRequest struct {
 	Messages []PlanChatMessage `json:"messages"`
-	ChatID   string            `json:"chat_id"`
+	// Summary is the compacted context from earlier turns, previously handed to
+	// the client via the `compacted` SSE event; it stands in for the messages it
+	// folded away and precedes Messages as established context.
+	Summary string `json:"summary"`
+	ChatID  string `json:"chat_id"`
 	// TripID binds the session to an existing saved trip: the agent then refines
 	// that trip in place (update_itinerary_section) and can never create a new
 	// trip version. Requires an authenticated owner.
@@ -82,6 +90,10 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if utf8.RuneCountInString(req.Summary) > planMaxMessageChars {
+		sendSSE(w, "error", map[string]string{"message": "This conversation is too long to continue. Please start a new chat to keep planning."})
+		return
+	}
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
@@ -95,6 +107,35 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	// preference-writing tool; signed-in sessions get both.
 	uid, authed := userIDFromRequest(r)
 	ctx := r.Context()
+
+	// Compaction must rewrite req.Messages BEFORE the session below captures
+	// req by value (the profile distiller reads session.req.Messages). On
+	// threshold, fold the older messages into a summary and hand it back to
+	// the client (`compacted`), which resends it as req.Summary instead of the
+	// folded messages — so each stretch of history is summarized once. A
+	// summarizer failure is never surfaced: the turn proceeds on the full
+	// (≤ planMaxMessages) history and compaction retries next turn.
+	var planCompacted, planCompactFailed bool
+	if len(req.Messages) >= planCompactThreshold {
+		sendSSE(w, "compacting", map[string]string{})
+		cctx, cancel := context.WithTimeout(ctx, compactTimeout)
+		newMsgs, summary, through, err := compactPlanMessages(cctx, client, req.Summary, req.Messages)
+		cancel()
+		if err != nil {
+			log.Printf("plan compact: %v", err)
+			planCompactFailed = true
+			if strings.TrimSpace(req.Summary) != "" {
+				req.Messages = append([]PlanChatMessage{summaryAsMessage(req.Summary)}, req.Messages...)
+			}
+		} else {
+			req.Messages = newMsgs
+			req.Summary = summary
+			planCompacted = true
+			sendSSE(w, "compacted", map[string]any{"summary": summary, "through_index": through})
+		}
+	} else if strings.TrimSpace(req.Summary) != "" {
+		req.Messages = append([]PlanChatMessage{summaryAsMessage(req.Summary)}, req.Messages...)
+	}
 
 	// session carries the per-request state the tool dispatchers need
 	// (plan_tool_registry.go) and the outcomes read back below: the persisted
@@ -134,6 +175,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			"max_iterations_hit":    planCapHit,
 			"cache_read_tokens":     planCacheRead,
 			"cache_creation_tokens": planCacheWrite,
+			"compacted":             planCompacted,
+			"compaction_failed":     planCompactFailed,
 		})
 	}()
 

@@ -25,6 +25,7 @@ class PlanService {
     String? bearerToken,
     String? chatId,
     String? tripId,
+    String? summary,
   }) async* {
     final request = http.Request('POST', Uri.parse('$baseUrl/plan'));
     request.headers['Content-Type'] = 'application/json';
@@ -35,6 +36,7 @@ class PlanService {
       'messages': messages,
       if (chatId != null) 'chat_id': chatId,
       if (tripId != null) 'trip_id': tripId,
+      if (summary != null && summary.isNotEmpty) 'summary': summary,
     });
 
     final client = _newClient();

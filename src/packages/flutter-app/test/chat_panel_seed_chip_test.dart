@@ -19,6 +19,7 @@ class _ScriptedPlanService extends PlanService {
     String? bearerToken,
     String? chatId,
     String? tripId,
+    String? summary,
   }) async* {
     for (final e in events) {
       yield e;

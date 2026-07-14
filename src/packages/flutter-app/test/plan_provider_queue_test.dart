@@ -26,6 +26,7 @@ class _GatedPlanService extends PlanService {
     String? bearerToken,
     String? chatId,
     String? tripId,
+    String? summary,
   }) async* {
     final call = histories.length;
     histories.add(List.of(messages));
