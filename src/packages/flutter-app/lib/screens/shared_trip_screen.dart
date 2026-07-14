@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/accommodation.dart';
 import '../models/itinerary_item.dart';
 import '../models/shared_trip.dart';
 import '../models/trip.dart';
@@ -8,9 +9,11 @@ import '../providers/auth_provider.dart';
 import '../providers/shared_trip_provider.dart';
 import '../providers/trips_provider.dart';
 import '../theme/spacing.dart';
+import '../utils/trip_days.dart';
 import '../utils/trip_format.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/map_day_chips.dart';
 import '../widgets/trip_map.dart';
 import 'auth_screen.dart';
 import 'trip_detail_screen.dart';
@@ -58,6 +61,9 @@ class _SharedTripBody extends ConsumerStatefulWidget {
 class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
   bool _saving = false;
   int? _selectedPosition;
+  // Map day-chip selection; null = All. Shared views always default to All
+  // and get none of the Today behaviors (specs/today-mode).
+  int? _selectedDay;
 
   Trip get _trip => widget.shared.trip;
 
@@ -138,7 +144,34 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     final trip = _trip;
     final items = trip.items ?? const <ItineraryItem>[];
     final dates = tripDateRange(trip.startDate, trip.endDate);
+    // The map-visibility gate stays keyed to the unfiltered items so the
+    // chip row never disappears when the selected day has nothing mappable.
     final hasCoords = items.any((i) => i.latitude != 0 || i.longitude != 0);
+    final mapDayCount =
+        dayCount(trip.startDate, trip.endDate, items.map((i) => i.day));
+    if (_selectedDay != null && _selectedDay! > mapDayCount) {
+      _selectedDay = null; // trip shrank under a stale selection
+    }
+    final dayItems = _selectedDay == null
+        ? items
+        : items.where((i) => i.day == _selectedDay).toList();
+    final stays = trip.accommodations ?? const <Accommodation>[];
+    // Under Day N, only the stay(s) covering that night (checkout-exclusive);
+    // without a parseable start date no stay can match a day.
+    final tripStart = DateTime.tryParse(trip.startDate ?? '');
+    final dayStays = _selectedDay == null
+        ? stays
+        : tripStart == null
+            ? const <Accommodation>[]
+            : stays
+                .where((a) => stayCoversDate(
+                    a.checkIn,
+                    a.checkOut,
+                    // Calendar-day arithmetic (constructor normalizes
+                    // overflow) so a DST transition can't drift the date.
+                    DateTime(tripStart.year, tripStart.month,
+                        tripStart.day + _selectedDay! - 1)))
+                .toList();
 
     return Stack(
       children: [
@@ -164,12 +197,35 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                 borderRadius: AppRadius.lgAll,
                 child: SizedBox(
                   height: 240,
-                  child: TripMap(
-                    items: items,
-                    accommodations: trip.accommodations ?? const [],
-                    selectedPosition: _selectedPosition,
-                    onPinTap: (pos) =>
-                        setState(() => _selectedPosition = pos),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: TripMap(
+                          items: dayItems,
+                          accommodations: dayStays,
+                          selectedPosition: _selectedPosition,
+                          fitSignature: _selectedDay,
+                          emptyLabel: _selectedDay == null
+                              ? 'No mapped places'
+                              : 'No mapped places on this day',
+                          onPinTap: (pos) =>
+                              setState(() => _selectedPosition = pos),
+                        ),
+                      ),
+                      // Above the map's gesture layer, so chip taps and row
+                      // scrolls never pan the map.
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        right: 8,
+                        child: MapDayChips(
+                          dayCount: mapDayCount,
+                          selected: _selectedDay,
+                          onSelected: (d) =>
+                              setState(() => _selectedDay = d),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
