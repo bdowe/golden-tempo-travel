@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -346,5 +347,182 @@ func TestLocalIngestUnverifiedDraftCannotPublish(t *testing.T) {
 	}
 	if status != "draft" {
 		t.Fatalf("status after blocked publish = %q, want draft", status)
+	}
+}
+
+// anthropicRequests splits the fake's captured bodies into (nonStreaming,
+// streaming) parsed request payloads, in arrival order.
+func anthropicRequests(t *testing.T, fa *fakeAnthropic) (nonStreaming, streaming []map[string]any) {
+	t.Helper()
+	for _, body := range fa.requestBodies() {
+		var m map[string]any
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Fatalf("unparseable fake-anthropic request: %v", err)
+		}
+		if s, _ := m["stream"].(bool); s {
+			streaming = append(streaming, m)
+		} else {
+			nonStreaming = append(nonStreaming, m)
+		}
+	}
+	return nonStreaming, streaming
+}
+
+// firstMessageText extracts the text of the first message in a parsed
+// /v1/messages request body (string or single-text-block content).
+func firstMessageText(t *testing.T, req map[string]any) string {
+	t.Helper()
+	msgs, _ := req["messages"].([]any)
+	if len(msgs) == 0 {
+		t.Fatal("request has no messages")
+	}
+	m, _ := msgs[0].(map[string]any)
+	switch c := m["content"].(type) {
+	case string:
+		return c
+	case []any:
+		if len(c) > 0 {
+			if block, ok := c[0].(map[string]any); ok {
+				if txt, ok := block["text"].(string); ok {
+					return txt
+				}
+			}
+		}
+	}
+	t.Fatalf("first message has no text content: %v", m)
+	return ""
+}
+
+func longPlanConversation(n int) []PlanChatMessage {
+	msgs := make([]PlanChatMessage, n)
+	for i := range msgs {
+		role, text := "user", fmt.Sprintf("user turn %d", i)
+		if i%2 == 1 {
+			role, text = "assistant", fmt.Sprintf("assistant turn %d", i)
+		}
+		msgs[i] = PlanChatMessage{Role: role, Content: text}
+	}
+	return msgs
+}
+
+// (f) Compaction: a history at the threshold gets summarized before the turn.
+// The stream carries `compacting` then `compacted` (summary + how many wire
+// messages it folded), and the model sees [summary message + kept tail], not
+// the full history.
+func TestPlanCompactsLongConversation(t *testing.T) {
+	resetDB(t)
+	fa := newFakeAnthropic(t, textTurn("Got it — picking up where we left off."))
+	fa.scriptNonStreamingTool(compactToolName, `{"summary":"- travelers: 3, one vegetarian\n- dates: 2026-07-23 to 2026-07-30"}`)
+
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{
+		ChatID:   "chat-compact",
+		Messages: longPlanConversation(planCompactThreshold),
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+
+	if got := len(eventsOfType(events, "compacting")); got != 1 {
+		t.Fatalf("compacting events = %d, want 1", got)
+	}
+	compacted := eventsOfType(events, "compacted")
+	if len(compacted) != 1 {
+		t.Fatalf("compacted events = %d, want 1", len(compacted))
+	}
+	data := eventData(compacted[0])
+	if s, _ := data["summary"].(string); !strings.Contains(s, "travelers: 3") {
+		t.Fatalf("compacted summary = %v", data["summary"])
+	}
+	wantThrough := float64(planCompactThreshold - planCompactKeep)
+	if data["through_index"] != wantThrough {
+		t.Fatalf("through_index = %v, want %v", data["through_index"], wantThrough)
+	}
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("unexpected error events: %v", errs)
+	}
+
+	nonStreaming, streaming := anthropicRequests(t, fa)
+	if len(nonStreaming) != 1 || len(streaming) != 1 {
+		t.Fatalf("model requests = %d non-streaming / %d streaming, want 1/1", len(nonStreaming), len(streaming))
+	}
+	msgs, _ := streaming[0]["messages"].([]any)
+	if len(msgs) != 1+planCompactKeep {
+		t.Fatalf("streamed request messages = %d, want %d (summary + keep window)", len(msgs), 1+planCompactKeep)
+	}
+	first := firstMessageText(t, streaming[0])
+	if !strings.HasPrefix(first, "Summary of the conversation so far") || !strings.Contains(first, "travelers: 3") {
+		t.Fatalf("first streamed message is not the summary: %q", first)
+	}
+}
+
+// (g) Compaction failure is invisible: when the summarizer returns no tool
+// call (the fake's default non-streaming answer), the turn proceeds on the
+// full history with no error and no compacted event.
+func TestPlanCompactionFailureFallsBackToFullHistory(t *testing.T) {
+	resetDB(t)
+	fa := newFakeAnthropic(t, textTurn("Continuing without compaction."))
+
+	msgs := longPlanConversation(planCompactThreshold)
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{ChatID: "chat-compact-fail", Messages: msgs})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+
+	if got := len(eventsOfType(events, "compacted")); got != 0 {
+		t.Fatalf("compacted events = %d, want 0 on summarizer failure", got)
+	}
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("compaction failure must not surface an error: %v", errs)
+	}
+	if got := joinedText(events); got != "Continuing without compaction." {
+		t.Fatalf("final text = %q", got)
+	}
+
+	_, streaming := anthropicRequests(t, fa)
+	if len(streaming) != 1 {
+		t.Fatalf("streaming requests = %d, want 1", len(streaming))
+	}
+	if got, _ := streaming[0]["messages"].([]any); len(got) != len(msgs) {
+		t.Fatalf("streamed request messages = %d, want the full %d on fallback", len(got), len(msgs))
+	}
+}
+
+// (h) A client-held summary below the threshold is prepended as established
+// context with no summarizer call.
+func TestPlanSummaryPrependedBelowThreshold(t *testing.T) {
+	resetDB(t)
+	fa := newFakeAnthropic(t, textTurn("Right — three of you, one vegetarian."))
+
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{
+		ChatID:  "chat-summary",
+		Summary: "- travelers: 3, one vegetarian",
+		Messages: []PlanChatMessage{
+			{Role: "user", Content: "remind me of our group's constraints"},
+		},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+	if got := len(eventsOfType(events, "compacting")); got != 0 {
+		t.Fatalf("compacting events = %d, want 0 below threshold", got)
+	}
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("unexpected error events: %v", errs)
+	}
+
+	nonStreaming, streaming := anthropicRequests(t, fa)
+	if len(nonStreaming) != 0 || len(streaming) != 1 {
+		t.Fatalf("model requests = %d non-streaming / %d streaming, want 0/1", len(nonStreaming), len(streaming))
+	}
+	msgs, _ := streaming[0]["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("streamed request messages = %d, want 2 (summary + user turn)", len(msgs))
+	}
+	first := firstMessageText(t, streaming[0])
+	if !strings.HasPrefix(first, "Summary of the conversation so far") || !strings.Contains(first, "one vegetarian") {
+		t.Fatalf("first streamed message is not the summary: %q", first)
 	}
 }

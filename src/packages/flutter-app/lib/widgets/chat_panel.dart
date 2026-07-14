@@ -190,6 +190,8 @@ class _ChatTail extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Compaction runs before the model call, so its chip leads the tail.
+        _CompactingChip(state: state),
         _StreamingBubble(state: state),
         _ActiveToolChips(state: state),
         _ProfileNoteChip(state: state),
@@ -266,6 +268,35 @@ class _ActiveToolChips extends ConsumerWidget {
       default:
         return '$tool...';
     }
+  }
+}
+
+/// Transient indicator that the server is summarizing the conversation's
+/// older messages before this turn (SSE `compacting`); cleared by whatever
+/// event follows.
+class _CompactingChip extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+
+  const _CompactingChip({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final compacting = ref.watch(state.select((s) => s.isCompacting));
+    if (!compacting) return const SizedBox.shrink();
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Chip(
+          avatar: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          label: Text('Summarizing earlier conversation…'),
+        ),
+      ),
+    );
   }
 }
 

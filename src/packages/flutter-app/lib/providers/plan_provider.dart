@@ -60,6 +60,20 @@ class PlanState {
   /// unlike [tripUpdateCount] it is not monotonic.
   final bool tripUpdatedThisTurn;
 
+  /// Server-produced summary of the conversation's compacted-away prefix
+  /// (SSE `compacted`). Sent back as the request's `summary` so the server
+  /// doesn't re-summarize; the visible transcript is never touched.
+  final String? compactedSummary;
+
+  /// How many leading [messages] are covered by [compactedSummary] and must be
+  /// excluded from the wire history. Start-anchored, so appends never shift it.
+  final int compactedCount;
+
+  /// Whether the server is currently summarizing the conversation (between
+  /// SSE `compacting` and the first event that follows it) — drives the
+  /// transient "Summarizing earlier conversation…" chip.
+  final bool isCompacting;
+
   const PlanState({
     this.messages = const [],
     this.isStreaming = false,
@@ -83,6 +97,9 @@ class PlanState {
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
     this.tripUpdatedThisTurn = false,
+    this.compactedSummary,
+    this.compactedCount = 0,
+    this.isCompacting = false,
   });
 
   PlanState copyWith({
@@ -108,6 +125,9 @@ class PlanState {
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
     bool? tripUpdatedThisTurn,
+    Object? compactedSummary = _sentinel,
+    int? compactedCount,
+    bool? isCompacting,
   }) {
     return PlanState(
       messages: messages ?? this.messages,
@@ -135,6 +155,10 @@ class PlanState {
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
       tripUpdateCount: tripUpdateCount ?? this.tripUpdateCount,
       tripUpdatedThisTurn: tripUpdatedThisTurn ?? this.tripUpdatedThisTurn,
+      compactedSummary:
+          compactedSummary == _sentinel ? this.compactedSummary : compactedSummary as String?,
+      compactedCount: compactedCount ?? this.compactedCount,
+      isCompacting: isCompacting ?? this.isCompacting,
     );
   }
 }
@@ -282,7 +306,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
       tripUpdatedThisTurn: false,
     );
 
+    // Messages covered by the compacted summary stay visible but leave the
+    // wire history — the summary stands in for them server-side.
     final history = updatedMessages
+        .sublist(state.compactedCount.clamp(0, updatedMessages.length))
         .map((m) => {'role': m.role == MessageRole.user ? 'user' : 'assistant', 'content': m.content})
         .toList();
 
@@ -291,10 +318,19 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
     try {
       await for (final event in _service.streamPlan(history,
-          bearerToken: _apiClient.authToken, chatId: _chatId, tripId: tripId)) {
+          bearerToken: _apiClient.authToken,
+          chatId: _chatId,
+          tripId: tripId,
+          summary: state.compactedSummary)) {
         // Keep buffered text ahead of any other state transition so tool chips
         // and results never appear before the text that introduced them.
         if (event.type != 'text_delta') _flushStreamText();
+
+        // A failed compaction sends no `compacted` terminator — whatever event
+        // follows `compacting` ends the chip.
+        if (state.isCompacting && event.type != 'compacting') {
+          state = state.copyWith(isCompacting: false);
+        }
 
         switch (event.type) {
           case 'text_delta':
@@ -329,6 +365,23 @@ class PlanNotifier extends StateNotifier<PlanState> {
           case 'profile_updated':
             state = state.copyWith(
                 profileUpdateNote: event.data['notes_preview'] as String? ?? '');
+
+          case 'compacting':
+            state = state.copyWith(isCompacting: true);
+
+          case 'compacted':
+            // through_index counts wire messages, and the wire history was
+            // exactly messages.sublist(compactedCount) at send time — so the
+            // new boundary is the old one advanced by through_index.
+            final through =
+                (event.data['through_index'] as num?)?.toInt() ?? 0;
+            state = state.copyWith(
+              isCompacting: false,
+              compactedSummary:
+                  event.data['summary'] as String? ?? state.compactedSummary,
+              compactedCount: (state.compactedCount + through)
+                  .clamp(0, state.messages.length),
+            );
 
           case 'flights':
             final raw = event.data['offers'] as List<dynamic>? ?? [];
@@ -395,6 +448,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
               isStreaming: false,
               streamingText: null,
               activeTools: [],
+              isCompacting: false,
               messages: partial.isEmpty
                   ? state.messages
                   : [
@@ -426,6 +480,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
         isStreaming: false,
         streamingText: null,
         activeTools: [],
+        isCompacting: false,
       );
 
       // Success is the only drain point: after an error the queue stays put
@@ -438,6 +493,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
         isStreaming: false,
         streamingText: null,
         activeTools: [],
+        isCompacting: false,
         error: e.toString(),
       );
     }

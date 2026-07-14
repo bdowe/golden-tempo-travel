@@ -103,6 +103,21 @@ func TestPlanHandlerRejectsOversizedMessage(t *testing.T) {
 	}
 }
 
+func TestPlanHandlerRejectsOversizedSummary(t *testing.T) {
+	rec := runPlanHandler(t, PlanRequest{
+		Summary:  strings.Repeat("a", planMaxMessageChars+1),
+		Messages: []PlanChatMessage{{Role: "user", Content: "hi"}},
+	})
+
+	out := rec.Body.String()
+	if !strings.Contains(out, `"type":"error"`) || !strings.Contains(out, "too long") {
+		t.Fatalf("stream = %q, want an SSE error event about an oversized summary", out)
+	}
+	if strings.Count(out, "data: ") != 1 {
+		t.Fatalf("stream = %q, want exactly one event", out)
+	}
+}
+
 func TestNotesPreview(t *testing.T) {
 	if got := notesPreview(nil); got != "" {
 		t.Fatalf("preview = %q, want empty for nil", got)

@@ -25,6 +25,7 @@ class _GatedPlanService extends PlanService {
     String? bearerToken,
     String? chatId,
     String? tripId,
+    String? summary,
   }) async* {
     final call = calls++;
     yield PlanEvent(type: 'text_delta', data: {'text': 'reply $call'});
