@@ -31,6 +31,7 @@ import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
+import '../utils/trip_days.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/add_to_trip_sheet.dart';
@@ -39,6 +40,7 @@ import '../widgets/bookings_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
+import '../widgets/map_day_chips.dart';
 import '../widgets/offline_banner.dart';
 import '../widgets/source_links_card.dart';
 import '../widgets/status_pill.dart';
@@ -73,6 +75,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   bool _panelOpen = false;
   RefineTarget? _refineTarget;
   String _itemFilter = 'all'; // 'all' | 'attraction' | 'restaurant'
+  int? _selectedDay; // map day-chip selection; null = All (specs/today-mode)
   int?
       _selectedPosition; // position of the place focused via a map pin / list tap
   List<BookingTodo> _bookingTodos = [];
@@ -111,6 +114,33 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     return _itemFilter == 'all'
         ? items.toList()
         : items.where((i) => i.category == _itemFilter).toList();
+  }
+
+  /// [_filtered] further narrowed to the selected map day chip. The map is
+  /// the only consumer — the itinerary list never day-filters. Untagged
+  /// items (day == null) show only under All.
+  List<ItineraryItem> _dayFiltered(Trip trip) {
+    return _filtered(trip)
+        .where((i) => _selectedDay == null || i.day == _selectedDay)
+        .toList();
+  }
+
+  /// Stays the map should plot for the selected day chip: under All, every
+  /// stay; under Day N, only stays covering that night (checkout-exclusive).
+  /// A trip without a parseable start date can't map Day N to a calendar
+  /// date, so no stay matches (they all still show under All).
+  List<Accommodation> _dayFilteredStays(Trip trip) {
+    final all = trip.accommodations ?? const <Accommodation>[];
+    final day = _selectedDay;
+    if (day == null) return all;
+    final start = DateTime.tryParse(trip.startDate ?? '');
+    if (start == null) return const [];
+    // Calendar-day arithmetic (constructor normalizes overflow) rather than
+    // Duration, which drifts a date across a DST transition.
+    final night = DateTime(start.year, start.month, start.day + day - 1);
+    return all
+        .where((a) => stayCoversDate(a.checkIn, a.checkOut, night))
+        .toList();
   }
 
   @override
@@ -2336,6 +2366,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           r.label: (start: r.start, end: r.end)
                       };
                       final tripStart = DateTime.tryParse(trip.startDate ?? '');
+                      // Map day chips (specs/today-mode). Day count spans the
+                      // whole trip, not the category filter, so chips never
+                      // come and go with the Attractions/Restaurants toggle.
+                      final mapDayCount = dayCount(
+                        trip.startDate,
+                        trip.endDate,
+                        (trip.items ?? const <ItineraryItem>[])
+                            .map((i) => i.day),
+                      );
+                      // A refresh can shrink the trip below a stale selection
+                      // (fewer days after an edit); fall back to All. Plain
+                      // assignment: we're already in build, so this frame
+                      // renders the clamped value.
+                      if (_selectedDay != null && _selectedDay! > mapDayCount) {
+                        _selectedDay = null;
+                      }
                       final scrollView = CustomScrollView(
                         slivers: [
                           SliverPadding(
@@ -2364,18 +2410,48 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     const EdgeInsets.fromLTRB(16, 12, 16, 12),
                                 child: ClipRRect(
                                   borderRadius: AppRadius.lgAll,
-                                  child: TripMap(
-                                    items: _filtered(trip),
-                                    accommodations:
-                                        trip.accommodations ?? const [],
-                                    selectedPosition: _selectedPosition,
-                                    segmentLabels: _segmentLabels(),
-                                    onPinTap: (pos) {
-                                      setState(() => _selectedPosition = pos);
-                                      final it = trip.items!
-                                          .firstWhere((i) => i.position == pos);
-                                      _showSnack(it.name);
-                                    },
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: TripMap(
+                                          items: _dayFiltered(trip),
+                                          accommodations:
+                                              _dayFilteredStays(trip),
+                                          selectedPosition: _selectedPosition,
+                                          // Unfiltered by day: TripMap's
+                                          // position+1 adjacency guard drops
+                                          // labels across the gaps a day
+                                          // filter creates, and the category
+                                          // filter already empties this map.
+                                          segmentLabels: _segmentLabels(),
+                                          fitSignature: _selectedDay,
+                                          emptyLabel: _selectedDay == null
+                                              ? 'No mapped places'
+                                              : 'No mapped places on this day',
+                                          onPinTap: (pos) {
+                                            setState(
+                                                () => _selectedPosition = pos);
+                                            final it = trip.items!.firstWhere(
+                                                (i) => i.position == pos);
+                                            _showSnack(it.name);
+                                          },
+                                        ),
+                                      ),
+                                      // Above the map's gesture layer, so
+                                      // chip taps and row scrolls never pan
+                                      // the map.
+                                      Positioned(
+                                        top: 8,
+                                        left: 8,
+                                        right: 8,
+                                        child: MapDayChips(
+                                          dayCount: mapDayCount,
+                                          selected: _selectedDay,
+                                          onSelected: (d) => setState(
+                                              () => _selectedDay = d),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
