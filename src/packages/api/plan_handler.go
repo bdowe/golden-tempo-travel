@@ -271,7 +271,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		systemPrompt += profileNotesInstruction
 	}
 	if boundTripID != nil {
-		systemPrompt += "\n\nYou are refining an existing saved trip in place. The conversation's first message describes the current itinerary and which section the traveler wants to change. Apply changes by calling update_itinerary_section with the targeted scope and the COMPLETE updated list of places for that section — include unchanged places with their existing coordinates, city, day, time_of_day and category tags so they aren't lost. Use search_places to find real coordinates for any new place before adding it. Only change the section the traveler asked about unless they broaden the request."
+		systemPrompt += "\n\nYou are refining an existing saved trip in place. The conversation's first message describes the current itinerary and which section the traveler wants to change. Apply changes by calling update_itinerary_section with the targeted scope and the COMPLETE updated list of places for that section — include unchanged places with their existing coordinates, city, day, time_of_day and category tags so they aren't lost. Use search_places to find real coordinates for any new place before adding it. Only change the section the traveler asked about unless they broaden the request. The traveler may also ask questions about the trip without wanting changes — answer those directly from the itinerary and your search tools; only call update_itinerary_section when they explicitly ask for a modification."
 	}
 
 	// prevCacheMarker tracks the conversation cache breakpoint set on the

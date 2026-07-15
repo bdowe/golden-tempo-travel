@@ -815,11 +815,33 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     ref
         .read(tripRefineProvider(widget.tripId).notifier)
         .beginSectionRefinement(_buildSectionSeed(trip, target),
-            displayLabel: 'Refining ${target.label}');
+            displayLabel: target.assistant
+                ? 'Trip assistant'
+                : 'Refining ${target.label}');
     setState(() {
       _panelOpen = true;
       _refineTarget = target;
     });
+  }
+
+  /// FAB entry point: resumes the panel conversation if one is in progress,
+  /// otherwise starts a fresh whole-trip assistant session.
+  void _openChat(Trip trip) {
+    if (_guardOffline()) return;
+    // The FAB is hidden for viewers; belt-and-braces like _openRefine.
+    if (!trip.isOwner) return;
+    final hasConversation =
+        ref.read(tripRefineProvider(widget.tripId)).messages.isNotEmpty;
+    if (hasConversation) {
+      setState(() {
+        _panelOpen = true;
+        // Restore a header if the screen was rebuilt and lost it; keep a
+        // surviving section-refine target so its header stays accurate.
+        _refineTarget ??= const RefineTarget.assistant();
+      });
+      return;
+    }
+    _openRefine(trip, const RefineTarget.assistant());
   }
 
   /// Whether an item falls inside the refinement target (client-side mirror of
@@ -890,8 +912,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         b.write("scope='trip'");
     }
     b.write(' and the COMPLETE updated list for the section, keeping unchanged '
-        'places exactly as listed above (same coordinates and tags). '
-        'Start by asking what I want to change.');
+        'places exactly as listed above (same coordinates and tags). ');
+    b.write(t.assistant
+        ? 'I may also just ask questions about the trip (flights, bookings, '
+            'timing) — answer those directly without changing anything. '
+            'Start by asking how you can help.'
+        : 'Start by asking what I want to change.');
     return b.toString();
   }
 
@@ -2502,6 +2528,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final trip = _trip;
 
     return Scaffold(
+      // Always-reachable chat entry, mirroring the _openRefine guards so it's
+      // never a dead button. Hidden while the panel is open: on wide layouts
+      // the panel is docked (redundant), on narrow it would overlap the sheet.
+      floatingActionButton: (trip != null &&
+              !_panelOpen &&
+              trip.isOwner &&
+              !_isOffline &&
+              (trip.items?.isNotEmpty ?? false))
+          ? FloatingActionButton(
+              tooltip: 'Ask AI about this trip',
+              onPressed: () => _openChat(trip),
+              child: const Icon(Icons.chat_bubble_outline),
+            )
+          : null,
       appBar: GradientAppBar(
         title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
         actions: [
