@@ -218,6 +218,71 @@ void main() {
     expect(after.center, before.center);
   });
 
+  testWidgets('segment label shows when the leg is long enough on screen',
+      (WidgetTester tester) async {
+    // The Paris pair alone fits at a high zoom, so the ~0.8km leg spans far
+    // more than the visibility threshold.
+    await tester.pumpWidget(
+      _host(TripMap(items: items, segmentLabels: const {0: '12 min'})),
+    );
+    await tester.pump();
+
+    expect(find.text('12 min'), findsOneWidget);
+  });
+
+  testWidgets('segment label hides when the leg converges at fit zoom',
+      (WidgetTester tester) async {
+    // Adding Marseille zooms the fit out to country scale, where the Paris
+    // leg collapses to a few pixels — the pill would just sit behind the
+    // numbered pins, so it must not render.
+    await tester.pumpWidget(_host(TripMap(
+      items: [...items, _item(2, 'Vieux-Port', 43.2965, 5.3698)],
+      segmentLabels: const {0: '12 min'},
+    )));
+    await tester.pump();
+
+    expect(find.text('12 min'), findsNothing);
+    expect(find.byType(TripMap), findsOneWidget);
+  });
+
+  testWidgets('camera change re-evaluates segment label visibility',
+      (WidgetTester tester) async {
+    final threeItems = [...items, _item(2, 'Vieux-Port', 43.2965, 5.3698)];
+    await tester.pumpWidget(_host(TripMap(
+      items: threeItems,
+      segmentLabels: const {0: '12 min'},
+    )));
+    await tester.pump();
+    expect(find.text('12 min'), findsNothing);
+
+    // Selecting a pin moves the camera to zoom 15, where the Paris leg is
+    // hundreds of px long — the label must (re)appear without a rebuild of
+    // the segment data.
+    await tester.pumpWidget(_host(TripMap(
+      items: threeItems,
+      segmentLabels: const {0: '12 min'},
+      selectedPosition: 0,
+    )));
+    await tester.pump(); // frame scheduling the post-frame camera move
+    await tester.pump(); // camera moved; label layer rebuilt
+
+    expect(find.text('12 min'), findsOneWidget);
+  });
+
+  testWidgets('topOverlayInset keeps fitted markers below the overlay band',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(TripMap(items: items, topOverlayInset: 48)),
+    );
+    await tester.pump();
+
+    // Topmost point (Louvre) must clear the 48px chip band at the fit.
+    final dy = _camera(tester)
+        .latLngToScreenOffset(const LatLng(48.8606, 2.3376))
+        .dy;
+    expect(dy, greaterThanOrEqualTo(48));
+  });
+
   testWidgets('stays alone (no mapped items) still render a map',
       (WidgetTester tester) async {
     const stays = [

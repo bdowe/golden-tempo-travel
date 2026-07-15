@@ -41,6 +41,11 @@ class TripMap extends StatefulWidget {
   /// coordinates). The default keeps existing call sites unchanged.
   final String emptyLabel;
 
+  /// Extra top camera-fit padding (px) for overlays floating on the map's top
+  /// edge (e.g. [MapDayChips]), so fitted markers never land underneath them.
+  /// The default keeps existing call sites unchanged.
+  final double topOverlayInset;
+
   const TripMap({
     super.key,
     required this.items,
@@ -50,6 +55,7 @@ class TripMap extends StatefulWidget {
     this.accommodations = const [],
     this.fitSignature,
     this.emptyLabel = 'No mapped places',
+    this.topOverlayInset = 0,
   });
 
   @override
@@ -58,6 +64,11 @@ class TripMap extends StatefulWidget {
 
 class _TripMapState extends State<TripMap> {
   final MapController _controller = MapController();
+
+  /// Fit padding shared by the initial fit and every re-fit; asymmetric so a
+  /// top overlay (day chips) never covers the topmost fitted marker.
+  EdgeInsets get _fitPadding =>
+      EdgeInsets.fromLTRB(32, 32 + widget.topOverlayInset, 32, 32);
 
   static bool _hasCoords(ItineraryItem i) =>
       i.latitude != 0 || i.longitude != 0;
@@ -98,7 +109,7 @@ class _TripMapState extends State<TripMap> {
         _controller.fitCamera(
           CameraFit.bounds(
             bounds: LatLngBounds.fromPoints(points),
-            padding: const EdgeInsets.all(32),
+            padding: _fitPadding,
           ),
         );
       }
@@ -220,30 +231,24 @@ class _TripMapState extends State<TripMap> {
     final selected = _selectedPoint();
 
     // Travel-time labels at the midpoint of each within-city leg (only between
-    // truly adjacent itinerary stops that are both mapped).
-    final labelMarkers = <Marker>[];
+    // truly adjacent itinerary stops that are both mapped). Kept as endpoint
+    // records — _SegmentLabelLayer decides per camera frame which are visible.
+    final labelSegments = <({LatLng a, LatLng b, String text})>[];
     for (var k = 0; k < mapped.length - 1; k++) {
       final a = mapped[k];
       final b = mapped[k + 1];
       if (b.item.position != a.item.position + 1) continue;
       final label = widget.segmentLabels[a.item.position];
       if (label == null) continue;
-      labelMarkers.add(
-        Marker(
-          point: LatLng(
-            (a.point.latitude + b.point.latitude) / 2,
-            (a.point.longitude + b.point.longitude) / 2,
-          ),
-          width: 84,
-          height: 26,
-          child: _SegmentLabel(text: label),
-        ),
-      );
+      labelSegments.add((a: a.point, b: b.point, text: label));
     }
 
     // Direction arrows on every drawn segment (each consecutive pair of mapped
     // points, matching the polyline). Placed at the midpoint, or further along
-    // when a travel-time label already occupies the midpoint.
+    // when a travel-time label already occupies the midpoint. Placement stays
+    // static even though labels hide dynamically on short legs: on such a leg
+    // (< _SegmentLabelLayer.minLegPx on screen) t=0.7 vs 0.5 differs by a few
+    // px and the arrow tucks behind the pins anyway.
     final arrowMarkers = <Marker>[];
     for (var k = 0; k < mapped.length - 1; k++) {
       final a = mapped[k];
@@ -291,7 +296,7 @@ class _TripMapState extends State<TripMap> {
             : MapOptions(
                 initialCameraFit: CameraFit.bounds(
                   bounds: LatLngBounds.fromPoints(fitPoints),
-                  padding: const EdgeInsets.all(32),
+                  padding: _fitPadding,
                 ),
                 interactionOptions: interaction,
                 backgroundColor: appMapBackground,
@@ -322,7 +327,8 @@ class _TripMapState extends State<TripMap> {
                 ],
               ),
             if (arrowMarkers.isNotEmpty) MarkerLayer(markers: arrowMarkers),
-            if (labelMarkers.isNotEmpty) MarkerLayer(markers: labelMarkers),
+            if (labelSegments.isNotEmpty)
+              _SegmentLabelLayer(segments: labelSegments),
             // Stays live in their own layer, outside the clusterer: a trip has
             // few of them and "where am I sleeping" should never collapse into
             // an anonymous count bubble with sightseeing pins. Drawn beneath
@@ -427,6 +433,42 @@ class _SegmentArrow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Renders travel-time pills only for legs long enough on screen to have room
+/// for one — zoomed out, same-city stops converge and the midpoint pill would
+/// just sit behind the numbered pins. Rebuilds on every camera move/zoom
+/// because MapCamera.of registers an InheritedModel dependency.
+class _SegmentLabelLayer extends StatelessWidget {
+  /// Minimum on-screen leg length (px) before its pill is drawn: pin radius
+  /// (12-14) + half a typical pill (~23×11) + breathing room, per side.
+  static const double minLegPx = 70;
+
+  final List<({LatLng a, LatLng b, String text})> segments;
+  const _SegmentLabelLayer({required this.segments});
+
+  @override
+  Widget build(BuildContext context) {
+    final camera = MapCamera.of(context);
+    final markers = <Marker>[
+      for (final s in segments)
+        if ((camera.latLngToScreenOffset(s.a) -
+                    camera.latLngToScreenOffset(s.b))
+                .distance >=
+            minLegPx)
+          Marker(
+            point: LatLng(
+              (s.a.latitude + s.b.latitude) / 2,
+              (s.a.longitude + s.b.longitude) / 2,
+            ),
+            width: 84,
+            height: 26,
+            child: _SegmentLabel(text: s.text),
+          ),
+    ];
+    if (markers.isEmpty) return const SizedBox.shrink();
+    return MarkerLayer(markers: markers);
   }
 }
 
