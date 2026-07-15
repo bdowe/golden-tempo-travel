@@ -241,6 +241,32 @@ func TestBodyLimitPlanGetsWiderLane(t *testing.T) {
 	}
 }
 
+// /transcribe carries a recorded audio clip, so it gets the 10 MiB lane: a
+// body over the general 256 KiB cap must pass, and one over the audio cap
+// must still die with a 413.
+func TestBodyLimitTranscribeGetsWiderLane(t *testing.T) {
+	handlerRan := false
+	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerRan = true
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Fatalf("reading a 2MiB /transcribe body failed: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/transcribe", bytes.NewReader(make([]byte, 2<<20))))
+	if !handlerRan || rec.Code != http.StatusOK {
+		t.Fatalf("handlerRan = %v, status = %d; want 2MiB /transcribe body to pass", handlerRan, rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/transcribe", bytes.NewReader(make([]byte, transcribeMaxRequestBytes+1))))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 for over-cap /transcribe body", rec.Code)
+	}
+}
+
 // Clients that lie about (or omit) Content-Length can't be rejected up front;
 // MaxBytesReader must stop the read mid-body instead.
 func TestBodyLimitStopsUndeclaredOversizedRead(t *testing.T) {

@@ -72,6 +72,8 @@ dependencies:
   flutter_map: ^8.0.0
   flutter_map_marker_cluster: ^8.2.2
   latlong2: ^0.9.1
+  speech_to_text: ^7.4.0
+  record: ^6.2.1
 
 dev_dependencies:
   flutter_test:
