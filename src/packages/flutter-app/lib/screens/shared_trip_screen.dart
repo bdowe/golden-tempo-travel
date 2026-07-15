@@ -205,6 +205,11 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                           accommodations: dayStays,
                           selectedPosition: _selectedPosition,
                           fitSignature: _selectedDay,
+                          // Keep fitted markers clear of the chip row
+                          // overlaid below.
+                          topOverlayInset: mapDayCount > 0
+                              ? MapDayChips.mapTopInset
+                              : 0,
                           emptyLabel: _selectedDay == null
                               ? 'No mapped places'
                               : 'No mapped places on this day',

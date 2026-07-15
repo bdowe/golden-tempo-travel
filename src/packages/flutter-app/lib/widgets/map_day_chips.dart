@@ -12,6 +12,12 @@ import 'package:flutter/material.dart';
 /// The chips sit over satellite imagery, so they use the same translucent
 /// dark scrim treatment as the map's segment labels and control buttons.
 class MapDayChips extends StatelessWidget {
+  /// Vertical band (px) the chip row occupies over the map's top edge when
+  /// overlaid at `top: 8`, including breathing room. Callers pass this as
+  /// TripMap's `topOverlayInset` so camera fitting keeps markers out from
+  /// under the chips.
+  static const double mapTopInset = 48;
+
   final int dayCount;
   final int? selected;
   final ValueChanged<int?> onSelected;
