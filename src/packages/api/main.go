@@ -696,6 +696,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/auth/account", strict(authMiddleware(http.HandlerFunc(deleteAccountHandler)))).Methods("DELETE")
 	api.Handle("/auth/change-password", strict(authMiddleware(http.HandlerFunc(changePasswordHandler)))).Methods("POST")
 	api.Handle("/auth/logout-all", authMiddleware(http.HandlerFunc(logoutAllHandler))).Methods("POST")
+	// Sign in with Google (specs/google-sso). Browser redirect flow + one-time
+	// code exchange; unauthenticated, so the credential routes take the strict tier.
+	api.HandleFunc("/auth/google/availability", googleAvailabilityHandler).Methods("GET")
+	api.Handle("/auth/google", strict(http.HandlerFunc(googleStartHandler))).Methods("GET")
+	api.Handle("/auth/google/callback", strict(http.HandlerFunc(googleCallbackHandler))).Methods("GET")
+	api.Handle("/auth/google/exchange", strict(http.HandlerFunc(googleExchangeHandler))).Methods("POST")
 	// admin composes the auth + admin gate; used for curation and version-history routes.
 	admin := func(h http.HandlerFunc) http.Handler { return authMiddleware(adminMiddleware(h)) }
 	api.Handle("/trips", authMiddleware(http.HandlerFunc(listTripsHandler))).Methods("GET")
@@ -813,6 +819,7 @@ func startServer(router *mux.Router) {
 	log.Printf("  GET  /api/v1/flights/airports   - Airport/City Autocomplete (Duffel)")
 	log.Printf("  POST /api/v1/auth/register      - Register")
 	log.Printf("  POST /api/v1/auth/login         - Login")
+	log.Printf("  GET  /api/v1/auth/google        - Sign in with Google (redirect flow)")
 	log.Printf("  POST /api/v1/auth/logout        - Logout (auth)")
 	log.Printf("  GET  /api/v1/auth/me            - Current user (auth)")
 	log.Printf("  POST /api/v1/auth/onboarding-complete - Mark onboarding done (auth)")

@@ -64,7 +64,7 @@ func resetDB(t *testing.T) {
 		_, err = dbPool.Exec(context.Background(), `TRUNCATE
 			users, sessions, trips, itinerary_items, traveler_preferences,
 			accommodations, trip_segments, booking_todos, trip_shares,
-			trip_collaborators, email_tokens, analytics_events, price_alerts,
+			trip_collaborators, email_tokens, auth_identities, analytics_events, price_alerts,
 			local_sources, local_recommendations, local_guides,
 			local_guide_recommendations, local_source_material,
 			plan_chat_sessions CASCADE`)
@@ -145,7 +145,7 @@ func createTestUser(t *testing.T, email string) (store.User, string) {
 	q := store.New(dbPool)
 	name := "Test User"
 	u, err := q.CreateUser(ctx, store.CreateUserParams{
-		Email: email, PasswordHash: testPasswordHash, DisplayName: &name,
+		Email: email, PasswordHash: &testPasswordHash, DisplayName: &name,
 	})
 	if err != nil {
 		t.Fatalf("createTestUser(%s): %v", email, err)

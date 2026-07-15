@@ -16,6 +16,12 @@ final authServiceProvider = Provider<AuthService>((ref) {
 
 final authStorageProvider = Provider<AuthStorage>((ref) => AuthStorage());
 
+/// Whether the backend has Google sign-in configured (specs/google-sso).
+/// Resolves false on any error, which just hides the button.
+final googleSsoAvailableProvider = FutureProvider<bool>((ref) {
+  return ref.watch(authServiceProvider).googleSignInAvailable();
+});
+
 class AuthState {
   final UserModel? user;
   final bool initialized; // false until the stored token has been checked

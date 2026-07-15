@@ -36,6 +36,15 @@ type AnalyticsEvent struct {
 	CreatedAt time.Time   `json:"created_at"`
 }
 
+type AuthIdentity struct {
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"user_id"`
+	Provider       string    `json:"provider"`
+	ProviderUserID string    `json:"provider_user_id"`
+	Email          *string   `json:"email"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type BookingTodo struct {
 	ID         uuid.UUID   `json:"id"`
 	TripID     uuid.UUID   `json:"trip_id"`
@@ -250,7 +259,7 @@ type User struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	Email           string             `json:"email"`
-	PasswordHash    string             `json:"password_hash"`
+	PasswordHash    *string            `json:"password_hash"`
 	DisplayName     *string            `json:"display_name"`
 	IsAdmin         bool               `json:"is_admin"`
 	OnboardedAt     pgtype.Timestamptz `json:"onboarded_at"`

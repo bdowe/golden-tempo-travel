@@ -61,7 +61,11 @@ func changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if !checkPassword(user.PasswordHash, req.CurrentPassword) {
+	if !hasPassword(user) {
+		writeJSONError(w, http.StatusUnprocessableEntity, "This account signs in with Google. Use \"Forgot password\" to set a password first.")
+		return
+	}
+	if !checkUserPassword(user, req.CurrentPassword) {
 		writeJSONError(w, http.StatusUnauthorized, "current password is incorrect")
 		return
 	}
@@ -75,7 +79,7 @@ func changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := store.New(dbPool)
-	if err := q.UpdateUserPassword(r.Context(), store.UpdateUserPasswordParams{ID: user.ID, PasswordHash: hash}); err != nil {
+	if err := q.UpdateUserPassword(r.Context(), store.UpdateUserPasswordParams{ID: user.ID, PasswordHash: &hash}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not update password")
 		return
 	}
@@ -118,7 +122,8 @@ func deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if !checkPassword(user.PasswordHash, req.Password) {
+	// SSO-only accounts have no password to re-verify; the session suffices.
+	if hasPassword(user) && !checkUserPassword(user, req.Password) {
 		writeJSONError(w, http.StatusUnauthorized, "password is incorrect")
 		return
 	}

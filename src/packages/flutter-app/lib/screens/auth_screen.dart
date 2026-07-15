@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/google_sign_in_button.dart';
 import '../widgets/legal_links.dart';
 import '../utils/snack.dart';
 
@@ -176,6 +177,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       onPressed: auth.loading ? null : _forgotPassword,
                       child: const Text('Forgot password?'),
                     ),
+                  const GoogleSignInButton(),
                 ],
               ),
             ),
