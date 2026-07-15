@@ -12,8 +12,14 @@ class RefineTarget {
   final int? day;
   final String? city;
 
-  const RefineTarget._(this.scope, this.day, this.city);
+  /// General-purpose "Trip assistant" flavor: same whole-trip scope, but the
+  /// framing invites questions rather than assuming every message is an edit.
+  final bool assistant;
+
+  const RefineTarget._(this.scope, this.day, this.city,
+      {this.assistant = false});
   const RefineTarget.trip() : this._('trip', null, null);
+  const RefineTarget.assistant() : this._('trip', null, null, assistant: true);
   const RefineTarget.day(int day, {String? city}) : this._('day', day, city);
   const RefineTarget.city(String city) : this._('city', null, city);
 
@@ -61,11 +67,19 @@ class TripRefinePanel extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
           child: Row(
             children: [
-              Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.primary),
+              Icon(
+                target.assistant
+                    ? Icons.chat_bubble_outline
+                    : Icons.auto_awesome,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Refining · ${target.label}',
+                  target.assistant
+                      ? 'Trip assistant'
+                      : 'Refining · ${target.label}',
                   style: theme.textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
@@ -84,7 +98,9 @@ class TripRefinePanel extends ConsumerWidget {
           child: ChatPanel(
             state: tripRefineProvider(tripId),
             notifier: tripRefineProvider(tripId).notifier,
-            inputHint: 'Ask for changes...',
+            inputHint: target.assistant
+                ? 'Ask anything about this trip…'
+                : 'Ask for changes...',
           ),
         ),
       ],
