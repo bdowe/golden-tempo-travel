@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
@@ -114,13 +115,17 @@ class _TripMapState extends State<TripMap> {
   }
 
   /// Every coordinate the camera should frame: mapped items plus geocoded
-  /// stays. Mirrors the fitPoints assembled in [build].
-  List<LatLng> _fitPoints() {
+  /// stays. Mirrors the fitPoints assembled in [build]. Static so it can run
+  /// against an oldWidget's lists in [didUpdateWidget].
+  static List<LatLng> _fitPointsOf(
+    List<ItineraryItem> items,
+    List<Accommodation> accommodations,
+  ) {
     final points = <LatLng>[
-      for (final it in widget.items)
+      for (final it in items)
         if (_hasCoords(it)) LatLng(it.latitude, it.longitude),
     ];
-    for (final a in widget.accommodations) {
+    for (final a in accommodations) {
       final lat = a.latitude;
       final lng = a.longitude;
       if (lat != null && lng != null && (lat != 0 || lng != 0)) {
@@ -130,10 +135,27 @@ class _TripMapState extends State<TripMap> {
     return points;
   }
 
+  List<LatLng> _fitPoints() => _fitPointsOf(widget.items, widget.accommodations);
+
   @override
   void didUpdateWidget(covariant TripMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fitSignature != oldWidget.fitSignature) {
+    final signatureChanged = widget.fitSignature != oldWidget.fitSignature;
+    // The set of mappable coordinates changed (a place added/removed/moved,
+    // e.g. AI-streamed additions or a refresh delivering geocodes) while no
+    // pin is selected: reframe so nothing sits off-screen. Order-insensitive
+    // so a pure reorder never touches the camera. Skipped when the previous
+    // frame had nothing mappable: build() then swaps the empty-state
+    // Container for a freshly mounted FlutterMap whose initialCameraFit
+    // already frames the new content.
+    bool contentChanged() {
+      if (widget.selectedPosition != null) return false;
+      final oldPoints = _fitPointsOf(oldWidget.items, oldWidget.accommodations);
+      if (oldPoints.isEmpty) return false;
+      return !setEquals(_fitPoints().toSet(), oldPoints.toSet());
+    }
+
+    if (signatureChanged || contentChanged()) {
       // Re-fit after the frame that renders the new (filtered) content, so
       // the controller sees the updated layout. No-op when nothing is
       // mappable (the empty state has no live map to move).
