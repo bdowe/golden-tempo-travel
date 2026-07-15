@@ -2,14 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:travel_route_planner/models/admin_insights.dart';
 import 'package:travel_route_planner/models/admin_metrics.dart';
 import 'package:travel_route_planner/providers/admin_metrics_provider.dart';
 import 'package:travel_route_planner/screens/admin_metrics_screen.dart';
 
+// The Overview tab (default) watches totals alongside the windowed metrics;
+// tests that only exercise Overview still need this override so the totals
+// section resolves instead of hitting the (blocked) test network.
+const _totals = AdminTotals(
+  users: 9,
+  verifiedUsers: 4,
+  onboardedUsers: 6,
+  trips: 17,
+  tripLineages: 11,
+  itineraryItems: 88,
+  bookingTodos: 21,
+  activePriceAlerts: 2,
+  publishedLocalRecs: 14,
+  localGuides: 3,
+  activeCollaborators: 1,
+  activeShares: 5,
+  // Distinct from every value the Overview assertions look for by exact text.
+  activeSessions: 19,
+  analyticsEvents: 1234,
+);
+
 void main() {
   testWidgets('renders funnel, AI, and alert tiles from metrics',
       (tester) async {
-    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.physicalSize = const Size(800, 3600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -53,11 +75,18 @@ void main() {
       ProviderScope(
         overrides: [
           adminMetricsProvider(30).overrideWith((ref) async => metrics),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
         ],
         child: const MaterialApp(home: AdminMetricsScreen()),
       ),
     );
     await tester.pumpAndSettle();
+
+    // All-time totals ride above the windowed funnel on the Overview tab.
+    expect(find.text('All-time totals'), findsOneWidget);
+    expect(find.text('1234'), findsOneWidget); // analytics events
+    expect(find.text('4 verified · 6 onboarded'), findsOneWidget);
+    expect(find.text('11 lineages'), findsOneWidget);
 
     expect(find.text('42'), findsOneWidget); // signups
     expect(find.text('Landing views'), findsOneWidget);
@@ -101,7 +130,7 @@ void main() {
 
   testWidgets('omits provider-call section when the API predates it',
       (tester) async {
-    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.physicalSize = const Size(800, 3600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -120,6 +149,7 @@ void main() {
       ProviderScope(
         overrides: [
           adminMetricsProvider(30).overrideWith((ref) async => metrics),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
         ],
         child: const MaterialApp(home: AdminMetricsScreen()),
       ),
@@ -146,5 +176,176 @@ void main() {
 
     expect(find.text('Could not load metrics'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('Trends tab renders one chart per funnel series', (tester) async {
+    tester.view.physicalSize = const Size(800, 3600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final start = DateTime.utc(2026, 7, 1);
+    final ts = AdminTimeseries(
+      days: 7,
+      startDay: start,
+      series: {
+        'user_registered': [
+          DailyCount(day: start, n: 2),
+          DailyCount(day: start.add(const Duration(days: 3)), n: 5),
+        ],
+        'trip_created': [DailyCount(day: start, n: 1)],
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          adminMetricsProvider(30).overrideWith((ref) async =>
+              const AdminMetrics(days: 30)),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
+          // The pane inherits Overview's 30-day default window.
+          adminTimeseriesProvider(30).overrideWith((ref) async => ts),
+        ],
+        child: const MaterialApp(home: AdminMetricsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Trends'));
+    await tester.pumpAndSettle();
+
+    // One chart slot per series, present even when the series is empty.
+    for (final title in [
+      'Landing views',
+      'Signups',
+      'Trips created',
+      'Plan sessions',
+      'Booking clicks',
+      'Itinerary items added',
+      'Price alerts created',
+    ]) {
+      expect(find.text(title), findsOneWidget);
+    }
+    // Signups window total = 2 + 5.
+    expect(find.text('7'), findsWidgets);
+  });
+
+  testWidgets('Activity tab lists events with anonymous handling and paging',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final now = DateTime.now();
+    final feed = AdminActivityFeed(
+      events: [
+        AdminActivityEvent(
+          id: 'e1',
+          eventType: 'trip_created',
+          userEmail: 'brian@example.com',
+          createdAt: now.subtract(const Duration(minutes: 5)),
+        ),
+        AdminActivityEvent(
+          id: 'e2',
+          eventType: 'booking_link_clicked',
+          metadata: const {'provider': 'duffel'},
+          createdAt: now.subtract(const Duration(hours: 2)),
+        ),
+      ],
+      nextBefore: now.toIso8601String(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          adminMetricsProvider(30).overrideWith((ref) async =>
+              const AdminMetrics(days: 30)),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
+          adminActivityProvider.overrideWith((ref) async => feed),
+        ],
+        child: const MaterialApp(home: AdminMetricsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Trip created'), findsOneWidget);
+    expect(find.text('brian@example.com'), findsOneWidget);
+    expect(find.text('5m ago'), findsOneWidget);
+    expect(find.text('Booking link clicked'), findsOneWidget);
+    expect(find.text('anonymous · duffel'), findsOneWidget);
+    expect(find.text('2h ago'), findsOneWidget);
+    // A full cursor means more pages.
+    expect(find.text('Load more'), findsOneWidget);
+  });
+
+  testWidgets('Users tab shows aggregates, admin badge, and expands',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final list = AdminUserList(
+      total: 2,
+      users: [
+        AdminUserRow(
+          id: 'u1',
+          email: 'active@example.com',
+          signedUpAt: DateTime(2026, 6, 1),
+          onboarded: true,
+          emailVerified: true,
+          trips: 3,
+          tripLineages: 2,
+          planSessions: 4,
+          bookingClicks: 1,
+          planInputTokens: 1500000,
+          planOutputTokens: 250000,
+          estClaudeCostUsd: 8.25,
+          lastEventAt: DateTime.now().subtract(const Duration(days: 2)),
+        ),
+        AdminUserRow(
+          id: 'u2',
+          email: 'owner@example.com',
+          isAdmin: true,
+          signedUpAt: DateTime(2026, 5, 1),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          adminMetricsProvider(30).overrideWith((ref) async =>
+              const AdminMetrics(days: 30)),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
+          adminUsersProvider(0).overrideWith((ref) async => list),
+        ],
+        child: const MaterialApp(home: AdminMetricsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 'Users' is also a totals tile label — target the tab specifically.
+    await tester.tap(find.descendant(
+        of: find.byType(TabBar), matching: find.text('Users')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 users'), findsOneWidget);
+    expect(find.text('active@example.com'), findsOneWidget);
+    expect(find.text('3 trips · active 2d ago'), findsOneWidget);
+    expect(find.text('owner@example.com'), findsOneWidget);
+    expect(find.text('admin'), findsOneWidget); // StatusPill on the admin row
+    expect(find.text('0 trips · no activity'), findsOneWidget);
+    // Both pages fit in total=2, so no load-more.
+    expect(find.text('Load more'), findsNothing);
+
+    // Expanding surfaces the aggregates.
+    await tester.tap(find.text('active@example.com'));
+    await tester.pumpAndSettle();
+    expect(find.text('Trip lineages'), findsOneWidget);
+    expect(find.text('1.5M / 250.0k'), findsOneWidget);
+    expect(find.text('\$8.25'), findsOneWidget);
+    expect(find.text('2026-06-01'), findsOneWidget);
   });
 }
