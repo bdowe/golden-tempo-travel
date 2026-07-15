@@ -91,9 +91,9 @@ var planToolRegistry = []planTool{
 	{def: getTripTool, enabled: authedOnly, run: func(s *planSession, input json.RawMessage) (string, bool) {
 		return runGetTripTool(s.ctx, s.authed, s.uid, input)
 	}},
-	{def: addBookingTodoTool, enabled: authedOnly, run: func(s *planSession, input json.RawMessage) (string, bool) {
-		return runAddBookingTodoTool(s.ctx, s.authed, s.uid, input)
-	}},
+	{def: addBookingTodoTool, enabled: authedOnly, run: runAddBookingTodoTool},
+	{def: updateBookingTodoTool, enabled: authedOnly, run: runUpdateBookingTodoTool},
+	{def: removeBookingTodoTool, enabled: authedOnly, run: runRemoveBookingTodoTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the

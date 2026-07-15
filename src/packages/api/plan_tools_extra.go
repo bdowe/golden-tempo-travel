@@ -82,6 +82,62 @@ var addBookingTodoTool = anthropic.ToolParam{
 	},
 }
 
+var updateBookingTodoTool = anthropic.ToolParam{
+	Name:        "update_booking_todo",
+	Description: anthropic.String("Update an item on a saved trip's booking checklist when the plan changed and the item is now wrong or stale (different destination, moved dates, another provider). Pass only the fields you're changing. Items marked 'auto' in get_trip track the itinerary and cannot be edited. Requires the trip's id and the item's todo_id — call get_trip first to see the checklist with ids."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"trip_id": map[string]any{
+				"type":        "string",
+				"description": "The saved trip's id",
+			},
+			"todo_id": map[string]any{
+				"type":        "string",
+				"description": "The checklist item's todo_id from get_trip",
+			},
+			"title": map[string]any{
+				"type":        "string",
+				"description": "New short imperative label",
+			},
+			"subtitle": map[string]any{
+				"type":        "string",
+				"description": "New detail line",
+			},
+			"kind": map[string]any{
+				"type":        "string",
+				"description": "'stay', 'transport', or 'other'",
+			},
+			"depart_date": map[string]any{
+				"type":        "string",
+				"description": "New YYYY-MM-DD the booking is for",
+			},
+			"booked": map[string]any{
+				"type":        "boolean",
+				"description": "Mark the item booked (true) or not booked (false)",
+			},
+		},
+		Required: []string{"trip_id", "todo_id"},
+	},
+}
+
+var removeBookingTodoTool = anthropic.ToolParam{
+	Name:        "remove_booking_todo",
+	Description: anthropic.String("Remove an item from a saved trip's booking checklist when it no longer applies (e.g. the destination or plan changed and the booking is moot). Items marked 'auto' in get_trip cannot be removed — they track the itinerary automatically. Call get_trip first to get the item's todo_id."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"trip_id": map[string]any{
+				"type":        "string",
+				"description": "The saved trip's id",
+			},
+			"todo_id": map[string]any{
+				"type":        "string",
+				"description": "The checklist item's todo_id from get_trip",
+			},
+		},
+		Required: []string{"trip_id", "todo_id"},
+	},
+}
+
 func runGetWeatherTool(ctx context.Context, input json.RawMessage) (string, bool) {
 	var in struct {
 		City      string `json:"city"`
@@ -175,16 +231,49 @@ func runGetTripTool(ctx context.Context, authed bool, uid uuid.UUID, input json.
 		}
 		b.WriteString(line + "\n")
 	}
+	// Booking checklist with ids so the agent can update/remove stale items;
+	// degrade silently on error — the itinerary alone is still useful.
+	if todos, err := q.ListBookingTodosByTrip(ctx, trip.ID); err == nil && len(todos) > 0 {
+		fmt.Fprintf(&b, "Booking checklist (%d items):\n", len(todos))
+		for _, td := range todos {
+			status := "not booked"
+			if td.Booked {
+				status = "booked"
+			}
+			origin := "added by traveler"
+			switch {
+			case td.Auto:
+				origin = "auto — tracks the itinerary; not editable"
+			case strings.HasPrefix(td.TodoKey, "agent:"):
+				origin = "agent-added"
+			}
+			fmt.Fprintf(&b, "- %q [todo_id: %s] (%s, %s, %s)\n", td.Title, td.ID, td.Kind, status, origin)
+		}
+	}
 	return b.String(), false
 }
 
-func runAddBookingTodoTool(ctx context.Context, authed bool, uid uuid.UUID, input json.RawMessage) (string, bool) {
-	if !authed {
-		return "The traveler is not signed in, so nothing can be saved. Give the advice in your reply instead.", true
+// checkBookingTodoSession is the shared guard ladder for the booking-todo
+// tools: signed-in, persistence up, valid trip_id owned by the caller.
+func checkBookingTodoSession(s *planSession, tripID string) (uuid.UUID, string, bool) {
+	if !s.authed {
+		return uuid.Nil, "The traveler is not signed in, so nothing can be saved. Give the advice in your reply instead.", true
 	}
 	if dbPool == nil {
-		return "Booking checklists are unavailable right now (persistence offline).", true
+		return uuid.Nil, "Booking checklists are unavailable right now (persistence offline).", true
 	}
+	tid, err := uuid.Parse(strings.TrimSpace(tripID))
+	if err != nil {
+		return uuid.Nil, "That trip_id is not valid; call get_trip to find the right one.", true
+	}
+	// Ownership: the agent may only write to the caller's own trips.
+	if _, err := store.New(dbPool).GetTripByIDAndOwner(s.ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: s.uid}); err != nil {
+		return uuid.Nil, "No such trip for this traveler; call get_trip to find the right one.", true
+	}
+	return tid, "", false
+}
+
+func runAddBookingTodoTool(s *planSession, input json.RawMessage) (string, bool) {
 	var in struct {
 		TripID     string  `json:"trip_id"`
 		Kind       string  `json:"kind"`
@@ -194,6 +283,10 @@ func runAddBookingTodoTool(ctx context.Context, authed bool, uid uuid.UUID, inpu
 	}
 	json.Unmarshal(input, &in)
 
+	tid, msg, failed := checkBookingTodoSession(s, in.TripID)
+	if failed {
+		return msg, true
+	}
 	kind := strings.TrimSpace(in.Kind)
 	if !allowedBookingKinds[kind] {
 		return "kind must be 'stay', 'transport', or 'other'.", true
@@ -201,20 +294,12 @@ func runAddBookingTodoTool(ctx context.Context, authed bool, uid uuid.UUID, inpu
 	if strings.TrimSpace(in.Title) == "" {
 		return "title is required.", true
 	}
-	tid, err := uuid.Parse(strings.TrimSpace(in.TripID))
-	if err != nil {
-		return "That trip_id is not valid; call get_trip to find the right one.", true
-	}
-	// Ownership: the agent may only write to the caller's own trips.
-	if _, err := store.New(dbPool).GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: uid}); err != nil {
-		return "No such trip for this traveler; call get_trip to find the right one.", true
-	}
 	depart, err := parseDateParam(in.DepartDate)
 	if err != nil {
 		return "depart_date must be YYYY-MM-DD.", true
 	}
 
-	todo, err := store.New(dbPool).CreateBookingTodo(ctx, store.CreateBookingTodoParams{
+	todo, err := store.New(dbPool).CreateBookingTodo(s.ctx, store.CreateBookingTodoParams{
 		TripID:     tid,
 		Kind:       kind,
 		TodoKey:    "agent:" + uuid.NewString(),
@@ -226,6 +311,91 @@ func runAddBookingTodoTool(ctx context.Context, authed bool, uid uuid.UUID, inpu
 	if err != nil {
 		return "Could not save the booking to-do.", true
 	}
-	go recordEvent(uid, "agent_booking_todo_added", &tid, map[string]any{"kind": todo.Kind})
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_booking_todo_added", &tid, map[string]any{"kind": todo.Kind})
 	return fmt.Sprintf("Added %q to the trip's booking checklist. Mention it briefly; the traveler will see it on the trip page.", todo.Title), false
+}
+
+// bookingTodoMissingMsg covers both "wrong id" and "auto row" — the queries
+// exclude auto=true rows, so the two cases are indistinguishable here.
+const bookingTodoMissingMsg = "No such checklist item on that trip, or it's an auto item managed from the itinerary — those can't be changed. Call get_trip to see the current checklist."
+
+func runUpdateBookingTodoTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		TripID     string  `json:"trip_id"`
+		TodoID     string  `json:"todo_id"`
+		Title      *string `json:"title"`
+		Subtitle   *string `json:"subtitle"`
+		Kind       *string `json:"kind"`
+		DepartDate *string `json:"depart_date"`
+		Booked     *bool   `json:"booked"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBookingTodoSession(s, in.TripID)
+	if failed {
+		return msg, true
+	}
+	todoID, err := uuid.Parse(strings.TrimSpace(in.TodoID))
+	if err != nil {
+		return "That todo_id is not valid; call get_trip to see the checklist with ids.", true
+	}
+	if in.Kind != nil && !allowedBookingKinds[strings.TrimSpace(*in.Kind)] {
+		return "kind must be 'stay', 'transport', or 'other'.", true
+	}
+	if in.Title != nil {
+		t := strings.TrimSpace(*in.Title)
+		if t == "" {
+			return "title cannot be empty.", true
+		}
+		in.Title = &t
+	}
+	depart, err := parseDateParam(in.DepartDate)
+	if err != nil {
+		return "depart_date must be YYYY-MM-DD.", true
+	}
+	if in.Title == nil && in.Subtitle == nil && in.Kind == nil && in.DepartDate == nil && in.Booked == nil {
+		return "Pass at least one field to change (title, subtitle, kind, depart_date, or booked).", true
+	}
+
+	todo, err := store.New(dbPool).UpdateBookingTodo(s.ctx, store.UpdateBookingTodoParams{
+		ID:         todoID,
+		TripID:     tid,
+		Kind:       in.Kind,
+		Title:      in.Title,
+		Subtitle:   in.Subtitle,
+		DepartDate: depart,
+		Booked:     in.Booked,
+	})
+	if err != nil {
+		return bookingTodoMissingMsg, true
+	}
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_booking_todo_updated", &tid, map[string]any{"kind": todo.Kind})
+	return fmt.Sprintf("Updated %q on the trip's booking checklist — the traveler's trip page has refreshed.", todo.Title), false
+}
+
+func runRemoveBookingTodoTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		TripID string `json:"trip_id"`
+		TodoID string `json:"todo_id"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBookingTodoSession(s, in.TripID)
+	if failed {
+		return msg, true
+	}
+	todoID, err := uuid.Parse(strings.TrimSpace(in.TodoID))
+	if err != nil {
+		return "That todo_id is not valid; call get_trip to see the checklist with ids.", true
+	}
+
+	rows, err := store.New(dbPool).DeleteBookingTodoNonAuto(s.ctx, store.DeleteBookingTodoNonAutoParams{ID: todoID, TripID: tid})
+	if err != nil || rows == 0 {
+		return bookingTodoMissingMsg, true
+	}
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_booking_todo_removed", &tid, nil)
+	return "Removed the item from the trip's booking checklist — the traveler's trip page has refreshed.", false
 }

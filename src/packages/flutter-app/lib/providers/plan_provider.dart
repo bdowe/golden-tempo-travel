@@ -56,7 +56,7 @@ class PlanState {
   final int tripUpdateCount;
 
   /// Whether the current/most recent turn patched the trip — drives the
-  /// transient "Itinerary updated" chip. Reset at the start of each send;
+  /// transient "Trip updated" chip. Reset at the start of each send;
   /// unlike [tripUpdateCount] it is not monotonic.
   final bool tripUpdatedThisTurn;
 
