@@ -671,6 +671,13 @@ func buildRouter() *mux.Router {
 	api.HandleFunc("/ferries/search", ferriesSearchHandler).Methods("GET")
 	api.HandleFunc("/events/greece-links", greeceEventsLinksHandler).Methods("GET")
 	api.Handle("/plan", strict(http.HandlerFunc(planHandler))).Methods("POST")
+	// Voice dictation fallback (specs/voice-dictation). Unauthenticated to
+	// match /plan, but on its own limiter bucket — sharing strict (5/min)
+	// would starve /plan, since each fallback dictation+send costs two tokens.
+	transcribeLimiter := newIPRateLimiter(10, 5)
+	transcribe := rateLimitMiddleware(transcribeLimiter)
+	api.Handle("/transcribe", transcribe(http.HandlerFunc(transcribeHandler))).Methods("POST")
+	api.HandleFunc("/transcribe/availability", transcribeAvailabilityHandler).Methods("GET")
 	api.HandleFunc("/airbnb/parse", airbnbParseHandler).Methods("POST")
 	api.HandleFunc("/airbnb/debug", airbnbDebugHandler).Methods("POST")
 	api.Handle("/auth/register", strict(http.HandlerFunc(registerHandler))).Methods("POST")

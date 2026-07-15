@@ -3,7 +3,9 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import '../models/plan_message.dart';
+import '../providers/dictation_provider.dart';
 import '../providers/plan_provider.dart';
+import '../services/dictation_controller.dart';
 import '../theme/app_colors.dart';
 import '../utils/tracked_launch.dart';
 import 'result_summary_chip.dart';
@@ -53,6 +55,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// Voice dictation for this composer (specs/voice-dictation): writes
+  /// transcripts into [_controller]; the user reviews and sends normally.
+  late final DictationController _dictation;
+
   /// Autoscroll follows the stream only while the user is at the bottom;
   /// scrolling up to re-read pauses it until they return to the bottom.
   bool _stickToBottom = true;
@@ -62,7 +68,25 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   bool _scrollScheduled = false;
 
   @override
+  void initState() {
+    super.initState();
+    _dictation = ref.read(dictationControllerFactoryProvider)(_controller);
+    _dictation.addListener(_onDictationChanged);
+  }
+
+  void _onDictationChanged() {
+    final error = _dictation.consumeError();
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
+  @override
   void dispose() {
+    _dictation.removeListener(_onDictationChanged);
+    _dictation.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -162,6 +186,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           isStreaming: isStreaming,
           hint: widget.inputHint,
           onSend: _send,
+          dictation: _dictation,
         ),
       ],
     );
@@ -751,12 +776,14 @@ class _InputBar extends StatelessWidget {
   final bool isStreaming;
   final String hint;
   final VoidCallback onSend;
+  final DictationController dictation;
 
   const _InputBar({
     required this.controller,
     required this.isStreaming,
     required this.hint,
     required this.onSend,
+    required this.dictation,
   });
 
   @override
@@ -794,6 +821,7 @@ class _InputBar extends StatelessWidget {
               ),
             ),
           ),
+          _MicButton(dictation: dictation),
           const SizedBox(width: 8),
           IconButton.filled(
             onPressed: onSend,
@@ -801,6 +829,48 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The dictation mic (specs/voice-dictation). Rebuilds only itself on
+/// dictation state changes; absent entirely when no capture path exists.
+class _MicButton extends StatelessWidget {
+  final DictationController dictation;
+
+  const _MicButton({required this.dictation});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListenableBuilder(
+      listenable: dictation,
+      builder: (context, _) {
+        if (!dictation.available) return const SizedBox.shrink();
+        switch (dictation.status) {
+          case DictationStatus.transcribing:
+            return const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          case DictationStatus.listening:
+            return IconButton(
+              tooltip: 'Stop dictating',
+              onPressed: dictation.toggle,
+              icon: Icon(Icons.mic, color: theme.colorScheme.error),
+            );
+          case DictationStatus.idle:
+            return IconButton(
+              tooltip: 'Dictate',
+              onPressed: dictation.toggle,
+              icon: const Icon(Icons.mic_none),
+            );
+        }
+      },
     );
   }
 }

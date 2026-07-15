@@ -90,8 +90,9 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 // handler would accept (or reject with a friendly SSE error event) never die
 // here first with a bare 413, which an SSE client surfaces poorly.
 const (
-	maxRequestBodyBytes     = 256 << 10 // 256 KiB, all endpoints by default
-	planMaxRequestBodyBytes = 4 << 20   // 4 MiB for the /plan chat history (see above)
+	maxRequestBodyBytes       = 256 << 10 // 256 KiB, all endpoints by default
+	planMaxRequestBodyBytes   = 4 << 20   // 4 MiB for the /plan chat history (see above)
+	transcribeMaxRequestBytes = 10 << 20  // 10 MiB for /transcribe audio clips (60s opus is well under)
 )
 
 // bodyLimitMiddleware caps request body size. It wraps the request body ONLY
@@ -103,8 +104,11 @@ const (
 func bodyLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limit := int64(maxRequestBodyBytes)
-		if r.URL.Path == "/api/v1/plan" {
+		switch r.URL.Path {
+		case "/api/v1/plan":
 			limit = planMaxRequestBodyBytes
+		case "/api/v1/transcribe":
+			limit = transcribeMaxRequestBytes
 		}
 		if r.ContentLength > limit {
 			writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
