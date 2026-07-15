@@ -115,7 +115,7 @@ class _RailBrand extends StatelessWidget {
       padding: EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.sm),
       child: BrandBadge(
         padding: EdgeInsets.all(AppSpacing.sm),
-        child: BrandLogo.mark(size: 26),
+        child: BrandLogo.mark(size: 36),
       ),
     );
   }
