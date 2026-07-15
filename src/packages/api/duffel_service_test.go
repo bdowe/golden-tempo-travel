@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -177,6 +178,37 @@ func TestSearchFlightOffersOneWayHasNoReturnFields(t *testing.T) {
 	}
 	if len(offers) != 1 || offers[0].ReturnSegments != nil || offers[0].ReturnDurationMin != 0 {
 		t.Fatalf("one-way offer must carry no return fields: %+v", offers)
+	}
+}
+
+// SupplierTimeoutMS is internal plumbing for indicative connectivity checks:
+// present as a query param only when set, and never part of the JSON shape.
+func TestSearchFlightOffersSupplierTimeout(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"offers":[]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	d := &DuffelService{Token: "test-token", BaseURL: srv.URL, Version: "v2",
+		Client: &http.Client{Timeout: 5 * time.Second}}
+
+	base := FlightSearchRequest{Origin: "SJU", Destination: "NAS", DepartDate: "2026-09-15", Adults: 1}
+	if _, err := d.SearchFlightOffers(context.Background(), base); err != nil {
+		t.Fatalf("SearchFlightOffers: %v", err)
+	}
+	withTimeout := base
+	withTimeout.SupplierTimeoutMS = 10000
+	if _, err := d.SearchFlightOffers(context.Background(), withTimeout); err != nil {
+		t.Fatalf("SearchFlightOffers: %v", err)
+	}
+
+	if strings.Contains(queries[0], "supplier_timeout") {
+		t.Fatalf("supplier_timeout must be absent when unset, got %q", queries[0])
+	}
+	if !strings.Contains(queries[1], "supplier_timeout=10000") {
+		t.Fatalf("supplier_timeout=10000 missing, got %q", queries[1])
 	}
 }
 

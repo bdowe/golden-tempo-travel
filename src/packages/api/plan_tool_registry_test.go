@@ -14,7 +14,7 @@ import (
 func TestPlanSessionToolsOrderStable(t *testing.T) {
 	base := []string{
 		"search_places", "suggest_stays", "suggest_transport", "suggest_ferries",
-		"search_flights", "search_events", "search_local_recommendations", "get_weather",
+		"search_flights", "check_flight_connectivity", "search_events", "search_local_recommendations", "get_weather",
 	}
 	tid := uuid.New()
 

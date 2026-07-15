@@ -273,6 +273,70 @@ func TestPlanMidTurnModelErrorSurfaces(t *testing.T) {
 	}
 }
 
+// check_flight_connectivity end-to-end: the tool executes against the fake
+// Duffel, its compact summary round-trips to the model, and — unlike
+// search_flights — nothing is streamed as a `flights` card.
+func TestPlanConnectivityToolLoop(t *testing.T) {
+	resetDB(t)
+	fa := newFakeAnthropic(t,
+		toolTurn("check_flight_connectivity",
+			`{"origin":"SJU","candidates":["BDA","NAS"],"depart_date":"2026-09-15","onward_destination":"BTV"}`),
+		textTurn("Nassau is the far better stopover — Bermuda routes are long and pricey."))
+
+	cs := &connStub{offers: map[string]string{
+		"SJU-BDA": offersBody(connOffer("i1", "1450.00", "USD", "PT12H05M", 2)),
+		"BDA-BTV": offersBody(connOffer("i2", "388.00", "USD", "PT9H40M", 1)),
+		"SJU-NAS": offersBody(connOffer("i3", "210.00", "USD", "PT3H30M", 0)),
+		"NAS-BTV": offersBody(connOffer("i4", "305.00", "USD", "PT7H10M", 1)),
+	}}
+	swapConnStub(t, cs)
+
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{
+		ChatID:   "chat-connectivity",
+		Messages: []PlanChatMessage{{Role: "user", Content: "any island stopover between San Andrés and Burlington?"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+
+	calls := eventsOfType(events, "tool_call")
+	if len(calls) != 1 || eventData(calls[0])["name"] != "check_flight_connectivity" {
+		t.Fatalf("tool_call events = %v, want one check_flight_connectivity", calls)
+	}
+	results := eventsOfType(events, "tool_result")
+	if len(results) != 1 || eventData(results[0])["name"] != "check_flight_connectivity" {
+		t.Fatalf("tool_result events = %v, want one check_flight_connectivity", results)
+	}
+	if flights := eventsOfType(events, "flights"); len(flights) != 0 {
+		t.Fatalf("connectivity check must not stream flight cards: %v", flights)
+	}
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("unexpected error events: %v", errs)
+	}
+	if got := joinedText(events); !strings.Contains(got, "Nassau") {
+		t.Fatalf("final text = %q", got)
+	}
+
+	// The model's follow-up request must carry the real comparison numbers.
+	reqs := fa.requestBodies()
+	if len(reqs) != 2 {
+		t.Fatalf("model requests = %d, want 2", len(reqs))
+	}
+	followUp := string(reqs[1])
+	for _, want := range []string{`"tool_result"`, "from USD 210", "timed out", "Connectivity check from SJU"} {
+		if want == "timed out" {
+			if strings.Contains(followUp, want) {
+				t.Fatalf("no leg should have timed out: %s", followUp)
+			}
+			continue
+		}
+		if !strings.Contains(followUp, want) {
+			t.Fatalf("follow-up request missing %q: %s", want, followUp)
+		}
+	}
+}
+
 // (e) The local-ingest anti-hallucination gate: extraction (a NON-streaming
 // forced-tool call through the same seam) drafts a pin, Google verification
 // cannot fill coordinates (no Places key), and publish is refused while the
