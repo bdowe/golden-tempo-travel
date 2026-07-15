@@ -355,7 +355,11 @@ class _TripMapState extends State<TripMap> {
                 size: const Size(32, 32),
                 padding: const EdgeInsets.all(40),
                 markers: [
-                  for (final m in mapped)
+                  // Labels count 1..N over what this map view shows (the whole
+                  // trip on All, one day on Day N) — not the item's trip-wide
+                  // position, which reads as arbitrary once the view filters
+                  // or skips ungeocoded items.
+                  for (final (k, m) in mapped.indexed)
                     Marker(
                       point: m.point,
                       width: widget.selectedPosition == m.item.position
@@ -365,7 +369,7 @@ class _TripMapState extends State<TripMap> {
                           ? 28
                           : 24,
                       child: _Pin(
-                        label: '${m.item.position + 1}',
+                        label: '${k + 1}',
                         category: m.item.category,
                         selected: widget.selectedPosition == m.item.position,
                         onTap: widget.onPinTap == null
