@@ -261,6 +261,8 @@ class _ActiveToolChips extends ConsumerWidget {
         return 'Updating itinerary...';
       case 'search_flights':
         return 'Searching flights...';
+      case 'check_flight_connectivity':
+        return 'Checking route connectivity...';
       case 'search_events':
         return 'Finding events...';
       case 'suggest_ferries':

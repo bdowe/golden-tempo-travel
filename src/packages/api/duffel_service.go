@@ -88,6 +88,12 @@ type FlightSearchRequest struct {
 	ChildAges   []int  `json:"child_ages,omitempty"` // one entry per child; Duffel requires an age
 	CabinClass  string `json:"cabin_class,omitempty"`
 	OptimizeFor string `json:"optimize_for"` // "cost" | "time" | "balanced"
+
+	// SupplierTimeoutMS, when set, is passed to Duffel as the supplier_timeout
+	// query param (milliseconds) so slow airlines are dropped instead of
+	// dragging the whole search. Internal-only (connectivity checks); never
+	// part of the public /flights/search request shape.
+	SupplierTimeoutMS int `json:"-"`
 }
 
 // allowedCabinClasses are Duffel's cabin_class values; empty input defaults
@@ -290,7 +296,11 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		return nil, fmt.Errorf("failed to encode offer request: %w", err)
 	}
 
-	httpReq, err := d.newRequest(ctx, http.MethodPost, "/air/offer_requests?return_offers=true", bytes.NewReader(buf))
+	path := "/air/offer_requests?return_offers=true"
+	if req.SupplierTimeoutMS > 0 {
+		path += "&supplier_timeout=" + strconv.Itoa(req.SupplierTimeoutMS)
+	}
+	httpReq, err := d.newRequest(ctx, http.MethodPost, path, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}

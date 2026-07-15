@@ -44,6 +44,9 @@ type planSession struct {
 	tripID *uuid.UUID
 	// distilled guards the once-per-session background profile distillation.
 	distilled bool
+	// connectivityCalls counts check_flight_connectivity uses, capped per
+	// session to bound Duffel spend.
+	connectivityCalls int
 }
 
 // planTool is one registry entry.
@@ -74,6 +77,7 @@ var planToolRegistry = []planTool{
 	{def: suggestTransportTool, run: runSuggestTransportTool},
 	{def: suggestFerriesTool, run: runSuggestFerriesTool},
 	{def: searchFlightsTool, run: runSearchFlightsTool},
+	{def: checkFlightConnectivityTool, run: runCheckFlightConnectivityTool},
 	{def: searchEventsTool, run: runSearchEventsTool},
 	{def: searchLocalRecsTool, run: runSearchLocalRecsTool},
 	{def: getWeatherTool, run: func(s *planSession, input json.RawMessage) (string, bool) {
@@ -242,7 +246,8 @@ var searchFlightsTool = anthropic.ToolParam{
 	Name: "search_flights",
 	Description: anthropic.String("Search real flight options between two places for given dates and present a few good ones (ranked by overall desirability). " +
 		"Ask the traveler for their departure city/airport and travel dates first if you don't know them. " +
-		"origin/destination may be city names or IATA codes. Choose optimize_for from the traveler's budget: budget→'cost', luxury→'time', otherwise 'balanced'."),
+		"origin/destination may be city names or IATA codes. Choose optimize_for from the traveler's budget: budget→'cost', luxury→'time', otherwise 'balanced'. " +
+		"To compare several candidate destinations' connectivity before recommending one, use check_flight_connectivity instead of multiple searches."),
 	InputSchema: anthropic.ToolInputSchemaParam{
 		Properties: map[string]any{
 			"origin":       map[string]any{"type": "string", "description": "Departure city or IATA code, e.g. 'Boston' or 'BOS'"},
