@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -76,6 +77,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   RefineTarget? _refineTarget;
   String _itemFilter = 'all'; // 'all' | 'attraction' | 'restaurant'
   int? _selectedDay; // map day-chip selection; null = All (specs/today-mode)
+  // Today mode (specs/today-mode): the itinerary auto-scrolls to today's day
+  // header at most once per screen visit, and only from loud load paths.
+  final ScrollController _scroll = ScrollController();
+  bool _autoScrolledToday = false;
+  // Day set by a loud load, consumed by the first build that has the scroll
+  // view on screen (the load's own setState still shows the loading spinner,
+  // so the scroll can't be kicked off from there).
+  int? _pendingTodayScroll;
+  // Stable identities for the pinned headers so the Today scroller can find
+  // their render objects. Days share the `'$cityKey#$day'` scheme with
+  // _collapsedDays; cities are keyed by group label like _collapsedCities.
+  final Map<String, GlobalKey> _dayHeaderKeys = {};
+  final Map<String, GlobalKey> _cityHeaderKeys = {};
   int?
       _selectedPosition; // position of the place focused via a map pin / list tap
   List<BookingTodo> _bookingTodos = [];
@@ -149,6 +163,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   Future<void> _load({bool silent = false}) async {
     // Silent mode refreshes an already-displayed trip in place — no
     // full-screen spinner, no error page — so the refine panel (and the
@@ -172,6 +192,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           _trip = trip;
           _bookingTodos = trip.bookingTodos ?? [];
           _offlineSince = null; // live data — leave offline mode if we were in it
+          // Today mode fires only from loud loads — never from a silent
+          // refresh, which shares this success path (PR #51/#53 invariants).
+          if (!silent) _maybeAutoScrollToday(trip);
         });
         // Remember this as the most recently viewed trip (home screen tile).
         ref.read(recentTripProvider.notifier).record(
@@ -202,6 +225,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             _bookingTodos = cached.trip.bookingTodos ?? [];
             _offlineSince = cached.savedAt;
             _error = null;
+            // Opening a live trip while offline is Today mode's prime use
+            // case — the cached copy scrolls to today just like a live load.
+            if (!silent) _maybeAutoScrollToday(cached.trip);
           });
           return; // finally still clears _loading
         }
@@ -274,6 +300,151 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }();
     _refreshFuture = future;
     return future;
+  }
+
+  // ── Today mode (specs/today-mode) ─────────────────────────────────────
+
+  /// Pinned-header heights, shared by the build method and the Today scroll
+  /// math so the two can never drift apart.
+  static const double _mapHeaderHeight =
+      12 + 240 + 12; // top gap + map + bottom gap
+  // Itinerary title row (36) + gap (8) + filter chip row (48) + bottom
+  // padding (8); title-row-only when the trip has no items.
+  static const double _listHeaderHeight = 100;
+  static const double _listHeaderHeightEmpty = 48;
+
+  /// Combined height of the chrome pinned above the itinerary slivers: the
+  /// map header (shown only when a filtered item is mappable — same gate as
+  /// the build) plus the itinerary title/filter header.
+  double _pinnedChrome(Trip trip) {
+    final mapShown =
+        _filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0);
+    final listH = (trip.items ?? const []).isNotEmpty
+        ? _listHeaderHeight
+        : _listHeaderHeightEmpty;
+    return (mapShown ? _mapHeaderHeight : 0) + listH;
+  }
+
+  /// Measured height of the pinned city header above [dayKey]'s section
+  /// (0 when it isn't laid out yet).
+  double _cityHeaderHeight(String dayKey) {
+    final cityKey = dayKey.substring(0, dayKey.lastIndexOf('#'));
+    final box = _cityHeaderKeys[cityKey]?.currentContext?.findRenderObject();
+    return box is RenderBox && box.hasSize ? box.size.height : 0;
+  }
+
+  /// One-shot Today trigger, called inside the setState of the loud load
+  /// paths (live success and cached-offline fallback) so the map's today
+  /// chip preselection lands in the same frame as the trip. Never called
+  /// from silent refreshes; a no-op once fired, while the refine panel is
+  /// open, or when the trip is undated/past/future or has no day tags.
+  void _maybeAutoScrollToday(Trip trip) {
+    if (_autoScrolledToday || _panelOpen) return;
+    final today = tripDayOn(trip.startDate, trip.endDate, DateTime.now());
+    if (today == null) return;
+    if (!(trip.items ?? const <ItineraryItem>[]).any((i) => i.day != null)) {
+      return;
+    }
+    _autoScrolledToday = true;
+    _selectedDay = today; // map day-chip preselect
+    // The scroll itself waits for the first build that actually shows the
+    // scroll view: this setState still renders the loading spinner (the
+    // loud path clears _loading later, in its finally), so a post-frame
+    // callback scheduled here could fire before the CustomScrollView exists.
+    _pendingTodayScroll = today;
+  }
+
+  /// Scrolls the itinerary so [day]'s header rests just below the pinned
+  /// chrome (map + title + city header). Missing headers fall back to the
+  /// nearest prior day, then the nearest following; a collapsed city/day is
+  /// expanded first. Pure view work — safe offline and with the panel open.
+  void _scrollToDay(int day) {
+    final dayKey = _resolveDayHeaderKey(day);
+    if (dayKey == null) return;
+    final cityKey = dayKey.substring(0, dayKey.lastIndexOf('#'));
+    if (_collapsedCities.contains(cityKey) ||
+        _collapsedDays.contains(dayKey)) {
+      setState(() {
+        _collapsedCities.remove(cityKey);
+        _collapsedDays.remove(dayKey);
+      });
+      // Continue once the expanded section has laid out.
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollToDayHeader(dayKey));
+      return;
+    }
+    _scrollToDayHeader(dayKey);
+  }
+
+  /// The registry key of the day header [day] should scroll to: the first
+  /// (build-order) header for that exact day, else the nearest prior day
+  /// with a header, else the nearest following. Only headers that are
+  /// currently built count, except those hidden inside a collapsed city —
+  /// still reachable because [_scrollToDay] expands them first.
+  String? _resolveDayHeaderKey(int day) {
+    String? prior;
+    String? next;
+    int? priorDay;
+    int? nextDay;
+    for (final entry in _dayHeaderKeys.entries) {
+      final key = entry.key;
+      final hashAt = key.lastIndexOf('#');
+      final d = int.tryParse(key.substring(hashAt + 1));
+      if (d == null) continue;
+      // Skip stale keys whose day no longer renders (removed items), as
+      // opposed to ones merely hidden inside a collapsed city group.
+      if (entry.value.currentContext == null &&
+          !_collapsedCities.contains(key.substring(0, hashAt))) {
+        continue;
+      }
+      if (d == day) return key;
+      if (d < day && (priorDay == null || d > priorDay)) {
+        priorDay = d;
+        prior = key;
+      }
+      if (d > day && (nextDay == null || d < nextDay)) {
+        nextDay = d;
+        next = key;
+      }
+    }
+    return prior ?? next;
+  }
+
+  /// Offset-reveal scroll to [dayKey]'s header (specs/today-mode plan.md,
+  /// D1): `ensureVisible` is unreliable under SliverPinnedHeader /
+  /// MultiSliver, so compute the reveal offset, subtract everything pinned
+  /// above the header's resting slot, animate, then run exactly one
+  /// correction pass against the header's actual on-screen position.
+  Future<void> _scrollToDayHeader(String dayKey) async {
+    final trip = _trip;
+    if (!mounted || trip == null || !_scroll.hasClients) return;
+    final target = _dayHeaderKeys[dayKey]?.currentContext?.findRenderObject();
+    if (target == null || !target.attached) return;
+    final viewport = RenderAbstractViewport.maybeOf(target);
+    if (viewport == null) return;
+    final resting = _pinnedChrome(trip) + _cityHeaderHeight(dayKey);
+    final reveal = viewport.getOffsetToReveal(target, 0).offset - resting;
+    final offset = reveal.clamp(0.0, _scroll.position.maxScrollExtent);
+    await _scroll.animateTo(offset,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic);
+    if (!mounted || !_scroll.hasClients) return;
+    // One correction pass (no loops chasing layout): late-built slivers can
+    // shift the estimate, so measure where the header actually landed and
+    // jump the residual. A header pinned in its slot measures exactly at
+    // the desired dy, so this never fights the pin.
+    final box = _dayHeaderKeys[dayKey]?.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+    final vp = RenderAbstractViewport.maybeOf(box);
+    if (vp == null) return;
+    // Header dy in viewport coordinates vs. its resting slot below the
+    // pinned chrome.
+    final actual = box.localToGlobal(Offset.zero, ancestor: vp).dy;
+    final delta = actual - (_pinnedChrome(trip) + _cityHeaderHeight(dayKey));
+    if (delta.abs() > 2) {
+      _scroll.jumpTo((_scroll.offset + delta)
+          .clamp(0.0, _scroll.position.maxScrollExtent));
+    }
   }
 
   /// Pushes the itinerary-derived booking checklist to the server, which upserts
@@ -1021,6 +1192,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (!items.any((it) => it.day != null)) {
       return [_boxSliver(_buildDayTripWidgets(items, theme))];
     }
+    // Today mode: the header for today's trip day (if any) gets a visible
+    // highlight; undated/past/future trips resolve to null and render as-is.
+    final todayDay =
+        tripDayOn(_trip?.startDate, _trip?.endDate, DateTime.now());
     final slivers = <Widget>[];
     var i = 0;
     while (i < items.length) {
@@ -1057,7 +1232,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         RefineTarget.day(day,
                             city: cityKey == 'Other places' ? null : cityKey));
                   }
-                : null);
+                : null,
+            headerKey: _dayHeaderKeys.putIfAbsent(dayKey, GlobalKey.new),
+            isToday: day == todayDay);
         slivers.add(MultiSliver(
           pushPinnedChildren: true,
           children: [
@@ -1543,7 +1720,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
   /// Day section header: shows the calendar date (day N -> startDate + (N-1))
   /// when the trip start is known, otherwise falls back to "Day N". The opaque
-  /// Material keeps items from showing through while the header is pinned.
+  /// Material keeps items from showing through while the header is pinned —
+  /// today's tint is alpha-blended onto the scaffold background (never a
+  /// translucent color) for the same reason. [headerKey] gives the Today
+  /// scroller a stable handle on the header's render box.
   Widget _daySubHeader(
       int day,
       DateTime? tripStart,
@@ -1551,13 +1731,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       bool collapsed,
       int travelMin,
       VoidCallback onTap,
-      VoidCallback? onRefine) {
+      VoidCallback? onRefine,
+      {Key? headerKey,
+      bool isToday = false}) {
     final label = tripStart != null
         ? _fmtDayHeader(tripStart.add(Duration(days: day - 1)))
         : 'Day $day';
     final muted = theme.colorScheme.onSurfaceVariant;
     return Material(
-      color: theme.scaffoldBackgroundColor,
+      key: headerKey,
+      color: isToday
+          ? Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.06),
+              theme.scaffoldBackgroundColor)
+          : theme.scaffoldBackgroundColor,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -1567,12 +1753,27 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               Icon(Icons.today, size: 16, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (isToday) ...[
+                      const SizedBox(width: 8),
+                      StatusPill.custom(
+                        label: 'Today',
+                        background:
+                            theme.colorScheme.primary.withValues(alpha: 0.15),
+                        foreground: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ],
                 ),
               ),
               if (travelMin > 0) ...[
@@ -2382,7 +2583,28 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       if (_selectedDay != null && _selectedDay! > mapDayCount) {
                         _selectedDay = null;
                       }
+                      // Today mode: the jump chip renders only when today
+                      // falls inside the trip's dates AND some item carries a
+                      // day tag (the same gate as the auto-scroll, so the
+                      // chip never points at nothing).
+                      final todayDay =
+                          tripDayOn(trip.startDate, trip.endDate, DateTime.now());
+                      final hasTodayTarget = todayDay != null &&
+                          (trip.items ?? const <ItineraryItem>[])
+                              .any((i) => i.day != null);
+                      // A loud load queued the one-shot auto-scroll; this is
+                      // the first frame that actually mounts the scroll view
+                      // (and registers the day-header keys), so kick it off
+                      // once this frame's layout is done.
+                      final pendingToday = _pendingTodayScroll;
+                      if (pendingToday != null) {
+                        _pendingTodayScroll = null;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _scrollToDay(pendingToday);
+                        });
+                      }
                       final scrollView = CustomScrollView(
+                        controller: _scroll,
                         slivers: [
                           SliverPadding(
                             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -2403,8 +2625,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                             SliverPersistentHeader(
                               pinned: true,
                               delegate: _PinnedHeaderDelegate(
-                                height:
-                                    12 + 240 + 12, // top gap + map + bottom gap
+                                height: _mapHeaderHeight,
                                 backgroundColor: theme.scaffoldBackgroundColor,
                                 padding:
                                     const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -2461,11 +2682,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           SliverPersistentHeader(
                             pinned: true,
                             delegate: _PinnedHeaderDelegate(
-                              // title row (36) + gap (8) + chip row (48) + bottom
-                              // padding (8); title-row-only when there are no items.
+                              // title row + filter chip row; title-row-only
+                              // when there are no items (see the constants).
                               height: (trip.items ?? const []).isNotEmpty
-                                  ? 100
-                                  : 48,
+                                  ? _listHeaderHeight
+                                  : _listHeaderHeightEmpty,
                               backgroundColor: theme.scaffoldBackgroundColor,
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                               // Align fills the header's full extent so the child's
@@ -2487,6 +2708,30 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                                 style: theme
                                                     .textTheme.titleMedium),
                                           ),
+                                          if (hasTodayTarget) ...[
+                                            ActionChip(
+                                              avatar: Icon(Icons.today,
+                                                  size: 16,
+                                                  color: theme
+                                                      .colorScheme.primary),
+                                              label: const Text('Today'),
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              materialTapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              // Pure view work (select +
+                                              // expand + scroll): allowed
+                                              // offline and while the refine
+                                              // panel is open.
+                                              onPressed: () {
+                                                setState(() =>
+                                                    _selectedDay = todayDay);
+                                                _scrollToDay(todayDay);
+                                              },
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
                                           TextButton.icon(
                                             onPressed:
                                                 _isOffline ? null : _addPlace,
@@ -2555,8 +2800,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     pushPinnedChildren: true,
                                     children: [
                                       SliverPinnedHeader(
-                                          child:
-                                              _cityHeader(trip, group, theme)),
+                                          child: KeyedSubtree(
+                                              key: _cityHeaderKeys.putIfAbsent(
+                                                  group.label, GlobalKey.new),
+                                              child: _cityHeader(
+                                                  trip, group, theme))),
                                       if (!_collapsedCities
                                           .contains(group.label)) ...[
                                         // Embedded bookings render only in the
