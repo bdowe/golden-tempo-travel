@@ -695,6 +695,10 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/versions", admin(listTripVersionsHandler)).Methods("GET")
 	// Literal routes must precede /trips/{id} or mux binds them as an id.
 	api.Handle("/trips/shared-with-me", authMiddleware(http.HandlerFunc(listSharedWithMeHandler))).Methods("GET")
+	// Resumable plan conversations (specs/continue-where-you-left-off).
+	api.Handle("/chats", authMiddleware(http.HandlerFunc(listChatSessionsHandler))).Methods("GET")
+	api.Handle("/chats/{chatId}", authMiddleware(http.HandlerFunc(getChatSessionHandler))).Methods("GET")
+	api.Handle("/chats/{chatId}", authMiddleware(http.HandlerFunc(deleteChatSessionHandler))).Methods("DELETE")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(getTripHandler))).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(patchTripHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(deleteTripHandler))).Methods("DELETE")
@@ -800,6 +804,8 @@ func startServer(router *mux.Router) {
 	log.Printf("  GET  /api/v1/auth/me            - Current user (auth)")
 	log.Printf("  POST /api/v1/auth/onboarding-complete - Mark onboarding done (auth)")
 	log.Printf("  GET  /api/v1/trips              - List trips (auth)")
+	log.Printf("  GET  /api/v1/chats              - Resumable plan conversations (auth)")
+	log.Printf("  GET/DELETE /api/v1/chats/{chatId} - Resume / dismiss a conversation (auth)")
 	log.Printf("  GET/PATCH/DELETE /api/v1/trips/{id} - Trip detail (auth)")
 	log.Printf("  GET/PUT /api/v1/preferences      - Traveler preferences (auth)")
 	log.Printf("  GET  /api/v1/accommodation-links - Airbnb/Booking browse links")
