@@ -19,7 +19,7 @@ RETURNING id, created_at, updated_at, email, password_hash, display_name, is_adm
 
 type CreateUserParams struct {
 	Email        string  `json:"email"`
-	PasswordHash string  `json:"password_hash"`
+	PasswordHash *string `json:"password_hash"`
 	DisplayName  *string `json:"display_name"`
 }
 
@@ -160,7 +160,7 @@ UPDATE users SET password_hash = $2 WHERE id = $1
 
 type UpdateUserPasswordParams struct {
 	ID           uuid.UUID `json:"id"`
-	PasswordHash string    `json:"password_hash"`
+	PasswordHash *string   `json:"password_hash"`
 }
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {

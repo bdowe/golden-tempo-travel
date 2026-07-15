@@ -10,6 +10,7 @@ import 'screens/app_shell.dart';
 import 'screens/onboarding_quiz_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/shared_trip_screen.dart';
+import 'screens/sso_callback_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'screens/splash_screen.dart';
 
@@ -56,6 +57,14 @@ class TravelRoutePlannerApp extends StatelessWidget {
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => VerifyEmailScreen(token: segments[1]),
+          );
+        }
+        // Landing spot for the Google sign-in redirect (specs/google-sso):
+        // /sso/<one-time code>, or /sso/error when the flow failed upstream.
+        if (segments.length == 2 && segments[0] == 'sso') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => SsoCallbackScreen(code: segments[1]),
           );
         }
         // Price-alert emails deep-link here; the screen itself handles the

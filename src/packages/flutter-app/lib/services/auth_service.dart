@@ -107,6 +107,35 @@ class AuthService {
     if (res.statusCode != 200) throw _error(res);
   }
 
+  /// Whether the server has Google sign-in configured. False on any error so
+  /// the button simply stays hidden when the backend is unreachable.
+  Future<bool> googleSignInAvailable() async {
+    try {
+      final res = await httpClient.get(
+        Uri.parse('$baseUrl/auth/google/availability'),
+      );
+      if (res.statusCode != 200) return false;
+      final body = jsonDecode(res.body);
+      return body is Map && body['available'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Swaps the one-time code from the /sso/<code> redirect for a real
+  /// session. Codes are single-use and expire after a minute.
+  Future<AuthResponse> exchangeSsoCode(String code) async {
+    final res = await httpClient.post(
+      Uri.parse('$baseUrl/auth/google/exchange'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'code': code}),
+    );
+    if (res.statusCode == 200) {
+      return AuthResponse.fromJson(jsonDecode(res.body));
+    }
+    throw _error(res);
+  }
+
   /// Extracts the server's error message, falling back to a generic one.
   AuthException _error(http.Response res) {
     String message = 'Request failed (${res.statusCode})';

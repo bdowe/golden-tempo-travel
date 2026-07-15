@@ -28,6 +28,17 @@ func checkPassword(hash, plain string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
 }
 
+// hasPassword reports whether the account can authenticate with a password.
+// SSO-only accounts (created via Google) have a nil hash until they set one
+// through the password-reset flow.
+func hasPassword(u store.User) bool {
+	return u.PasswordHash != nil && *u.PasswordHash != ""
+}
+
+func checkUserPassword(u store.User, plain string) bool {
+	return hasPassword(u) && checkPassword(*u.PasswordHash, plain)
+}
+
 // generateSessionToken returns a 64-char hex string from 32 random bytes.
 func generateSessionToken() (string, error) {
 	b := make([]byte, 32)

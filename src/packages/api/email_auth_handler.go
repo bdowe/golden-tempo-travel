@@ -261,7 +261,7 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := q.UpdateUserPassword(r.Context(), store.UpdateUserPasswordParams{
-		ID: et.UserID, PasswordHash: hash,
+		ID: et.UserID, PasswordHash: &hash,
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not reset password")
 		return

@@ -194,7 +194,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := q.CreateUser(r.Context(), store.CreateUserParams{
 		Email:        req.Email,
-		PasswordHash: hash,
+		PasswordHash: &hash,
 		DisplayName:  displayName,
 	})
 	if err != nil {
@@ -232,7 +232,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	q := store.New(dbPool)
 	user, err := q.GetUserByEmail(r.Context(), req.Email)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !checkPassword(user.PasswordHash, req.Password)) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !checkUserPassword(user, req.Password)) {
 		// Generic message — never reveal whether the email or the password was wrong.
 		writeJSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
