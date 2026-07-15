@@ -767,6 +767,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/admin/local/recommendations/{id}/publish", admin(publishRecommendationHandler)).Methods("POST")
 	api.Handle("/admin/local/coverage", admin(localCoverageHandler)).Methods("GET")
 	api.Handle("/admin/metrics", admin(adminMetricsHandler)).Methods("GET")
+	// Dashboard extensions (admin_metrics_handler.go): trends, all-time
+	// totals, activity tail, per-user aggregates.
+	api.Handle("/admin/metrics/timeseries", admin(adminTimeseriesHandler)).Methods("GET")
+	api.Handle("/admin/metrics/totals", admin(adminTotalsHandler)).Methods("GET")
+	api.Handle("/admin/metrics/activity", admin(adminActivityHandler)).Methods("GET")
+	api.Handle("/admin/metrics/users", admin(adminUsersHandler)).Methods("GET")
 
 	// Public browse endpoints for published local-sourced content.
 	api.HandleFunc("/local/recommendations", localRecommendationsHandler).Methods("GET")

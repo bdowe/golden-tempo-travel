@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -17,6 +18,10 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 
 	paths := []string{
 		"/api/v1/admin/metrics",
+		"/api/v1/admin/metrics/timeseries",
+		"/api/v1/admin/metrics/totals",
+		"/api/v1/admin/metrics/activity",
+		"/api/v1/admin/metrics/users",
 		"/api/v1/admin/local/sources",
 		"/api/v1/admin/local/coverage",
 		"/api/v1/trips/versions",
@@ -233,5 +238,283 @@ func TestAdminMetricsValues(t *testing.T) {
 		if _, ok := body[gone]; ok {
 			t.Errorf("response still contains renamed field %q", gone)
 		}
+	}
+}
+
+// TestAdminTimeseries seeds events across the window boundary and asserts the
+// UTC day buckets, the fixed series keys (all present, empty arrays included),
+// and window exclusion.
+func TestAdminTimeseries(t *testing.T) {
+	resetDB(t)
+	admin, adminToken := createTestUser(t, "ts-admin@example.com")
+	makeAdmin(t, admin.ID)
+	user, _ := createTestUser(t, "ts-user@example.com")
+
+	now := time.Now().UTC()
+	insertEvent(t, user.ID, "user_registered", now, "")
+	insertEvent(t, user.ID, "trip_created", now.AddDate(0, 0, -2), "")
+	insertEvent(t, user.ID, "trip_created", now.AddDate(0, 0, -2), "")
+	// Outside the 7-day window — must not appear.
+	insertEvent(t, user.ID, "trip_created", now.AddDate(0, 0, -40), "")
+	// Not in timeseriesEventTypes — must not create a series key.
+	insertEvent(t, user.ID, "trip_refined", now, "")
+
+	rec := doJSON(t, "GET", "/api/v1/admin/metrics/timeseries?days=7", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("timeseries = %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	if body["days"] != float64(7) {
+		t.Fatalf("days = %v, want 7", body["days"])
+	}
+	series, ok := body["series"].(map[string]any)
+	if !ok {
+		t.Fatalf("series missing: %v", body["series"])
+	}
+	for _, key := range []string{"landing_viewed", "user_registered", "trip_created",
+		"plan_session_started", "booking_link_clicked", "itinerary_item_added", "alert_created"} {
+		if _, ok := series[key]; !ok {
+			t.Errorf("series[%s] missing (stable slots require every type)", key)
+		}
+	}
+	if _, ok := series["trip_refined"]; ok {
+		t.Errorf("series contains trip_refined, which is not a dashboard series")
+	}
+
+	buckets := func(key string) []any {
+		s, _ := series[key].([]any)
+		return s
+	}
+	reg := buckets("user_registered")
+	if len(reg) != 1 {
+		t.Fatalf("user_registered buckets = %v, want 1", reg)
+	}
+	if b := reg[0].(map[string]any); b["day"] != now.Format("2006-01-02") || b["n"] != float64(1) {
+		t.Errorf("user_registered bucket = %v, want {%s 1}", b, now.Format("2006-01-02"))
+	}
+	tc := buckets("trip_created")
+	if len(tc) != 1 {
+		t.Fatalf("trip_created buckets = %v, want 1 (the -40d event must be excluded)", tc)
+	}
+	wantDay := now.AddDate(0, 0, -2).Format("2006-01-02")
+	if b := tc[0].(map[string]any); b["day"] != wantDay || b["n"] != float64(2) {
+		t.Errorf("trip_created bucket = %v, want {%s 2}", b, wantDay)
+	}
+	if lv := buckets("landing_viewed"); len(lv) != 0 {
+		t.Errorf("landing_viewed = %v, want empty array", lv)
+	}
+}
+
+// TestAdminTotals seeds every counted table, including rows the WHERE filters
+// must exclude (cancelled alert, revoked share/collaborator, draft rec).
+func TestAdminTotals(t *testing.T) {
+	resetDB(t)
+	admin, adminToken := createTestUser(t, "totals-admin@example.com")
+	makeAdmin(t, admin.ID)
+	user, _ := createTestUser(t, "totals-user@example.com")
+
+	ctx := context.Background()
+	mustExec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := dbPool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("seed: %v (%s)", err, sql)
+		}
+	}
+
+	mustExec(`UPDATE users SET email_verified_at = now(), onboarded_at = now() WHERE id = $1`, user.ID)
+
+	// 3 trips across 2 lineages (l1 has a version save).
+	t1 := createTripInLineage(t, user.ID, "totals-l1")
+	createTripInLineage(t, user.ID, "totals-l1")
+	createTripInLineage(t, user.ID, "totals-l2")
+	mustExec(`INSERT INTO itinerary_items (trip_id, position, name, latitude, longitude)
+	          VALUES ($1, 0, 'Museum', 0, 0)`, t1)
+	mustExec(`INSERT INTO booking_todos (trip_id, kind, todo_key, title)
+	          VALUES ($1, 'stay', 'stay:x', 'Stay in X')`, t1)
+	mustExec(`INSERT INTO price_alerts (user_id, origin, destination, depart_date, status)
+	          VALUES ($1, 'JFK', 'CDG', '2026-09-01', 'active'),
+	                 ($1, 'JFK', 'ATH', '2026-09-01', 'cancelled')`, user.ID)
+	mustExec(`INSERT INTO local_sources (name) VALUES ('Test Local')`)
+	mustExec(`INSERT INTO local_recommendations (source_id, city, name, status)
+	          SELECT id, 'Athens', 'Published Spot', 'published' FROM local_sources LIMIT 1`)
+	mustExec(`INSERT INTO local_recommendations (source_id, city, name, status)
+	          SELECT id, 'Athens', 'Draft Spot', 'draft' FROM local_sources LIMIT 1`)
+	mustExec(`INSERT INTO trip_shares (chat_id, owner_id, token) VALUES ('totals-l1', $1, 'tok-active')`, user.ID)
+	mustExec(`INSERT INTO trip_shares (chat_id, owner_id, token, revoked_at)
+	          VALUES ('totals-l1', $1, 'tok-revoked', now())`, user.ID)
+	mustExec(`INSERT INTO trip_collaborators (chat_id, owner_id, user_id) VALUES ('totals-l1', $1, $2)`, user.ID, admin.ID)
+	mustExec(`INSERT INTO trip_collaborators (chat_id, owner_id, user_id, revoked_at)
+	          VALUES ('totals-l2', $1, $2, now())`, user.ID, admin.ID)
+	insertEvent(t, user.ID, "trip_created", time.Now(), "")
+
+	rec := doJSON(t, "GET", "/api/v1/admin/metrics/totals", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("totals = %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	for field, want := range map[string]float64{
+		"users":                2,
+		"verified_users":       1,
+		"onboarded_users":      1,
+		"trips":                3,
+		"trip_lineages":        2,
+		"itinerary_items":      1,
+		"booking_todos":        1,
+		"active_price_alerts":  1, // cancelled excluded
+		"published_local_recs": 1, // draft excluded
+		"local_guides":         0,
+		"active_collaborators": 1, // revoked excluded
+		"active_shares":        1, // revoked excluded
+		"active_sessions":      2, // one per createTestUser
+		"analytics_events":     1,
+	} {
+		if body[field] != want {
+			t.Errorf("%s = %v, want %v", field, body[field], want)
+		}
+	}
+}
+
+// TestAdminActivity asserts DESC ordering, the anonymous null-email contract,
+// metadata passthrough, and keyset pagination via next_before.
+func TestAdminActivity(t *testing.T) {
+	resetDB(t)
+	admin, adminToken := createTestUser(t, "act-admin@example.com")
+	makeAdmin(t, admin.ID)
+	user, _ := createTestUser(t, "act-user@example.com")
+
+	now := time.Now()
+	insertEvent(t, user.ID, "user_registered", now.Add(-3*time.Minute), "")
+	insertAnonymousEvent(t, "booking_link_clicked", now.Add(-2*time.Minute), `{"provider":"duffel"}`)
+	insertEvent(t, user.ID, "trip_created", now.Add(-1*time.Minute), "")
+
+	rec := doJSON(t, "GET", "/api/v1/admin/metrics/activity?limit=2", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("activity = %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	events, _ := body["events"].([]any)
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2 (limit)", len(events))
+	}
+
+	first := events[0].(map[string]any)
+	second := events[1].(map[string]any)
+	if first["event_type"] != "trip_created" || second["event_type"] != "booking_link_clicked" {
+		t.Fatalf("order = %v, %v — want trip_created then booking_link_clicked (DESC)",
+			first["event_type"], second["event_type"])
+	}
+	if first["user_email"] != "act-user@example.com" {
+		t.Errorf("authed user_email = %v, want act-user@example.com", first["user_email"])
+	}
+	if second["user_email"] != nil {
+		t.Errorf("anonymous user_email = %v, want null", second["user_email"])
+	}
+	meta, _ := second["metadata"].(map[string]any)
+	if meta["provider"] != "duffel" {
+		t.Errorf("metadata = %v, want provider duffel", second["metadata"])
+	}
+
+	// Page 2 via the cursor: only the oldest event remains.
+	cursor, _ := body["next_before"].(string)
+	if cursor == "" {
+		t.Fatalf("next_before missing on a full page")
+	}
+	rec = doJSON(t, "GET", "/api/v1/admin/metrics/activity?limit=2&before="+url.QueryEscape(cursor), adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("activity page 2 = %d: %s", rec.Code, rec.Body.String())
+	}
+	body = decode(t, rec)
+	events, _ = body["events"].([]any)
+	if len(events) != 1 || events[0].(map[string]any)["event_type"] != "user_registered" {
+		t.Fatalf("page 2 = %v, want just user_registered", events)
+	}
+	if nb, ok := body["next_before"]; ok {
+		t.Errorf("short page still has next_before = %v", nb)
+	}
+
+	rec = doJSON(t, "GET", "/api/v1/admin/metrics/activity?before=not-a-time", adminToken, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("bad before = %d, want 400", rec.Code)
+	}
+}
+
+// TestAdminUsers asserts the per-user aggregates (lineage-deduped trips, token
+// sums with the plan_session_completed filter, cost estimate), the
+// last_event_at DESC NULLS LAST ordering, and offset paging.
+func TestAdminUsers(t *testing.T) {
+	resetDB(t)
+	admin, adminToken := createTestUser(t, "users-admin@example.com")
+	makeAdmin(t, admin.ID)
+	active, _ := createTestUser(t, "users-active@example.com")
+	dormant, _ := createTestUser(t, "users-dormant@example.com")
+	_ = dormant
+
+	now := time.Now()
+	// 3 trips across 2 lineages; the same 1M/1M token fixture as
+	// TestAdminMetricsValues => est cost $18.
+	createTripInLineage(t, active.ID, "users-l1")
+	createTripInLineage(t, active.ID, "users-l1")
+	createTripInLineage(t, active.ID, "users-l2")
+	insertEvent(t, active.ID, "plan_session_started", now.Add(-time.Hour), "")
+	insertEvent(t, active.ID, "plan_session_completed", now.Add(-time.Hour),
+		`{"input_tokens":1000000,"output_tokens":1000000,"cache_read_tokens":0,"cache_creation_tokens":0}`)
+	// Same metadata keys on a different event type must NOT be summed.
+	insertEvent(t, active.ID, "booking_link_clicked", now, `{"provider":"duffel"}`)
+
+	rec := doJSON(t, "GET", "/api/v1/admin/metrics/users", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("users = %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	if body["total"] != float64(3) {
+		t.Fatalf("total = %v, want 3", body["total"])
+	}
+	users, _ := body["users"].([]any)
+	if len(users) != 3 {
+		t.Fatalf("users len = %d, want 3", len(users))
+	}
+
+	// active has events => sorts first; the two event-less users follow by
+	// created_at DESC (dormant was created after admin).
+	first := users[0].(map[string]any)
+	if first["email"] != "users-active@example.com" {
+		t.Fatalf("first user = %v, want the active one (NULLS LAST)", first["email"])
+	}
+	for field, want := range map[string]float64{
+		"trips":               3,
+		"trip_lineages":       2,
+		"plan_sessions":       1,
+		"booking_clicks":      1,
+		"plan_input_tokens":   1000000,
+		"plan_output_tokens":  1000000,
+		"est_claude_cost_usd": 18,
+	} {
+		if first[field] != want {
+			t.Errorf("active.%s = %v, want %v", field, first[field], want)
+		}
+	}
+	if first["last_event_at"] == nil {
+		t.Errorf("active.last_event_at is null, want set")
+	}
+	if first["is_admin"] != false {
+		t.Errorf("active.is_admin = %v, want false", first["is_admin"])
+	}
+	if users[1].(map[string]any)["last_event_at"] != nil {
+		t.Errorf("event-less user has last_event_at = %v, want null", users[1].(map[string]any)["last_event_at"])
+	}
+	adminRow := users[2].(map[string]any)
+	if adminRow["email"] != "users-admin@example.com" || adminRow["is_admin"] != true {
+		t.Errorf("last row = %v/%v, want the admin with is_admin true", adminRow["email"], adminRow["is_admin"])
+	}
+
+	// Offset paging: skip the active user, keep the rest of the order.
+	rec = doJSON(t, "GET", "/api/v1/admin/metrics/users?limit=1&offset=1", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("users offset = %d: %s", rec.Code, rec.Body.String())
+	}
+	body = decode(t, rec)
+	users, _ = body["users"].([]any)
+	if len(users) != 1 || users[0].(map[string]any)["email"] != "users-dormant@example.com" {
+		t.Fatalf("offset page = %v, want just users-dormant", users)
 	}
 }
