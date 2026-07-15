@@ -531,6 +531,24 @@ class PlanNotifier extends StateNotifier<PlanState> {
     state = const PlanState();
   }
 
+  /// Restore a server-persisted conversation ("continue where you left off")
+  /// without sending anything: the transcript renders immediately and the next
+  /// send carries the same chat_id plus [summary] (the server-side compaction
+  /// summary) exactly as a never-closed session would.
+  void resumeConversation({
+    required String chatId,
+    required List<PlanMessage> messages,
+    String? summary,
+  }) {
+    reset();
+    _chatId = chatId;
+    state = state.copyWith(
+      messages: messages,
+      compactedSummary:
+          (summary == null || summary.isEmpty) ? null : summary,
+    );
+  }
+
   /// Reopen a saved trip for refinement: clears any prior conversation, binds the
   /// session to the trip's chat group so new itineraries persist as versions of
   /// it, then sends the seed describing the current itinerary.

@@ -108,6 +108,12 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	uid, authed := userIDFromRequest(r)
 	ctx := r.Context()
 
+	// Snapshot the wire history as the client sent it, BEFORE the compaction
+	// block below rewrites req.Messages (or prepends the summary-as-message).
+	// Session persistence must store what a live client would resend — never
+	// the prepended summary message, which would duplicate context on resume.
+	rawMessages, rawSummary := req.Messages, req.Summary
+
 	// Compaction must rewrite req.Messages BEFORE the session below captures
 	// req by value (the profile distiller reads session.req.Messages). On
 	// threshold, fold the older messages into a summary and hand it back to
@@ -198,6 +204,41 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	session.boundTripID = boundTripID
 
+	// Persist the conversation from its very first turn so leaving
+	// mid-discussion never loses it (specs/continue-where-you-left-off).
+	// Two best-effort writes: a synchronous one now, so the user's message
+	// survives even if the stream dies immediately, and a deferred one that
+	// appends whatever assistant text streamed — the same text the client
+	// commits, on both its success and error paths. When compaction ran this
+	// turn, the compacted history + new summary are stored instead of the raw
+	// snapshot, matching the client's post-`compacted` wire state. Trip-bound
+	// sessions patch a saved trip in place — nothing to resume — and anonymous
+	// or degraded sessions stay ephemeral, like anonymous trips.
+	persistSession := authed && dbPool != nil &&
+		strings.TrimSpace(req.ChatID) != "" && boundTripID == nil
+	var turnText strings.Builder
+	if persistSession {
+		persistMsgs, persistSummary := rawMessages, rawSummary
+		if planCompacted {
+			// compactPlanMessages returns [summary-as-message, ...kept tail];
+			// the client's post-`compacted` wire state is the tail alone, with
+			// the summary carried separately — store it the same way.
+			persistMsgs, persistSummary = req.Messages[1:], req.Summary
+		}
+		savePlanChatSession(ctx, uid, req.ChatID, persistSummary, persistMsgs)
+		defer func() {
+			msgs := persistMsgs
+			if t := turnText.String(); t != "" {
+				msgs = append(append([]PlanChatMessage{}, persistMsgs...),
+					PlanChatMessage{Role: "assistant", Content: t})
+			}
+			// The request context is gone once the handler returns.
+			dctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			savePlanChatSession(dctx, uid, req.ChatID, persistSummary, msgs)
+		}()
+	}
+
 	// The tool table (plan_tool_registry.go) is the single source of truth for
 	// what the agent can do: the tools slice sent to the API is generated from
 	// it in registry order (order-stable — the tools array is part of the
@@ -268,6 +309,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 			if ev, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 				if delta, ok := ev.Delta.AsAny().(anthropic.TextDelta); ok {
+					turnText.WriteString(delta.Text)
 					sendSSE(w, "text_delta", map[string]string{"text": delta.Text})
 				}
 			}

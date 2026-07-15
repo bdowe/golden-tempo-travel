@@ -143,6 +143,19 @@ type LocalSourceMaterial struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type PlanChatSession struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"user_id"`
+	ChatID       string    `json:"chat_id"`
+	Title        string    `json:"title"`
+	Preview      string    `json:"preview"`
+	Summary      string    `json:"summary"`
+	Messages     []byte    `json:"messages"`
+	MessageCount int32     `json:"message_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type PriceAlert struct {
 	ID                uuid.UUID          `json:"id"`
 	UserID            uuid.UUID          `json:"user_id"`

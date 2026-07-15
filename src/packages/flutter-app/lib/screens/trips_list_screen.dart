@@ -8,8 +8,12 @@ import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/offline_banner.dart';
 import '../widgets/status_pill.dart';
+import '../models/chat_session.dart';
+import '../models/plan_message.dart';
 import '../models/trip.dart';
 import '../providers/auth_provider.dart';
+import '../providers/plan_provider.dart';
+import '../providers/resumable_chats_provider.dart';
 import '../providers/shared_with_me_provider.dart';
 import '../providers/trips_provider.dart';
 import 'trip_detail_screen.dart';
@@ -27,6 +31,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(tripsProvider.notifier).loadTrips();
+      ref.invalidate(resumableChatsProvider);
     });
   }
 
@@ -34,11 +39,19 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = ref.watch(tripsProvider);
+    final resumable =
+        ref.watch(resumableChatsProvider).valueOrNull ?? const <ChatSessionSummary>[];
+
+    // A conversation that just produced a saved trip graduates out of the
+    // continue section — refetch when the agent reports a saved trip.
+    ref.listen(planProvider.select((s) => s.savedTripId), (prev, next) {
+      if (next != null && next != prev) ref.invalidate(resumableChatsProvider);
+    });
 
     Widget body;
-    if (state.loading && state.trips.isEmpty) {
+    if (state.loading && state.trips.isEmpty && resumable.isEmpty) {
       body = const Center(child: CircularProgressIndicator());
-    } else if (state.error != null && state.trips.isEmpty) {
+    } else if (state.error != null && state.trips.isEmpty && resumable.isEmpty) {
       body = EmptyState(
         icon: Icons.cloud_off,
         title: 'Could not load trips',
@@ -51,7 +64,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
           ),
         ],
       );
-    } else if (state.trips.isEmpty) {
+    } else if (state.trips.isEmpty && resumable.isEmpty) {
       body = EmptyState(
         icon: Icons.luggage,
         title: 'No trips yet',
@@ -72,11 +85,30 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
       body = RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(sharedWithMeProvider);
+          ref.invalidate(resumableChatsProvider);
           await ref.read(tripsProvider.notifier).loadTrips();
         },
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
+            // In-progress AI conversations that haven't produced a trip yet
+            // (specs/continue-where-you-left-off) — the discussion phase,
+            // above the trips they may become.
+            if (resumable.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xs, 0, 0, AppSpacing.sm),
+                child: Text('Continue where you left off',
+                    style: theme.textTheme.titleMedium),
+              ),
+              for (final c in resumable) _ContinueChatCard(chat: c),
+              if (state.trips.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
+                  child: Text('My Trips', style: theme.textTheme.titleMedium),
+                ),
+            ],
             for (final t in state.trips) _TripCard(trip: t, isAdmin: isAdmin),
             // Trips others invited this user to co-plan. Kept as a separate
             // section: "mine" vs "shared with me" is the mental model, and
@@ -116,6 +148,92 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
         actions: [AccountMenu()],
       ),
       body: body,
+    );
+  }
+}
+
+/// One in-progress AI conversation: tap to rehydrate it into the Plan tab,
+/// dismiss (trailing ✕) to drop it from the section.
+class _ContinueChatCard extends ConsumerWidget {
+  final ChatSessionSummary chat;
+
+  const _ContinueChatCard({required this.chat});
+
+  Future<void> _resume(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final detail =
+          await ref.read(chatsApiServiceProvider).getChat(chat.chatId);
+      ref.read(planProvider.notifier).resumeConversation(
+            chatId: detail.chatId,
+            summary: detail.summary,
+            messages: [
+              for (final m in detail.messages)
+                PlanMessage(
+                  role: m.role == 'user'
+                      ? MessageRole.user
+                      : MessageRole.assistant,
+                  content: m.content,
+                ),
+            ],
+          );
+      ref.read(navIndexProvider.notifier).state = AppTab.plan.index;
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not reopen that conversation.')),
+      );
+    }
+  }
+
+  Future<void> _dismiss(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(chatsApiServiceProvider).dismissChat(chat.chatId);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not dismiss that conversation.')),
+      );
+    }
+    ref.invalidate(resumableChatsProvider);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final updated = DateTime.tryParse(chat.updatedAt);
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.forum_outlined),
+        title: Text(
+          chat.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (chat.preview.isNotEmpty)
+              Text(chat.preview, maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (updated != null)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
+                child: Text(
+                  relativeTime(updated),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.close, size: 20),
+          tooltip: 'Dismiss',
+          onPressed: () => _dismiss(context, ref),
+        ),
+        onTap: () => _resume(context, ref),
+      ),
     );
   }
 }

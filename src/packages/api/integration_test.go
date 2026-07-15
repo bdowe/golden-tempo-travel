@@ -66,7 +66,8 @@ func resetDB(t *testing.T) {
 			accommodations, trip_segments, booking_todos, trip_shares,
 			trip_collaborators, email_tokens, analytics_events, price_alerts,
 			local_sources, local_recommendations, local_guides,
-			local_guide_recommendations, local_source_material CASCADE`)
+			local_guide_recommendations, local_source_material,
+			plan_chat_sessions CASCADE`)
 		if err == nil {
 			return
 		}

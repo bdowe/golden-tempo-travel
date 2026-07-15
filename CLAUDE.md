@@ -112,6 +112,8 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 | GET/POST | `/api/v1/admin/local/sources` | **Admin.** List / create local sources (the named people content is attributed to) |
 | GET | `/api/v1/admin/local/recommendations?status=` | **Admin.** Curation queue; `POST .../{id}/publish` publishes (blocked without coordinates), `PATCH .../{id}` edits |
 | GET | `/api/v1/admin/local/coverage` | **Admin.** Per-city published/draft counts |
+| GET | `/api/v1/chats` | Resumable (in-progress) plan conversations; excludes chats that produced a trip |
+| GET/DELETE | `/api/v1/chats/{chatId}` | Full transcript for resume / dismiss a conversation |
 | POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 with `search_places` + `search_local_recommendations` tools |
 
 ## Key Constraints
