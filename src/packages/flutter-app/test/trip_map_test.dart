@@ -283,6 +283,23 @@ void main() {
     expect(dy, greaterThanOrEqualTo(48));
   });
 
+  testWidgets('pins number 1..N over the shown items, not trip-wide position',
+      (WidgetTester tester) async {
+    // A day-filtered (or partially geocoded) view hands the map items whose
+    // positions start mid-trip; the labels must still read 1, 2 in route
+    // order rather than exposing positions 5, 6 as "6", "7".
+    await tester.pumpWidget(_host(TripMap(items: [
+      _item(5, 'Louvre', 48.8606, 2.3376),
+      _item(6, 'Café de Flore', 48.8540, 2.3326),
+    ])));
+    await tester.pump();
+
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('6'), findsNothing);
+    expect(find.text('7'), findsNothing);
+  });
+
   testWidgets('stays alone (no mapped items) still render a map',
       (WidgetTester tester) async {
     const stays = [
