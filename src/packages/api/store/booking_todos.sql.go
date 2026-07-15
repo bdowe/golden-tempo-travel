@@ -82,6 +82,23 @@ func (q *Queries) DeleteBookingTodo(ctx context.Context, arg DeleteBookingTodoPa
 	return result.RowsAffected(), nil
 }
 
+const deleteBookingTodoNonAuto = `-- name: DeleteBookingTodoNonAuto :execrows
+DELETE FROM booking_todos WHERE id = $1 AND trip_id = $2 AND auto = false
+`
+
+type DeleteBookingTodoNonAutoParams struct {
+	ID     uuid.UUID `json:"id"`
+	TripID uuid.UUID `json:"trip_id"`
+}
+
+func (q *Queries) DeleteBookingTodoNonAuto(ctx context.Context, arg DeleteBookingTodoNonAutoParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBookingTodoNonAuto, arg.ID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteStaleAutoBookingTodos = `-- name: DeleteStaleAutoBookingTodos :execrows
 DELETE FROM booking_todos
 WHERE trip_id = $1 AND auto = true AND todo_key <> ALL($2::text[])
@@ -152,6 +169,62 @@ type SetBookingTodoBookedParams struct {
 
 func (q *Queries) SetBookingTodoBooked(ctx context.Context, arg SetBookingTodoBookedParams) (BookingTodo, error) {
 	row := q.db.QueryRow(ctx, setBookingTodoBooked, arg.ID, arg.TripID, arg.Booked)
+	var i BookingTodo
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Kind,
+		&i.TodoKey,
+		&i.Title,
+		&i.Subtitle,
+		&i.Provider,
+		&i.SearchUrl,
+		&i.DepartDate,
+		&i.ReturnDate,
+		&i.Booked,
+		&i.Auto,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateBookingTodo = `-- name: UpdateBookingTodo :one
+UPDATE booking_todos
+SET kind        = COALESCE($1, kind),
+    title       = COALESCE($2, title),
+    subtitle    = COALESCE($3, subtitle),
+    depart_date = COALESCE($4, depart_date),
+    booked      = COALESCE($5, booked)
+WHERE id = $6 AND trip_id = $7 AND auto = false
+RETURNING id, trip_id, kind, todo_key, title, subtitle, provider, search_url, depart_date, return_date, booked, auto, position, created_at, updated_at
+`
+
+type UpdateBookingTodoParams struct {
+	Kind       *string     `json:"kind"`
+	Title      *string     `json:"title"`
+	Subtitle   *string     `json:"subtitle"`
+	DepartDate pgtype.Date `json:"depart_date"`
+	Booked     *bool       `json:"booked"`
+	ID         uuid.UUID   `json:"id"`
+	TripID     uuid.UUID   `json:"trip_id"`
+}
+
+// Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
+// auto = false only: auto rows are owned by the client's itinerary sync and
+// would be overwritten on the next sync. COALESCE means subtitle/depart_date
+// can be overwritten but not cleared back to NULL.
+func (q *Queries) UpdateBookingTodo(ctx context.Context, arg UpdateBookingTodoParams) (BookingTodo, error) {
+	row := q.db.QueryRow(ctx, updateBookingTodo,
+		arg.Kind,
+		arg.Title,
+		arg.Subtitle,
+		arg.DepartDate,
+		arg.Booked,
+		arg.ID,
+		arg.TripID,
+	)
 	var i BookingTodo
 	err := row.Scan(
 		&i.ID,

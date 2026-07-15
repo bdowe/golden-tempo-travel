@@ -241,6 +241,61 @@ func TestPlanBoundSessionUpdatesSectionAndStreamsTripUpdated(t *testing.T) {
 	}
 }
 
+// remove_booking_todo end-to-end: the model reads the checklist via get_trip
+// (which must expose todo ids), removes the stale item, and the client gets a
+// trip_updated event so the trip page refreshes.
+func TestPlanRemoveBookingTodoStreamsTripUpdated(t *testing.T) {
+	resetDB(t)
+	user, token := createTestUser(t, "checklist@example.com")
+	trip := createTestTrip(t, user.ID, 1)
+	seedSession, _ := testPlanSession(true, user.ID)
+	todoID := seedAgentTodo(t, seedSession, trip.ID, "Book flights EWR to CUR")
+
+	fa := newFakeAnthropic(t,
+		toolTurn("get_trip", `{"trip_id":"`+trip.ID.String()+`"}`),
+		toolTurn("remove_booking_todo", `{"trip_id":"`+trip.ID.String()+`","todo_id":"`+todoID.String()+`"}`),
+		textTurn("Cleared the old Curaçao flight to-do."))
+
+	rec := doJSON(t, "POST", "/api/v1/plan", token, PlanRequest{
+		TripID:   trip.ID.String(),
+		Messages: []PlanChatMessage{{Role: "user", Content: "we're going to Miami now, fix the checklist"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+
+	if results := eventsOfType(events, "tool_result"); len(results) != 2 {
+		t.Fatalf("tool_result events = %d, want 2 (get_trip + remove)", len(results))
+	}
+	// get_trip's tool_result (round-tripped to the model in request 2) must
+	// expose the todo id the model then used.
+	reqs := fa.requestBodies()
+	if len(reqs) != 3 {
+		t.Fatalf("model requests = %d, want 3", len(reqs))
+	}
+	if !strings.Contains(string(reqs[1]), todoID.String()) {
+		t.Fatalf("get_trip result did not carry the todo id back to the model: %s", reqs[1])
+	}
+
+	updated := eventsOfType(events, "trip_updated")
+	if len(updated) != 1 || eventData(updated[0])["trip_id"] != trip.ID.String() {
+		t.Fatalf("trip_updated events = %v, want exactly one for trip %s", updated, trip.ID)
+	}
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("unexpected error events: %v", errs)
+	}
+
+	var count int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM booking_todos WHERE trip_id = $1`, trip.ID).Scan(&count); err != nil {
+		t.Fatalf("todos query: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("booking todos after remove = %d, want 0", count)
+	}
+}
+
 // (d) A mid-turn model error (SSE `error` event after deltas already
 // streamed) surfaces to the client as a /plan error event, not a hang or a
 // silent truncation.

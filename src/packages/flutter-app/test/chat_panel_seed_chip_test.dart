@@ -61,6 +61,6 @@ void main() {
     expect(find.textContaining('I want to refine'), findsNothing);
 
     // The turn patched the trip, so the acknowledgment chip is visible.
-    expect(find.text('Itinerary updated'), findsOneWidget);
+    expect(find.text('Trip updated'), findsOneWidget);
   });
 }

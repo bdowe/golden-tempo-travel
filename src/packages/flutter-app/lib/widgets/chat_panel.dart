@@ -355,8 +355,9 @@ class _ProfileNoteChip extends ConsumerWidget {
 }
 
 /// Transient acknowledgment that the current turn patched the bound trip
-/// (server `trip_updated` event — only fires in refine sessions). Cleared at
-/// the start of the next send, mirroring the profile-note chip lifecycle.
+/// (server `trip_updated` event — itinerary edits or booking-checklist
+/// changes). Cleared at the start of the next send, mirroring the
+/// profile-note chip lifecycle.
 class _ItineraryUpdatedChip extends ConsumerWidget {
   final ProviderListenable<PlanState> state;
 
@@ -374,7 +375,7 @@ class _ItineraryUpdatedChip extends ConsumerWidget {
         child: Chip(
           avatar: Icon(Icons.check_circle_outline,
               size: 16, color: theme.colorScheme.primary),
-          label: const Text('Itinerary updated'),
+          label: const Text('Trip updated'),
         ),
       ),
     );
