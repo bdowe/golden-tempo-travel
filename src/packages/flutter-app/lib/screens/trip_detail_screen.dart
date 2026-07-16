@@ -144,9 +144,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// A trip without a parseable start date can't map Day N to a calendar
   /// date, so no stay matches (they all still show under All).
   List<Accommodation> _dayFilteredStays(Trip trip) {
-    final all = trip.accommodations ?? const <Accommodation>[];
     final day = _selectedDay;
-    if (day == null) return all;
+    if (day == null) return trip.accommodations ?? const <Accommodation>[];
+    return _staysOnNight(trip, day);
+  }
+
+  /// Stays covering the night of trip day [day], checkout-exclusively — the
+  /// single home of the day→night math shared by the map's day filter and the
+  /// Tonight caption. A trip without a parseable start date can't map Day N
+  /// to a calendar date, so no stay matches.
+  List<Accommodation> _staysOnNight(Trip trip, int day) {
+    final all = trip.accommodations ?? const <Accommodation>[];
     final start = DateTime.tryParse(trip.startDate ?? '');
     if (start == null) return const [];
     // Calendar-day arithmetic (constructor normalizes overflow) rather than
@@ -1224,7 +1232,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// the day's items scroll past, then is pushed off by the next day. Legacy
   /// items with no day fall back to flat day-trip batching with no day headers.
   List<Widget> _buildGroupItemSlivers(String cityKey, List<ItineraryItem> items,
-      ThemeData theme, DateTime? tripStart) {
+      ThemeData theme, DateTime? tripStart,
+      {required bool showTonight}) {
     if (!items.any((it) => it.day != null)) {
       return [_boxSliver(_buildDayTripWidgets(items, theme))];
     }
@@ -1271,11 +1280,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 : null,
             headerKey: _dayHeaderKeys.putIfAbsent(dayKey, GlobalKey.new),
             isToday: day == todayDay);
+        // Tonight caption (specs/happening-now): a non-pinned content row —
+        // it scrolls and collapses with the section, never joining the
+        // pinned chrome. [showTonight] is true for at most one group, so
+        // repeated day numbers across city groups can't duplicate it.
+        final trip = _trip;
+        final tonight = (showTonight && day == todayDay && trip != null)
+            ? _tonightCaption(theme, _staysOnNight(trip, day))
+            : null;
         slivers.add(MultiSliver(
           pushPinnedChildren: true,
           children: [
             SliverPinnedHeader(child: header),
-            if (!collapsed) _boxSliver(_buildDayTripWidgets(run, theme)),
+            if (!collapsed)
+              _boxSliver([
+                if (tonight != null) tonight,
+                ..._buildDayTripWidgets(run, theme),
+              ]),
           ],
         ));
       } else {
@@ -1837,6 +1858,37 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// "Tonight: <stay>" caption for today's day section (specs/happening-now
+  /// PR 2): where the traveler sleeps tonight, checkout-exclusively. Returns
+  /// null when no covering stay has a non-empty name — no filler row.
+  Widget? _tonightCaption(ThemeData theme, List<Accommodation> stays) {
+    final names = stays
+        .map((a) => a.name.trim())
+        .where((n) => n.isNotEmpty)
+        .toList();
+    if (names.isEmpty) return null;
+    return Padding(
+      // Matches the _dayTripSubHeader indent (20 left) so the caption reads
+      // as a sub-row of the day, tucked tight under the header (6 top).
+      padding: const EdgeInsets.fromLTRB(20, 6, 16, 0),
+      child: Row(
+        children: [
+          Icon(Icons.hotel, size: 14, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Tonight: ${names.join(', ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2642,6 +2694,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       final hasTodayTarget = todayDay != null &&
                           (trip.items ?? const <ItineraryItem>[])
                               .any((i) => i.day != null);
+                      // Tonight caption (specs/happening-now): day numbers
+                      // repeat across city groups (keys are '$cityKey#$day'),
+                      // so resolve the FIRST group containing today's day
+                      // once, here — exactly one caption can ever render.
+                      String? firstTodayGroupLabel;
+                      if (todayDay != null) {
+                        for (final group in groups) {
+                          if (group.items.any((it) => it.day == todayDay)) {
+                            firstTodayGroupLabel = group.label;
+                            break;
+                          }
+                        }
+                      }
                       // A loud load queued the one-shot auto-scroll; this is
                       // the first frame that actually mounts the scroll view
                       // (and registers the day-header keys), so kick it off
@@ -2870,8 +2935,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                           _boxSliver(_bookingRowWidgets(
                                               grouped.slots[gi],
                                               departureOnly: false)),
-                                        ..._buildGroupItemSlivers(group.label,
-                                            group.items, theme, tripStart),
+                                        ..._buildGroupItemSlivers(
+                                            group.label,
+                                            group.items,
+                                            theme,
+                                            tripStart,
+                                            showTonight: group.label ==
+                                                firstTodayGroupLabel),
                                         // Curated local recommendations for this
                                         // city — the "legit info you can't
                                         // google" surface. Leads the events
