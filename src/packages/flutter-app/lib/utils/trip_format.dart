@@ -18,6 +18,17 @@ String? tripDateRange(String? startIso, String? endIso) {
   return sameDay ? _fmt(a) : '${_fmt(a)} – ${_fmt(b)}';
 }
 
+/// A short destination summary from a trip's hub cities: "Paris",
+/// "Mexico City & Puerto Vallarta", or "Tokyo & Kyoto +2 more". Null when
+/// there is no city data (legacy trips), so callers fall back to the title.
+String? citiesLabel(List<String>? cities) {
+  final c = cities ?? const <String>[];
+  if (c.isEmpty) return null;
+  if (c.length == 1) return c.first;
+  if (c.length == 2) return '${c[0]} & ${c[1]}';
+  return '${c[0]} & ${c[1]} +${c.length - 2} more';
+}
+
 /// "YYYY-MM-DD" from an ISO timestamp, falling back to the raw value.
 String shortDate(String iso) {
   final d = DateTime.tryParse(iso);

@@ -4,6 +4,7 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import '../constants/app_info.dart';
 import '../models/local_guide.dart';
 import '../providers/auth_provider.dart';
+import '../providers/live_trip_provider.dart';
 import '../providers/local_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/recent_trip_provider.dart';
@@ -14,6 +15,7 @@ import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/live_trip_card.dart';
 import '../widgets/page_container.dart';
 import '../widgets/section_header.dart';
 import 'route_optimizer_screen.dart';
@@ -39,6 +41,9 @@ class HomeScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
     final recentTrip = ref.watch(recentTripProvider);
+    // Populated app-wide: AppShell's IndexedStack keeps TripsListScreen
+    // mounted, and its loadTrips() feeds tripsProvider — no fetch from here.
+    final liveTrip = ref.watch(liveTripProvider);
 
     // The chat is a persistent tab, so "Let's go" / a suggestion switches to it
     // (and seeds the message) rather than pushing a one-off screen.
@@ -98,8 +103,22 @@ class HomeScreen extends ConsumerWidget {
 
                 const SizedBox(height: 28),
 
-                // Most recently viewed trip — hidden until one has been opened.
-                if (recentTrip != null) ...[
+                // The trip happening today (specs/happening-now), then the
+                // most recently viewed trip — the latter hidden when it *is*
+                // the live trip, so the same trip never stacks twice.
+                if (liveTrip != null) ...[
+                  LiveTripCard(
+                    trip: liveTrip,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TripDetailScreen(tripId: liveTrip.id),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (recentTrip != null &&
+                    recentTrip.tripId != liveTrip?.id) ...[
                   _RecentTripCard(
                     title: recentTrip.title,
                     dateRange: recentTrip.dateRange,

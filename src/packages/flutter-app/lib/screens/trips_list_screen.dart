@@ -6,12 +6,14 @@ import '../utils/trip_format.dart';
 import '../widgets/account_menu.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/live_trip_card.dart';
 import '../widgets/offline_banner.dart';
 import '../widgets/status_pill.dart';
 import '../models/chat_session.dart';
 import '../models/plan_message.dart';
 import '../models/trip.dart';
 import '../providers/auth_provider.dart';
+import '../providers/live_trip_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/resumable_chats_provider.dart';
 import '../providers/shared_with_me_provider.dart';
@@ -82,6 +84,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
       final isAdmin = ref.watch(authProvider).user?.isAdmin ?? false;
       final shared =
           ref.watch(sharedWithMeProvider).valueOrNull ?? const <Trip>[];
+      final liveTrip = ref.watch(liveTripProvider);
       body = RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(sharedWithMeProvider);
@@ -91,6 +94,17 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
+            // The trip happening today, promoted to the very top as a
+            // one-tap shortcut (specs/happening-now). It also stays in
+            // "My Trips" below — this is a spotlight, not a filter.
+            if (liveTrip != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                child: LiveTripCard(
+                  trip: liveTrip,
+                  onTap: () => _openTrip(context, liveTrip.id),
+                ),
+              ),
             // In-progress AI conversations that haven't produced a trip yet
             // (specs/continue-where-you-left-off) — the discussion phase,
             // above the trips they may become.
@@ -238,17 +252,6 @@ class _ContinueChatCard extends ConsumerWidget {
   }
 }
 
-/// A short destination summary from the trip's hub cities: "Paris",
-/// "Mexico City & Puerto Vallarta", or "Tokyo & Kyoto +2 more". Null when the
-/// trip has no city data (legacy trips), so the caller falls back to the title.
-String? _locationLabel(Trip t) {
-  final cities = t.cities ?? const <String>[];
-  if (cities.isEmpty) return null;
-  if (cities.length == 1) return cities.first;
-  if (cities.length == 2) return '${cities[0]} & ${cities[1]}';
-  return '${cities[0]} & ${cities[1]} +${cities.length - 2} more';
-}
-
 void _openTrip(BuildContext context, String tripId) {
   Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: tripId)),
@@ -270,7 +273,7 @@ class _TripCard extends ConsumerWidget {
     final range = tripDateRange(trip.startDate, trip.endDate);
 
     final title = Text(
-      _locationLabel(trip) ?? trip.title,
+      citiesLabel(trip.cities) ?? trip.title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: Theme.of(context)
