@@ -157,6 +157,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         .toList();
   }
 
+  /// Map-visibility gate: a filtered item with coordinates OR a geocoded stay
+  /// (TripMap renders stay pins on its own, so a stays-only trip still has a
+  /// map worth showing). Keyed to the unfiltered stay list — like the items,
+  /// day filtering only narrows what's plotted, never whether the map shows.
+  /// Shared by the build and the pinned-chrome scroll math so the two can
+  /// never drift apart.
+  bool _mapShown(Trip trip) =>
+      _filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0) ||
+      (trip.accommodations ?? const <Accommodation>[])
+          .any(TripMap.stayHasCoords);
+
   @override
   void initState() {
     super.initState();
@@ -314,11 +325,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   static const double _listHeaderHeightEmpty = 48;
 
   /// Combined height of the chrome pinned above the itinerary slivers: the
-  /// map header (shown only when a filtered item is mappable — same gate as
-  /// the build) plus the itinerary title/filter header.
+  /// map header (shown when a filtered item or a stay is mappable — same
+  /// [_mapShown] gate as the build) plus the itinerary title/filter header.
   double _pinnedChrome(Trip trip) {
-    final mapShown =
-        _filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0);
+    final mapShown = _mapShown(trip);
     final listH = (trip.items ?? const []).isNotEmpty
         ? _listHeaderHeight
         : _listHeaderHeightEmpty;
@@ -2660,8 +2670,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           ),
                           // The map scrolls with the page until it reaches the top,
                           // then stays pinned while the itinerary scrolls beneath it.
-                          if (_filtered(trip)
-                              .any((i) => i.latitude != 0 || i.longitude != 0))
+                          if (_mapShown(trip))
                             SliverPersistentHeader(
                               pinned: true,
                               delegate: _PinnedHeaderDelegate(

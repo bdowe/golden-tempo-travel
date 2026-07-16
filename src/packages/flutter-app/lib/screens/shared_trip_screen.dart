@@ -144,9 +144,13 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     final trip = _trip;
     final items = trip.items ?? const <ItineraryItem>[];
     final dates = tripDateRange(trip.startDate, trip.endDate);
-    // The map-visibility gate stays keyed to the unfiltered items so the
-    // chip row never disappears when the selected day has nothing mappable.
-    final hasCoords = items.any((i) => i.latitude != 0 || i.longitude != 0);
+    final stays = trip.accommodations ?? const <Accommodation>[];
+    // The map-visibility gate stays keyed to the unfiltered items/stays so the
+    // chip row never disappears when the selected day has nothing mappable. A
+    // geocoded stay counts on its own: TripMap renders stay pins, so a
+    // stays-only trip still has a map worth showing.
+    final hasCoords = items.any((i) => i.latitude != 0 || i.longitude != 0) ||
+        stays.any(TripMap.stayHasCoords);
     final mapDayCount =
         dayCount(trip.startDate, trip.endDate, items.map((i) => i.day));
     if (_selectedDay != null && _selectedDay! > mapDayCount) {
@@ -155,7 +159,6 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     final dayItems = _selectedDay == null
         ? items
         : items.where((i) => i.day == _selectedDay).toList();
-    final stays = trip.accommodations ?? const <Accommodation>[];
     // Under Day N, only the stay(s) covering that night (checkout-exclusive);
     // without a parseable start date no stay can match a day.
     final tripStart = DateTime.tryParse(trip.startDate ?? '');

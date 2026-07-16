@@ -303,6 +303,16 @@ class _MetricsBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           _ProviderClicks(clicks: m.clicksByProvider),
         ],
+        // Anonymous slice of the provider split (signed-out clicks — same
+        // discountable caveat as the caption above). Hidden when null (API
+        // predates the split) or empty, so old backends render unchanged.
+        if (m.clicksByProviderAnonymous?.isNotEmpty ?? false) ...[
+          const SizedBox(height: AppSpacing.lg),
+          _ProviderClicks(
+            clicks: m.clicksByProviderAnonymous!,
+            title: 'Anonymous clicks by provider',
+          ),
+        ],
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(title: 'AI planning'),
         const SizedBox(height: AppSpacing.sm),
@@ -446,7 +456,9 @@ class _TileGrid extends StatelessWidget {
 /// identity, so no categorical palette is needed.
 class _ProviderClicks extends StatelessWidget {
   final Map<String, int> clicks;
-  const _ProviderClicks({required this.clicks});
+  final String title;
+  const _ProviderClicks(
+      {required this.clicks, this.title = 'Clicks by provider'});
 
   @override
   Widget build(BuildContext context) {
@@ -458,7 +470,7 @@ class _ProviderClicks extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Clicks by provider', style: theme.textTheme.labelLarge),
+        Text(title, style: theme.textTheme.labelLarge),
         const SizedBox(height: AppSpacing.sm),
         for (final e in entries)
           Padding(
