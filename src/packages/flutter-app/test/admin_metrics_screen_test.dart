@@ -113,7 +113,10 @@ void main() {
     expect(
         find.text('1 users affected'), findsOneWidget); // active_trips cohort
     expect(find.text('Clicks by provider'), findsOneWidget);
-    expect(find.text('booking'), findsOneWidget);
+    // The anonymous provider split renders as its own bar list under the
+    // authenticated one, so 'booking' labels a row in each.
+    expect(find.text('Anonymous clicks by provider'), findsOneWidget);
+    expect(find.text('booking'), findsNWidgets(2));
     expect(find.text('Price alerts'), findsOneWidget);
 
     // Provider-call counters: honestly labeled as since-restart, with the
@@ -159,7 +162,39 @@ void main() {
     expect(find.text('Provider APIs (since restart)'), findsNothing);
     expect(find.text('Landing views'), findsNothing);
     expect(find.textContaining('anonymous, rate-limit bounded'), findsNothing);
+    expect(find.text('Anonymous clicks by provider'), findsNothing);
     expect(find.text('Price alerts'), findsOneWidget);
+  });
+
+  testWidgets('omits the anonymous provider split when the map is empty',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 3600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // Present-but-empty (no anonymous clicks in the window) renders nothing —
+    // same as an API that predates the field.
+    const metrics = AdminMetrics(
+      days: 30,
+      signups: 1,
+      clicksByProvider: {'booking': 8},
+      clicksByProviderAnonymous: {},
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          adminMetricsProvider(30).overrideWith((ref) async => metrics),
+          adminTotalsProvider.overrideWith((ref) async => _totals),
+        ],
+        child: const MaterialApp(home: AdminMetricsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Clicks by provider'), findsOneWidget);
+    expect(find.text('booking'), findsOneWidget);
+    expect(find.text('Anonymous clicks by provider'), findsNothing);
   });
 
   testWidgets('error state offers retry', (tester) async {

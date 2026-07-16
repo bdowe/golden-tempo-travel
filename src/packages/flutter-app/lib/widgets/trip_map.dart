@@ -58,6 +58,15 @@ class TripMap extends StatefulWidget {
     this.topOverlayInset = 0,
   });
 
+  /// Whether [a] would render as a stay pin: geocoded (null means "not
+  /// geocoded") and not the (0,0) junk sentinel. Public so screens can key
+  /// their map-visibility gates to the exact filter the renderer applies.
+  static bool stayHasCoords(Accommodation a) {
+    final lat = a.latitude;
+    final lng = a.longitude;
+    return lat != null && lng != null && (lat != 0 || lng != 0);
+  }
+
   @override
   State<TripMap> createState() => _TripMapState();
 }
@@ -137,10 +146,8 @@ class _TripMapState extends State<TripMap> {
         if (_hasCoords(it)) LatLng(it.latitude, it.longitude),
     ];
     for (final a in accommodations) {
-      final lat = a.latitude;
-      final lng = a.longitude;
-      if (lat != null && lng != null && (lat != 0 || lng != 0)) {
-        points.add(LatLng(lat, lng));
+      if (TripMap.stayHasCoords(a)) {
+        points.add(LatLng(a.latitude!, a.longitude!));
       }
     }
     return points;
@@ -206,10 +213,8 @@ class _TripMapState extends State<TripMap> {
     // Stays with real coordinates (null means "not geocoded"; 0,0 is junk).
     final stays = <({Accommodation stay, LatLng point})>[];
     for (final a in widget.accommodations) {
-      final lat = a.latitude;
-      final lng = a.longitude;
-      if (lat != null && lng != null && (lat != 0 || lng != 0)) {
-        stays.add((stay: a, point: LatLng(lat, lng)));
+      if (TripMap.stayHasCoords(a)) {
+        stays.add((stay: a, point: LatLng(a.latitude!, a.longitude!)));
       }
     }
 
