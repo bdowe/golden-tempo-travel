@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:travel_route_planner/models/trip.dart';
 import 'package:travel_route_planner/models/itinerary_item.dart';
+import 'package:travel_route_planner/models/accommodation.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/providers/trips_provider.dart';
@@ -51,7 +52,11 @@ ItineraryItem _item(int pos, String name, int day,
 /// A three-day Paris trip: day 1 is long enough that today's (day 2) header
 /// starts well below the fold, day 3 gives the scroll room to land day 2 at
 /// the top.
-Trip _liveTrip({required String startDate, required String endDate}) => Trip(
+Trip _liveTrip(
+        {required String startDate,
+        required String endDate,
+        List<Accommodation>? accommodations}) =>
+    Trip(
       id: 't1',
       title: 'Live Trip',
       status: 'planned',
@@ -59,6 +64,7 @@ Trip _liveTrip({required String startDate, required String endDate}) => Trip(
       updatedAt: '2026-06-01',
       startDate: startDate,
       endDate: endDate,
+      accommodations: accommodations,
       items: [
         for (var k = 0; k < 6; k++) _item(k, 'Past stop $k', 1),
         for (var k = 0; k < 6; k++) _item(6 + k, 'Today stop $k', 2),
@@ -231,5 +237,172 @@ void main() {
     expect(
         tester.widget<MapDayChips>(find.byType(MapDayChips)).selected, 2);
     expect(_todayChip(), findsOneWidget);
+  });
+
+  group('Tonight caption (specs/happening-now PR 2)', () {
+    // Coordinate-free stays: TripMap.stayHasCoords stays false, so the map
+    // sliver never mounts and the scroll geometry the tests above pin down
+    // is unchanged.
+    Accommodation stay(String id, String name,
+            {required int checkInOffset, required int checkOutOffset}) =>
+        Accommodation(
+          id: id,
+          name: name,
+          checkIn: _iso(now.add(Duration(days: checkInOffset))),
+          checkOut: _iso(now.add(Duration(days: checkOutOffset))),
+        );
+
+    Finder tonight() => find.textContaining('Tonight: ');
+
+    testWidgets('a stay covering tonight renders exactly one caption in '
+        "today's section", (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 2),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      // The auto-scroll parked today's header at the top; the caption is the
+      // section's first content row, directly under it.
+      expect(tonight(), findsOneWidget);
+      expect(find.text('Tonight: Hôtel du Nord'), findsOneWidget);
+      final pillDy = tester.getTopLeft(_todayPill()).dy;
+      final captionDy = tester.getTopLeft(tonight()).dy;
+      expect(captionDy, greaterThan(pillDy));
+      expect(captionDy,
+          lessThan(tester.getTopLeft(find.text('Today stop 0')).dy));
+    });
+
+    testWidgets('a stay checking out today never claims tonight '
+        '(checkout-exclusive)', (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 0),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(tonight(), findsNothing);
+    });
+
+    testWidgets('a trip that ended yesterday shows no caption',
+        (WidgetTester tester) async {
+      final trip = _liveTrip(
+        startDate: _iso(now.subtract(const Duration(days: 3))),
+        endDate: _iso(now.subtract(const Duration(days: 1))),
+        accommodations: [
+          stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 2),
+        ],
+      );
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(tonight(), findsNothing);
+    });
+
+    testWidgets('an undated trip shows no caption',
+        (WidgetTester tester) async {
+      final undated = Trip(
+        id: 't1',
+        title: 'Undated Trip',
+        status: 'planned',
+        createdAt: '2026-06-01',
+        updatedAt: '2026-06-01',
+        accommodations: [
+          stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 2),
+        ],
+        items: [
+          for (var k = 0; k < 3; k++) _item(k, 'Stop $k', 1),
+          for (var k = 0; k < 3; k++) _item(3 + k, 'Later stop $k', 2),
+        ],
+      );
+      await _pumpScreen(tester, _FakeTripsApiService(undated));
+
+      expect(tonight(), findsNothing);
+    });
+
+    testWidgets('two stays covering tonight are comma-joined',
+        (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', 'Hôtel A', checkInOffset: -1, checkOutOffset: 2),
+        stay('a2', 'Hôtel B', checkInOffset: 0, checkOutOffset: 1),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(find.text('Tonight: Hôtel A, Hôtel B'), findsOneWidget);
+    });
+
+    testWidgets('an empty-name stay is skipped in the joined names',
+        (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', '  ', checkInOffset: -1, checkOutOffset: 2),
+        stay('a2', 'Hôtel B', checkInOffset: -1, checkOutOffset: 2),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(find.text('Tonight: Hôtel B'), findsOneWidget);
+    });
+
+    testWidgets('only empty-name stays render no caption at all',
+        (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', '  ', checkInOffset: -1, checkOutOffset: 2),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(tonight(), findsNothing);
+    });
+
+    testWidgets("collapsing today's day hides the caption with the section",
+        (WidgetTester tester) async {
+      final trip = _liveTrip(startDate: start, endDate: end, accommodations: [
+        stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 2),
+      ]);
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+      expect(tonight(), findsOneWidget);
+
+      await tester.tap(_todayPill());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Today stop 0'), findsNothing); // really collapsed
+      expect(tonight(), findsNothing);
+    });
+
+    testWidgets('two city groups containing today render exactly one caption',
+        (WidgetTester tester) async {
+      ItineraryItem cityItem(int pos, String name, int day, String city) =>
+          ItineraryItem(
+            id: 'i$pos',
+            position: pos,
+            name: name,
+            address: '$name street, $city',
+            latitude: 0,
+            longitude: 0,
+            category: 'attraction',
+            day: day,
+            city: city,
+          );
+      // Day 2 (today) spans the Paris→Lyon handover, so BOTH city groups
+      // render a "Day 2" section; the caption may appear only in the first.
+      final trip = Trip(
+        id: 't1',
+        title: 'Two Cities',
+        status: 'planned',
+        createdAt: '2026-06-01',
+        updatedAt: '2026-06-01',
+        startDate: start,
+        endDate: end,
+        accommodations: [
+          stay('a1', 'Hôtel du Nord', checkInOffset: -1, checkOutOffset: 2),
+        ],
+        items: [
+          cityItem(0, 'Louvre', 1, 'Paris'),
+          cityItem(1, 'Marais walk', 2, 'Paris'),
+          cityItem(2, 'Confluence', 2, 'Lyon'),
+          cityItem(3, 'Fourvière', 3, 'Lyon'),
+        ],
+      );
+      await _pumpScreen(tester, _FakeTripsApiService(trip));
+
+      expect(find.text('Paris'), findsWidgets);
+      expect(find.text('Lyon'), findsWidgets);
+      expect(tonight(), findsOneWidget);
+    });
   });
 }
