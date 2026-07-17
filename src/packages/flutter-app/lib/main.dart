@@ -47,6 +47,15 @@ class TravelRoutePlannerApp extends StatelessWidget {
             builder: (_) => SharedTripScreen(token: segments[1]),
           );
         }
+        // Emailed co-planner invites (specs/invite-by-email); same screen,
+        // invite-token fetch + accept.
+        if (segments.length == 2 && segments[0] == 'invite') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => SharedTripScreen(
+                token: segments[1], linkKind: SharedLinkKind.invite),
+          );
+        }
         if (segments.length == 2 && segments[0] == 'reset') {
           return MaterialPageRoute(
             settings: settings,

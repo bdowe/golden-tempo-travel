@@ -19,15 +19,24 @@ import 'auth_screen.dart';
 import 'trip_detail_screen.dart';
 import '../utils/snack.dart';
 
+/// Which kind of link opened this screen: a share link (multi-use, viewer or
+/// editor) or an emailed invite (single-use, editor). The two return the
+/// same payload from different endpoints and redeem differently.
+enum SharedLinkKind { share, invite }
+
 /// Public read-only view of a shared trip, reachable at /#/share/<token>
 /// without an account. Signed-in viewers can save a copy to their own trips.
 class SharedTripScreen extends ConsumerWidget {
   final String token;
-  const SharedTripScreen({super.key, required this.token});
+  final SharedLinkKind linkKind;
+  const SharedTripScreen(
+      {super.key, required this.token, this.linkKind = SharedLinkKind.share});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shared = ref.watch(sharedTripProvider(token));
+    final shared = ref.watch(linkKind == SharedLinkKind.invite
+        ? invitedTripProvider(token)
+        : sharedTripProvider(token));
     return Scaffold(
       appBar: GradientAppBar(
         title: shared.maybeWhen(
@@ -37,13 +46,15 @@ class SharedTripScreen extends ConsumerWidget {
       ),
       body: shared.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => const EmptyState(
+        error: (e, _) => EmptyState(
           icon: Icons.link_off,
           title: 'This link isn\'t available',
-          message:
-              'The trip may have been unshared, or the link is incorrect.',
+          message: linkKind == SharedLinkKind.invite
+              ? 'The invite may have expired, been revoked, or already used.'
+              : 'The trip may have been unshared, or the link is incorrect.',
         ),
-        data: (s) => _SharedTripBody(shared: s, token: token),
+        data: (s) =>
+            _SharedTripBody(shared: s, token: token, linkKind: linkKind),
       ),
     );
   }
@@ -52,7 +63,9 @@ class SharedTripScreen extends ConsumerWidget {
 class _SharedTripBody extends ConsumerStatefulWidget {
   final SharedTrip shared;
   final String token;
-  const _SharedTripBody({required this.shared, required this.token});
+  final SharedLinkKind linkKind;
+  const _SharedTripBody(
+      {required this.shared, required this.token, required this.linkKind});
 
   @override
   ConsumerState<_SharedTripBody> createState() => _SharedTripBodyState();
@@ -120,8 +133,10 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     if (!await _ensureSignedIn()) return;
     setState(() => _saving = true);
     try {
-      final tripId =
-          await ref.read(tripsApiServiceProvider).joinSharedTrip(widget.token);
+      final service = ref.read(tripsApiServiceProvider);
+      final tripId = widget.linkKind == SharedLinkKind.invite
+          ? await service.acceptInvite(widget.token)
+          : await service.joinSharedTrip(widget.token);
       if (!mounted) return;
       ref.read(navIndexProvider.notifier).state = AppTab.trips.index;
       Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
@@ -334,10 +349,13 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                               : const Icon(Icons.group_add_outlined),
                           label: const Text('Join as co-planner'),
                         ),
-                        TextButton(
-                          onPressed: _saving ? null : _saveCopy,
-                          child: const Text('Or save a separate copy'),
-                        ),
+                        // Invite tokens have no duplicate endpoint — they're
+                        // single-use join capabilities, not browse links.
+                        if (widget.linkKind == SharedLinkKind.share)
+                          TextButton(
+                            onPressed: _saving ? null : _saveCopy,
+                            child: const Text('Or save a separate copy'),
+                          ),
                       ],
                     )
                   : FilledButton.icon(
