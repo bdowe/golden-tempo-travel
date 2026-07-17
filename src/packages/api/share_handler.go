@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"travel-route-planner/store"
@@ -156,9 +158,36 @@ func resolveShare(r *http.Request) (store.TripShare, store.Trip, bool) {
 	return share, trip, true
 }
 
+// buildSharedTripResponse assembles the public shape of a shared trip:
+// items/stays/segments plus owner attribution. Booking todos and all profile
+// data are deliberately excluded; chat_id is stripped so the response
+// carries nothing tied to the owner's sessions. Shared by the share-token
+// and invite-token preview paths.
+func buildSharedTripResponse(ctx context.Context, ownerID uuid.UUID, trip store.Trip, role string) (SharedTripResponse, error) {
+	q := store.New(dbPool)
+	items, err := q.GetItineraryItemsByTrip(ctx, trip.ID)
+	if err != nil {
+		return SharedTripResponse{}, err
+	}
+	accommodations, err := q.ListAccommodationsByTrip(ctx, trip.ID)
+	if err != nil {
+		return SharedTripResponse{}, err
+	}
+	segments, err := q.ListSegmentsByTrip(ctx, trip.ID)
+	if err != nil {
+		return SharedTripResponse{}, err
+	}
+	ownerName := "A traveler"
+	if owner, err := q.GetUserByID(ctx, ownerID); err == nil &&
+		owner.DisplayName != nil && *owner.DisplayName != "" {
+		ownerName = *owner.DisplayName
+	}
+	resp := toTripResponse(trip, items, accommodations, segments, nil)
+	resp.ChatID = nil
+	return SharedTripResponse{Trip: resp, OwnerName: ownerName, Role: role}, nil
+}
+
 // sharedTripHandler is the public, unauthenticated read of a shared trip.
-// Booking todos and all profile data are deliberately excluded; chat_id is
-// stripped so the response carries nothing tied to the owner's sessions.
 func sharedTripHandler(w http.ResponseWriter, r *http.Request) {
 	if dbPool == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
@@ -169,30 +198,12 @@ func sharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "shared trip not found")
 		return
 	}
-	q := store.New(dbPool)
-	items, err := q.GetItineraryItemsByTrip(r.Context(), trip.ID)
+	resp, err := buildSharedTripResponse(r.Context(), share.OwnerID, trip, share.Role)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
+		writeJSONError(w, http.StatusInternalServerError, "could not load shared trip")
 		return
 	}
-	accommodations, err := q.ListAccommodationsByTrip(r.Context(), trip.ID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not load stays")
-		return
-	}
-	segments, err := q.ListSegmentsByTrip(r.Context(), trip.ID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not load segments")
-		return
-	}
-	ownerName := "A traveler"
-	if owner, err := q.GetUserByID(r.Context(), share.OwnerID); err == nil &&
-		owner.DisplayName != nil && *owner.DisplayName != "" {
-		ownerName = *owner.DisplayName
-	}
-	resp := toTripResponse(trip, items, accommodations, segments, nil)
-	resp.ChatID = nil
-	writeJSON(w, http.StatusOK, SharedTripResponse{Trip: resp, OwnerName: ownerName, Role: share.Role})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // duplicateSharedTripHandler copies the shared trip's latest version (items,

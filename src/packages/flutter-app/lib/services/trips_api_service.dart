@@ -183,6 +183,80 @@ class TripsApiService {
     }
   }
 
+  /// Owner-only: emails a co-planner invite to [email]
+  /// (specs/invite-by-email). The server never returns the token.
+  Future<void> createInvite(String tripId, String email) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/invites'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode({'email': email}),
+    );
+    if (res.statusCode != 201) {
+      String msg = 'Failed to send invite (${res.statusCode})';
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        if (body['error'] is String) msg = body['error'] as String;
+      } catch (_) {}
+      throw Exception(msg);
+    }
+  }
+
+  /// Owner-only: pending (unaccepted, unexpired) invites on a trip.
+  Future<List<({String id, String email, DateTime expiresAt})>> listInvites(
+      String tripId) async {
+    final res = await apiClient.httpClient.get(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/invites'),
+      headers: apiClient.jsonHeaders(),
+    );
+    if (res.statusCode == 200) {
+      final list = jsonDecode(res.body) as List<dynamic>;
+      return list
+          .map((e) => (
+                id: e['id'] as String,
+                email: e['email'] as String,
+                expiresAt: DateTime.parse(e['expires_at'] as String),
+              ))
+          .toList();
+    }
+    throw Exception('Failed to load invites (${res.statusCode})');
+  }
+
+  /// Owner-only: voids a pending invite.
+  Future<void> revokeInvite(String tripId, String inviteId) async {
+    final res = await apiClient.httpClient.delete(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/invites/$inviteId'),
+      headers: apiClient.jsonHeaders(),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to revoke invite (${res.statusCode})');
+    }
+  }
+
+  /// Public read behind an emailed invite link — same shape as a shared trip.
+  Future<SharedTrip> getInvitedTrip(String token) async {
+    final res = await apiClient.httpClient.get(
+      Uri.parse('${apiClient.baseUrl}/invites/$token'),
+      headers: apiClient.jsonHeaders(),
+    );
+    if (res.statusCode == 200) {
+      return SharedTrip.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Invite not found (${res.statusCode})');
+  }
+
+  /// Redeems an emailed invite into co-planner membership.
+  Future<String> acceptInvite(String token) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/invites/$token/accept'),
+      headers: apiClient.jsonHeaders(json: true),
+    );
+    if (res.statusCode == 200) {
+      return (jsonDecode(res.body) as Map<String, dynamic>)['trip_id']
+          as String;
+    }
+    throw Exception('Failed to join trip (${res.statusCode})');
+  }
+
   Future<void> revokeShareLink(String tripId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/share'),

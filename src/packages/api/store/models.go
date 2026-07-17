@@ -242,6 +242,20 @@ type TripCollaborator struct {
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type TripInvite struct {
+	ID         uuid.UUID          `json:"id"`
+	ChatID     string             `json:"chat_id"`
+	OwnerID    uuid.UUID          `json:"owner_id"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	TokenHash  string             `json:"token_hash"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	AcceptedBy pgtype.UUID        `json:"accepted_by"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
 type TripSegment struct {
 	ID          uuid.UUID   `json:"id"`
 	TripID      uuid.UUID   `json:"trip_id"`

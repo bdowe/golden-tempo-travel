@@ -1161,6 +1161,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       builder: (sheetContext) => _CoPlannersSheet(
         tripId: widget.tripId,
         onRemoved: () => _showSnack('Co-planner removed'),
+        onInvited: (email) => _showSnack('Invite sent to $email'),
       ),
     );
   }
@@ -2705,8 +2706,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               itemBuilder: (context) => const [
                 PopupMenuItem(value: 'copy', child: Text('Copy share link')),
                 PopupMenuItem(
-                    value: 'invite',
-                    child: Text('Invite co-planner (can edit)')),
+                    value: 'invite', child: Text('Copy invite link (can edit)')),
                 PopupMenuItem(
                     value: 'manage', child: Text('Manage co-planners')),
                 PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
@@ -3763,7 +3763,9 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
 class _CoPlannersSheet extends ConsumerStatefulWidget {
   final String tripId;
   final VoidCallback onRemoved;
-  const _CoPlannersSheet({required this.tripId, required this.onRemoved});
+  final void Function(String email) onInvited;
+  const _CoPlannersSheet(
+      {required this.tripId, required this.onRemoved, required this.onInvited});
 
   @override
   ConsumerState<_CoPlannersSheet> createState() => _CoPlannersSheetState();
@@ -3771,19 +3773,69 @@ class _CoPlannersSheet extends ConsumerStatefulWidget {
 
 class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
   List<({String userId, String displayName, String email})>? _collaborators;
+  List<({String id, String email, DateTime expiresAt})>? _invites;
+  final _emailController = TextEditingController();
+  bool _sending = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadCollaborators();
+    _loadAll();
   }
 
-  Future<void> _loadCollaborators() async {
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
     try {
-      final list =
-          await ref.read(tripsApiServiceProvider).listCollaborators(widget.tripId);
-      if (mounted) setState(() => _collaborators = list);
+      final service = ref.read(tripsApiServiceProvider);
+      final results = await Future.wait([
+        service.listCollaborators(widget.tripId),
+        service.listInvites(widget.tripId),
+      ]);
+      if (mounted) {
+        setState(() {
+          _collaborators =
+              results[0] as List<({String userId, String displayName, String email})>;
+          _invites =
+              results[1] as List<({String id, String email, DateTime expiresAt})>;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _sendInvite() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || _sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      await ref.read(tripsApiServiceProvider).createInvite(widget.tripId, email);
+      _emailController.clear();
+      widget.onInvited(email);
+      await _loadAll();
+    } catch (e) {
+      if (mounted) {
+        setState(() =>
+            _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _revokeInvite(String inviteId) async {
+    try {
+      await ref.read(tripsApiServiceProvider).revokeInvite(widget.tripId, inviteId);
+      await _loadAll();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -3795,42 +3847,86 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
           .read(tripsApiServiceProvider)
           .removeCollaborator(widget.tripId, userId);
       widget.onRemoved();
-      await _loadCollaborators();
+      await _loadAll();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
+  }
+
+  String _expiresIn(DateTime expiresAt) {
+    final d = expiresAt.difference(DateTime.now());
+    if (d.inDays >= 1) return 'expires in ${d.inDays}d';
+    if (d.inHours >= 1) return 'expires in ${d.inHours}h';
+    return 'expires soon';
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final collaborators = _collaborators;
+    final invites = _invites;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: EdgeInsets.only(
+          left: AppSpacing.lg,
+          right: AppSpacing.lg,
+          top: AppSpacing.lg,
+          // Keep the email field above the keyboard.
+          bottom: AppSpacing.lg + MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Co-planners', style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
+            // Invite by email (specs/invite-by-email): the friend gets a
+            // single-use link; they appear below once they accept.
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      hintText: "Friend's email",
+                      isDense: true,
+                      prefixIcon: Icon(Icons.alternate_email, size: 18),
+                    ),
+                    onSubmitted: (_) => _sendInvite(),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                FilledButton.tonal(
+                  onPressed: _sending ? null : _sendInvite,
+                  child: _sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Invite'),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
             if (_error != null)
-              Text(_error!,
-                  style: TextStyle(color: theme.colorScheme.error))
-            else if (collaborators == null)
+              Text(_error!, style: TextStyle(color: theme.colorScheme.error))
+            else if (collaborators == null || invites == null)
               const Center(child: CircularProgressIndicator())
-            else if (collaborators.isEmpty)
-              Text(
-                'No co-planners yet. Use "Invite co-planner (can edit)" to '
-                'share an invite link.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              )
-            else
+            else ...[
+              if (collaborators.isEmpty && invites.isEmpty)
+                Text(
+                  'No co-planners yet. Invite a friend by email above, or '
+                  'copy an invite link from the share menu.',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
               for (final c in collaborators)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(child: Icon(Icons.person, size: 18)),
+                  leading:
+                      const CircleAvatar(child: Icon(Icons.person, size: 18)),
                   title: Text(
                       c.displayName.isNotEmpty ? c.displayName : c.email),
                   subtitle: c.displayName.isNotEmpty ? Text(c.email) : null,
@@ -3840,6 +3936,26 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                     onPressed: () => _remove(c.userId),
                   ),
                 ),
+              if (invites.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text('Pending invites',
+                    style: theme.textTheme.labelLarge
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                for (final inv in invites)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                        child: Icon(Icons.mail_outline, size: 18)),
+                    title: Text(inv.email),
+                    subtitle: Text('Invited — ${_expiresIn(inv.expiresAt)}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Revoke invite',
+                      onPressed: () => _revokeInvite(inv.id),
+                    ),
+                  ),
+              ],
+            ],
           ],
         ),
       ),

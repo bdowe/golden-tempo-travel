@@ -725,6 +725,14 @@ func buildRouter() *mux.Router {
 	api.Handle("/shared/{token}/duplicate", authMiddleware(http.HandlerFunc(duplicateSharedTripHandler))).Methods("POST")
 	// Join writes membership — strict tier like refine.
 	api.Handle("/shared/{token}/join", strict(authMiddleware(http.HandlerFunc(joinSharedTripHandler)))).Methods("POST")
+	// Email invites (specs/invite-by-email): create sends mail and accept
+	// writes membership — both strict tier; the preview is public like
+	// /shared/{token}.
+	api.Handle("/trips/{id}/invites", strict(authMiddleware(http.HandlerFunc(createTripInviteHandler)))).Methods("POST")
+	api.Handle("/trips/{id}/invites", authMiddleware(http.HandlerFunc(listTripInvitesHandler))).Methods("GET")
+	api.Handle("/trips/{id}/invites/{inviteId}", authMiddleware(http.HandlerFunc(revokeTripInviteHandler))).Methods("DELETE")
+	api.HandleFunc("/invites/{token}", invitePreviewHandler).Methods("GET")
+	api.Handle("/invites/{token}/accept", strict(authMiddleware(http.HandlerFunc(acceptInviteHandler)))).Methods("POST")
 	api.Handle("/trips/{id}/collaborators", authMiddleware(http.HandlerFunc(listCollaboratorsHandler))).Methods("GET")
 	api.Handle("/trips/{id}/collaborators/{userId}", authMiddleware(http.HandlerFunc(removeCollaboratorHandler))).Methods("DELETE")
 	// OG link-preview page for crawlers; deployment nginx rewrites bot

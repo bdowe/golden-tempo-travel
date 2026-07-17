@@ -8,3 +8,9 @@ final sharedTripProvider =
     FutureProvider.family<SharedTrip, String>((ref, token) {
   return ref.read(tripsApiServiceProvider).getSharedTrip(token);
 });
+
+/// Same shape behind an emailed invite token (specs/invite-by-email).
+final invitedTripProvider =
+    FutureProvider.family<SharedTrip, String>((ref, token) {
+  return ref.read(tripsApiServiceProvider).getInvitedTrip(token);
+});
