@@ -48,6 +48,7 @@ type PriceAlertResponse struct {
 	Adults            int      `json:"adults"`
 	TargetPrice       *float64 `json:"target_price"`
 	Currency          *string  `json:"currency"`
+	BaselinePrice     *float64 `json:"baseline_price"`
 	LastCheckedPrice  *float64 `json:"last_checked_price"`
 	LastCheckedAt     *string  `json:"last_checked_at"`
 	LastNotifiedPrice *float64 `json:"last_notified_price"`
@@ -67,6 +68,7 @@ func toPriceAlertResponse(a store.PriceAlert) PriceAlertResponse {
 		Adults:            int(a.Adults),
 		TargetPrice:       a.TargetPrice,
 		Currency:          a.Currency,
+		BaselinePrice:     a.BaselinePrice,
 		LastCheckedPrice:  a.LastCheckedPrice,
 		LastNotifiedPrice: a.LastNotifiedPrice,
 		Status:            a.Status,

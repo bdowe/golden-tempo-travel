@@ -27,6 +27,17 @@ type Accommodation struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+type AlertEvent struct {
+	ID            uuid.UUID          `json:"id"`
+	AlertID       uuid.UUID          `json:"alert_id"`
+	UserID        uuid.UUID          `json:"user_id"`
+	Price         float64            `json:"price"`
+	Currency      string             `json:"currency"`
+	PreviousPrice *float64           `json:"previous_price"`
+	OccurredAt    time.Time          `json:"occurred_at"`
+	ReadAt        pgtype.Timestamptz `json:"read_at"`
+}
+
 type AnalyticsEvent struct {
 	ID        uuid.UUID   `json:"id"`
 	UserID    pgtype.UUID `json:"user_id"`
