@@ -124,6 +124,8 @@ func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not save segment")
 		return
 	}
+	// Best-effort attribution/freshness bump — the segment itself committed.
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusCreated, toSegmentResponse(seg))
 }
 
@@ -148,5 +150,6 @@ func deleteSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "segment not found")
 		return
 	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	w.WriteHeader(http.StatusNoContent)
 }

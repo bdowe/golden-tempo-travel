@@ -65,6 +65,18 @@ type TripResponse struct {
 	// that predate collaboration; clients treat missing as owner.
 	Access    string  `json:"access,omitempty"`
 	OwnerName *string `json:"owner_name,omitempty"` // set when access == "editor"
+	// UpdatedByName attributes the last content edit ("Updated by Maria");
+	// empty when unknown. Shared marks a trip that has active collaborators —
+	// the owner's client polls /status only when set (editors always poll).
+	UpdatedByName *string `json:"updated_by_name,omitempty"`
+	Shared        bool    `json:"shared,omitempty"`
+}
+
+// TripStatusResponse is the freshness-poll payload for shared trips.
+type TripStatusResponse struct {
+	UpdatedAt     time.Time `json:"updated_at"`
+	UpdatedBy     *string   `json:"updated_by,omitempty"`
+	UpdatedByName *string   `json:"updated_by_name,omitempty"`
 }
 
 type PatchTripRequest struct {
@@ -119,6 +131,14 @@ func toItineraryItemResponse(it store.ItineraryItem) ItineraryItemResponse {
 		LocalSourceName:       it.LocalSourceName,
 		LocalRecommendationID: pgUUIDToStringPtr(it.LocalRecommendationID),
 	}
+}
+
+// touchedBy builds TouchTrip params attributing a content edit to the
+// request's signed-in user (the "Updated by X" line on shared trips). Only
+// use on real user edits — see the TouchTrip query invariant.
+func touchedBy(tripID uuid.UUID, r *http.Request) store.TouchTripParams {
+	user, _ := userFromContext(r.Context())
+	return store.TouchTripParams{ID: tripID, UpdatedBy: pgtype.UUID{Bytes: user.ID, Valid: true}}
 }
 
 func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment, bookingTodos []store.BookingTodo) TripResponse {
@@ -358,6 +378,50 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 			resp.OwnerName = owner.DisplayName
 		}
 	}
+	// "Updated by X" attribution — omitted for the caller's own edits.
+	if trip.UpdatedBy.Valid && trip.UpdatedBy.Bytes != user.ID {
+		if editor, err := q.GetUserByID(r.Context(), trip.UpdatedBy.Bytes); err == nil &&
+			editor.DisplayName != nil && *editor.DisplayName != "" {
+			resp.UpdatedByName = editor.DisplayName
+		}
+	}
+	// Tell the owner's client this trip has co-planners (worth polling for
+	// freshness). Editors know to poll from access alone.
+	if trip.UserID == user.ID && trip.ChatID != nil {
+		if shared, err := q.HasActiveCollaborators(r.Context(), store.HasActiveCollaboratorsParams{
+			OwnerID: trip.UserID, ChatID: *trip.ChatID,
+		}); err == nil {
+			resp.Shared = shared
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// tripStatusHandler is the cheap freshness poll for shared trips: one row,
+// owner or any active collaborator. Registered on the default rate-limit
+// tier on purpose — clients hit it every ~25s.
+func tripStatusHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	tripID, ok := tripIDFromPath(r)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "trip not found")
+		return
+	}
+	row, err := store.New(dbPool).GetTripStatusByID(r.Context(),
+		store.GetTripStatusByIDParams{ID: tripID, UserID: user.ID})
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "trip not found")
+		return
+	}
+	resp := TripStatusResponse{UpdatedAt: row.UpdatedAt}
+	if row.UpdatedBy.Valid {
+		id := uuid.UUID(row.UpdatedBy.Bytes).String()
+		resp.UpdatedBy = &id
+		if row.UpdatedByName != "" {
+			name := row.UpdatedByName
+			resp.UpdatedByName = &name
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -450,6 +514,8 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not update trip")
 		return
 	}
+	// Best-effort attribution: the patch itself already committed.
+	_ = q.TouchTrip(r.Context(), touchedBy(trip.ID, r))
 	items, err := q.GetItineraryItemsByTrip(r.Context(), trip.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")

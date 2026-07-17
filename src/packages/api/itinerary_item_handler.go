@@ -165,7 +165,7 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not save place")
 		return
 	}
-	if err := q.TouchTrip(ctx, tripID); err != nil {
+	if err := q.TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not save place")
 		return
 	}
@@ -284,7 +284,7 @@ func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "item not found")
 		return
 	}
-	if err := store.New(dbPool).TouchTrip(ctx, tripID); err != nil {
+	if err := store.New(dbPool).TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not save place")
 		return
 	}
@@ -339,7 +339,7 @@ func deleteItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not delete place")
 		return
 	}
-	if err := q.TouchTrip(ctx, tripID); err != nil {
+	if err := q.TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not delete place")
 		return
 	}
@@ -418,7 +418,7 @@ func reorderItineraryItemsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := q.TouchTrip(ctx, tripID); err != nil {
+	if err := q.TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not reorder itinerary")
 		return
 	}

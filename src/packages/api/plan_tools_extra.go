@@ -8,6 +8,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"travel-route-planner/store"
 )
@@ -324,9 +325,19 @@ func runAddBookingTodoTool(s *planSession, input json.RawMessage) (string, bool)
 	if err != nil {
 		return "Could not save the booking to-do.", true
 	}
+	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
 	go recordEvent(s.uid, "agent_booking_todo_added", &tid, map[string]any{"kind": todo.Kind})
 	return fmt.Sprintf("Added %q to the trip's booking checklist. Mention it briefly; the traveler will see it on the trip page.", todo.Title), false
+}
+
+// touchTripAs stamps a content edit made through an agent tool (best-effort;
+// the write itself already committed). Same invariant as TouchTrip: real
+// edits only, never passive loads.
+func touchTripAs(ctx context.Context, tripID, actor uuid.UUID) {
+	_ = store.New(dbPool).TouchTrip(ctx, store.TouchTripParams{
+		ID: tripID, UpdatedBy: pgtype.UUID{Bytes: actor, Valid: true},
+	})
 }
 
 // bookingTodoMissingMsg covers both "wrong id" and "auto row" — the queries
@@ -383,6 +394,7 @@ func runUpdateBookingTodoTool(s *planSession, input json.RawMessage) (string, bo
 	if err != nil {
 		return bookingTodoMissingMsg, true
 	}
+	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
 	go recordEvent(s.uid, "agent_booking_todo_updated", &tid, map[string]any{"kind": todo.Kind})
 	return fmt.Sprintf("Updated %q on the trip's booking checklist — the traveler's trip page has refreshed.", todo.Title), false
@@ -408,6 +420,7 @@ func runRemoveBookingTodoTool(s *planSession, input json.RawMessage) (string, bo
 	if err != nil || rows == 0 {
 		return bookingTodoMissingMsg, true
 	}
+	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
 	go recordEvent(s.uid, "agent_booking_todo_removed", &tid, nil)
 	return "Removed the item from the trip's booking checklist — the traveler's trip page has refreshed.", false

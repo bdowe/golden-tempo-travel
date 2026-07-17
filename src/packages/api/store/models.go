@@ -229,6 +229,7 @@ type Trip struct {
 	Status    string      `json:"status"`
 	ChatID    *string     `json:"chat_id"`
 	Summary   *string     `json:"summary"`
+	UpdatedBy pgtype.UUID `json:"updated_by"`
 }
 
 type TripCollaborator struct {

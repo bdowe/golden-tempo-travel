@@ -275,7 +275,7 @@ func itemParamsFromLocation(tripID uuid.UUID, position int32, loc map[string]any
 // current items, splice the targeted section, then reinsert everything with a
 // dense 0-based position sequence. Item ids are not stable across a rewrite;
 // nothing external references them.
-func replaceTripSection(ctx context.Context, tripID uuid.UUID, sel sectionSelector, newLocs []map[string]any) error {
+func replaceTripSection(ctx context.Context, tripID, actorID uuid.UUID, sel sectionSelector, newLocs []map[string]any) error {
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		return err
@@ -304,7 +304,9 @@ func replaceTripSection(ctx context.Context, tripID uuid.UUID, sel sectionSelect
 			return err
 		}
 	}
-	if err := q.TouchTrip(ctx, tripID); err != nil {
+	if err := q.TouchTrip(ctx, store.TouchTripParams{
+		ID: tripID, UpdatedBy: pgtype.UUID{Bytes: actorID, Valid: true},
+	}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

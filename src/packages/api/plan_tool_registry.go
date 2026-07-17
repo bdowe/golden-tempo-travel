@@ -403,7 +403,7 @@ func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (strin
 	}
 	// Same in-block walking-distance cleanup create_itinerary gets.
 	in.Items = reorderItineraryByDistance(in.Items)
-	if err := replaceTripSection(s.ctx, *s.boundTripID, sectionSelector{Scope: in.Scope, Day: in.Day, City: in.City}, in.Items); err != nil {
+	if err := replaceTripSection(s.ctx, *s.boundTripID, s.uid, sectionSelector{Scope: in.Scope, Day: in.Day, City: in.City}, in.Items); err != nil {
 		return fmt.Sprintf("Could not update the section: %v", err), true
 	}
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": s.boundTripID.String()})
