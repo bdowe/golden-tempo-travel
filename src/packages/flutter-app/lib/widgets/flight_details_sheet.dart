@@ -86,6 +86,8 @@ class _FlightDetailsSheet extends StatelessWidget {
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
               const Divider(height: 24),
+              _BaggageRow(offer: offer),
+              const Divider(height: 24),
               ...rows,
               if (offer.bookingUrl != null) ...[
                 const SizedBox(height: 16),
@@ -124,6 +126,64 @@ List<Widget> _sliceRows(List<FlightLeg> segments) {
     }
   }
   return rows;
+}
+
+/// Included-baggage allowance (worst case across all flown segments), plus
+/// the added bag fee or unknown-fee warning on baggage-aware searches.
+class _BaggageRow extends StatelessWidget {
+  final FlightOffer offer;
+  const _BaggageRow({required this.offer});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    final included = <String>[
+      'Personal item',
+      if (offer.includedCarryOn > 0)
+        offer.includedCarryOn == 1
+            ? 'carry-on'
+            : '${offer.includedCarryOn} carry-ons',
+      if (offer.includedChecked > 0)
+        offer.includedChecked == 1
+            ? 'checked bag'
+            : '${offer.includedChecked} checked bags',
+    ];
+
+    String? note;
+    Color? noteColor;
+    switch (offer.baggageStatus) {
+      case 'paid':
+        note =
+            '+${offer.currency} ${offer.bagFee.toStringAsFixed(0)} bag fee included in price';
+        noteColor = muted;
+      case 'unknown':
+        note = 'Your bag is not included — check the fee with the airline';
+        noteColor = theme.colorScheme.error;
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.luggage_outlined, size: 18, color: muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Included: ${included.join(' + ')}',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
+              if (note != null)
+                Text(note,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: noteColor)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Section header for one direction of a round trip, e.g.

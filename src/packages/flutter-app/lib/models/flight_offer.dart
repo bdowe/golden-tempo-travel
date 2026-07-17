@@ -34,6 +34,22 @@ class FlightOffer {
   @JsonKey(name: 'return_duration_minutes', defaultValue: 0)
   final int returnDurationMinutes;
 
+  /// Included baggage per passenger — the worst case across every flown
+  /// segment (a bag only counts if every segment grants it).
+  @JsonKey(name: 'included_carry_on', defaultValue: 0)
+  final int includedCarryOn;
+  @JsonKey(name: 'included_checked', defaultValue: 0)
+  final int includedChecked;
+
+  /// Effective pricing, present only on carry-on/checked searches:
+  /// "included" | "paid" | "unknown".
+  @JsonKey(name: 'baggage_status')
+  final String? baggageStatus;
+  @JsonKey(name: 'bag_fee', defaultValue: 0)
+  final double bagFee;
+  @JsonKey(name: 'effective_price')
+  final double? effectivePrice;
+
   final double score;
   @JsonKey(name: 'price_score')
   final double priceScore;
@@ -55,6 +71,11 @@ class FlightOffer {
     required this.arriveTime,
     required this.segments,
     this.bookingUrl,
+    this.includedCarryOn = 0,
+    this.includedChecked = 0,
+    this.baggageStatus,
+    this.bagFee = 0,
+    this.effectivePrice,
     this.returnSegments = const [],
     this.returnDurationMinutes = 0,
     this.score = 0,
@@ -62,6 +83,14 @@ class FlightOffer {
     this.durationScore = 0,
     this.stopsScore = 0,
   });
+
+  /// The price to show the traveler: the effective total (fare + bag fee)
+  /// on baggage-aware searches, the bare fare otherwise.
+  double get displayPrice => effectivePrice ?? price;
+
+  /// True when a needed bag couldn't be priced — the fare shown understates
+  /// the real cost.
+  bool get bagFeeUnknown => baggageStatus == 'unknown';
 
   /// True when the offer carries a return slice (round-trip search).
   bool get isRoundTrip => returnSegments.isNotEmpty;

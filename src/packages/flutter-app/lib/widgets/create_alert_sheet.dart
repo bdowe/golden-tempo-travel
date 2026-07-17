@@ -14,6 +14,7 @@ class CreateAlertSheet extends ConsumerStatefulWidget {
   final String? returnDate; // YYYY-MM-DD; null = one-way
   final int adults;
   final String cabinClass;
+  final String baggage; // personal_item | carry_on | checked
   final double? currentPrice;
   final String? currency;
 
@@ -25,6 +26,7 @@ class CreateAlertSheet extends ConsumerStatefulWidget {
     this.returnDate,
     this.adults = 1,
     this.cabinClass = 'economy',
+    this.baggage = 'personal_item',
     this.currentPrice,
     this.currency,
   });
@@ -90,6 +92,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
         if (widget.returnDate != null) 'return_date': widget.returnDate,
         'adults': widget.adults,
         'cabin_class': widget.cabinClass,
+        if (widget.baggage != 'personal_item') 'baggage': widget.baggage,
         if (_flexDays > 0) 'flex_days': _flexDays,
         if (target != null) 'target_price': target,
         if (widget.currentPrice != null) 'current_price': widget.currentPrice,

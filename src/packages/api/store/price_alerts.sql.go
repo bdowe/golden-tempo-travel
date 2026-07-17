@@ -28,9 +28,9 @@ const createPriceAlert = `-- name: CreatePriceAlert :one
 INSERT INTO price_alerts (
     user_id, trip_id, origin, destination, depart_date, return_date,
     cabin_class, adults, target_price, currency, last_checked_price,
-    last_checked_at, baseline_price, flex_days
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $11, $13)
-RETURNING id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days
+    last_checked_at, baseline_price, flex_days, baggage
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $11, $13, $14)
+RETURNING id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days, baggage
 `
 
 type CreatePriceAlertParams struct {
@@ -47,6 +47,7 @@ type CreatePriceAlertParams struct {
 	LastCheckedPrice *float64           `json:"last_checked_price"`
 	LastCheckedAt    pgtype.Timestamptz `json:"last_checked_at"`
 	FlexDays         int16              `json:"flex_days"`
+	Baggage          string             `json:"baggage"`
 }
 
 func (q *Queries) CreatePriceAlert(ctx context.Context, arg CreatePriceAlertParams) (PriceAlert, error) {
@@ -64,6 +65,7 @@ func (q *Queries) CreatePriceAlert(ctx context.Context, arg CreatePriceAlertPara
 		arg.LastCheckedPrice,
 		arg.LastCheckedAt,
 		arg.FlexDays,
+		arg.Baggage,
 	)
 	var i PriceAlert
 	err := row.Scan(
@@ -87,6 +89,7 @@ func (q *Queries) CreatePriceAlert(ctx context.Context, arg CreatePriceAlertPara
 		&i.UpdatedAt,
 		&i.BaselinePrice,
 		&i.FlexDays,
+		&i.Baggage,
 	)
 	return i, err
 }
@@ -124,7 +127,7 @@ func (q *Queries) ExpirePastPriceAlerts(ctx context.Context) (int64, error) {
 }
 
 const getPriceAlertForUser = `-- name: GetPriceAlertForUser :one
-SELECT id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days FROM price_alerts
+SELECT id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days, baggage FROM price_alerts
 WHERE id = $1 AND user_id = $2
 `
 
@@ -157,12 +160,13 @@ func (q *Queries) GetPriceAlertForUser(ctx context.Context, arg GetPriceAlertFor
 		&i.UpdatedAt,
 		&i.BaselinePrice,
 		&i.FlexDays,
+		&i.Baggage,
 	)
 	return i, err
 }
 
 const listDuePriceAlerts = `-- name: ListDuePriceAlerts :many
-SELECT price_alerts.id, price_alerts.user_id, price_alerts.trip_id, price_alerts.origin, price_alerts.destination, price_alerts.depart_date, price_alerts.return_date, price_alerts.cabin_class, price_alerts.adults, price_alerts.target_price, price_alerts.currency, price_alerts.last_checked_price, price_alerts.last_checked_at, price_alerts.last_notified_price, price_alerts.last_notified_at, price_alerts.status, price_alerts.created_at, price_alerts.updated_at, price_alerts.baseline_price, price_alerts.flex_days, users.email AS owner_email
+SELECT price_alerts.id, price_alerts.user_id, price_alerts.trip_id, price_alerts.origin, price_alerts.destination, price_alerts.depart_date, price_alerts.return_date, price_alerts.cabin_class, price_alerts.adults, price_alerts.target_price, price_alerts.currency, price_alerts.last_checked_price, price_alerts.last_checked_at, price_alerts.last_notified_price, price_alerts.last_notified_at, price_alerts.status, price_alerts.created_at, price_alerts.updated_at, price_alerts.baseline_price, price_alerts.flex_days, price_alerts.baggage, users.email AS owner_email
 FROM price_alerts
 JOIN users ON users.id = price_alerts.user_id
 WHERE price_alerts.status = 'active'
@@ -214,6 +218,7 @@ func (q *Queries) ListDuePriceAlerts(ctx context.Context, arg ListDuePriceAlerts
 			&i.PriceAlert.UpdatedAt,
 			&i.PriceAlert.BaselinePrice,
 			&i.PriceAlert.FlexDays,
+			&i.PriceAlert.Baggage,
 			&i.OwnerEmail,
 		); err != nil {
 			return nil, err
@@ -227,7 +232,7 @@ func (q *Queries) ListDuePriceAlerts(ctx context.Context, arg ListDuePriceAlerts
 }
 
 const listPriceAlertsByUser = `-- name: ListPriceAlertsByUser :many
-SELECT id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days FROM price_alerts
+SELECT id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days, baggage FROM price_alerts
 WHERE user_id = $1
 ORDER BY created_at DESC
 `
@@ -262,6 +267,7 @@ func (q *Queries) ListPriceAlertsByUser(ctx context.Context, userID uuid.UUID) (
 			&i.UpdatedAt,
 			&i.BaselinePrice,
 			&i.FlexDays,
+			&i.Baggage,
 		); err != nil {
 			return nil, err
 		}
@@ -332,7 +338,7 @@ SET status = $3,
     target_price = $4,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days
+RETURNING id, user_id, trip_id, origin, destination, depart_date, return_date, cabin_class, adults, target_price, currency, last_checked_price, last_checked_at, last_notified_price, last_notified_at, status, created_at, updated_at, baseline_price, flex_days, baggage
 `
 
 type UpdatePriceAlertParams struct {
@@ -371,6 +377,7 @@ func (q *Queries) UpdatePriceAlert(ctx context.Context, arg UpdatePriceAlertPara
 		&i.UpdatedAt,
 		&i.BaselinePrice,
 		&i.FlexDays,
+		&i.Baggage,
 	)
 	return i, err
 }

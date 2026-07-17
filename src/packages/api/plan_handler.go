@@ -438,8 +438,20 @@ func summarizeOffers(origin, dest string, offers []FlightOffer) string {
 		} else if o.Stops > 1 {
 			stops = fmt.Sprintf("%d stops", o.Stops)
 		}
-		fmt.Fprintf(&b, "%d. %s — %s %.0f, %s, %dh%02dm (score %.1f)\n",
-			i+1, airline, o.Currency, o.Price, stops, o.DurationMin/60, o.DurationMin%60, o.Score)
+		// On baggage-aware searches the model must talk in effective totals —
+		// quoting the bare fare would recreate exactly the misleading price
+		// the baggage tier exists to fix.
+		bag := ""
+		switch o.BaggageStatus {
+		case baggageStatusIncluded:
+			bag = " (bag included)"
+		case baggageStatusPaid:
+			bag = fmt.Sprintf(" (incl. %s %.0f bag fee)", o.Currency, o.BagFee)
+		case baggageStatusUnknown:
+			bag = " (bag NOT included; fee unknown — warn the traveler)"
+		}
+		fmt.Fprintf(&b, "%d. %s — %s %.0f%s, %s, %dh%02dm (score %.1f)\n",
+			i+1, airline, o.Currency, scoringPrice(o), bag, stops, o.DurationMin/60, o.DurationMin%60, o.Score)
 	}
 	b.WriteString("Summarize the top 2-3 options in your own words and help the traveler choose; the full ranked list is saved with their trip.")
 	return b.String()

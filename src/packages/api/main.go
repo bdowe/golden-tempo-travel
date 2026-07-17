@@ -268,6 +268,7 @@ type FlightSearchResponse struct {
 	Offers      []FlightOffer `json:"offers"`
 	BestOfferID string        `json:"best_offer_id,omitempty"`
 	OptimizeFor string        `json:"optimize_for"`
+	Baggage     string        `json:"baggage"`
 	Count       int           `json:"count"`
 	Status      string        `json:"status"`
 }
@@ -369,6 +370,10 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		writeErr("cabin_class must be one of: 'economy', 'premium_economy', 'business', 'first'")
 		return
 	}
+	if !allowedBaggageTiers[normalizeBaggage(request.Baggage)] {
+		writeErr("baggage must be one of: 'personal_item', 'carry_on', 'checked'")
+		return
+	}
 	if len(request.ChildAges) > 8 {
 		writeErr("at most 8 children per search")
 		return
@@ -380,7 +385,7 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	offers, err := duffelService.SearchFlightOffers(r.Context(), request)
+	ranked, err := searchFlightsWithBaggage(r.Context(), duffelService, request)
 	if err != nil {
 		ctxLog(r.Context()).Error("flight search failed", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -391,8 +396,6 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	ranked := RankFlightOffers(offers, request.OptimizeFor)
 
 	// Attach a per-airline booking link to each offer (airline site when known,
 	// else airline-filtered Google Flights).
@@ -409,6 +412,7 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 		Offers:      ranked,
 		BestOfferID: bestID,
 		OptimizeFor: normalizeOptimizeFor(request.OptimizeFor),
+		Baggage:     normalizeBaggage(request.Baggage),
 		Count:       len(ranked),
 		Status:      "success",
 	})

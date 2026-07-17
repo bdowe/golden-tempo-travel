@@ -64,6 +64,20 @@ type FlightOffer struct {
 	Segments       []FlightLeg `json:"segments"`
 	BookingURL     string      `json:"booking_url,omitempty"`
 
+	// Included baggage, per passenger: the worst case across every flown
+	// segment of every slice — a bag counts only when each segment grants it
+	// to each passenger. Personal items aren't modeled by Duffel (always
+	// allowed), so a basic fare typically reports 0/0 here.
+	IncludedCarryOn int `json:"included_carry_on"`
+	IncludedChecked int `json:"included_checked"`
+
+	// Effective pricing, populated only when the search asked for a carry_on
+	// or checked tier (see searchFlightsWithBaggage). BagFee is the total cost
+	// of adding the needed bag for every passenger across all slices.
+	BaggageStatus  string  `json:"baggage_status,omitempty"`  // "included" | "paid" | "unknown"
+	BagFee         float64 `json:"bag_fee,omitempty"`         // > 0 only when "paid"
+	EffectivePrice float64 `json:"effective_price,omitempty"` // Price + BagFee; == Price when "included"; unset when "unknown"
+
 	// Round-trip only: the return slice's legs and duration. Empty/zero for
 	// one-way searches. Price is always the total across all slices; the
 	// top-level Stops/DurationMin/times stay outbound-based so ranking and
@@ -87,7 +101,8 @@ type FlightSearchRequest struct {
 	Adults      int    `json:"adults"`
 	ChildAges   []int  `json:"child_ages,omitempty"` // one entry per child; Duffel requires an age
 	CabinClass  string `json:"cabin_class,omitempty"`
-	OptimizeFor string `json:"optimize_for"` // "cost" | "time" | "balanced"
+	Baggage     string `json:"baggage,omitempty"` // "personal_item" (default) | "carry_on" | "checked"
+	OptimizeFor string `json:"optimize_for"`      // "cost" | "time" | "balanced"
 
 	// SupplierTimeoutMS, when set, is passed to Duffel as the supplier_timeout
 	// query param (milliseconds) so slow airlines are dropped instead of
@@ -100,6 +115,35 @@ type FlightSearchRequest struct {
 // to economy.
 var allowedCabinClasses = map[string]bool{
 	"economy": true, "premium_economy": true, "business": true, "first": true,
+}
+
+// Baggage tiers describe the biggest bag the traveler needs. Duffel only
+// models carry_on and checked allowances; a personal item is always allowed,
+// so that tier is the no-op default matching pre-baggage behavior.
+const (
+	baggagePersonalItem = "personal_item"
+	baggageCarryOn      = "carry_on"
+	baggageChecked      = "checked"
+)
+
+var allowedBaggageTiers = map[string]bool{
+	baggagePersonalItem: true, baggageCarryOn: true, baggageChecked: true,
+}
+
+// BaggageStatus values (set only on carry_on/checked searches).
+const (
+	baggageStatusIncluded = "included" // fare already includes the bag
+	baggageStatusPaid     = "paid"     // bag priced via Duffel; EffectivePrice = Price + BagFee
+	baggageStatusUnknown  = "unknown"  // bag needed but not priceable via Duffel
+)
+
+// normalizeBaggage returns a valid tier; empty defaults to personal_item.
+func normalizeBaggage(s string) string {
+	key := strings.ToLower(strings.TrimSpace(s))
+	if key == "" {
+		return baggagePersonalItem
+	}
+	return key
 }
 
 // maxOffers caps how many offers we keep from a Duffel search before ranking,
@@ -239,6 +283,69 @@ func (d *DuffelService) placeSuggestions(ctx context.Context, params url.Values)
 	return airports, nil
 }
 
+// duffelSegment/duffelSlice mirror the parts of Duffel's offer shape we read.
+type duffelSegment struct {
+	Origin struct {
+		IataCode string `json:"iata_code"`
+	} `json:"origin"`
+	Destination struct {
+		IataCode string `json:"iata_code"`
+	} `json:"destination"`
+	DepartingAt      string `json:"departing_at"`
+	ArrivingAt       string `json:"arriving_at"`
+	MarketingCarrier struct {
+		Name     string `json:"name"`
+		IataCode string `json:"iata_code"`
+	} `json:"marketing_carrier"`
+	MarketingCarrierFlightNumber string `json:"marketing_carrier_flight_number"`
+	Passengers                   []struct {
+		Baggages []struct {
+			Type     string `json:"type"` // "carry_on" | "checked"
+			Quantity int    `json:"quantity"`
+		} `json:"baggages"`
+	} `json:"passengers"`
+}
+
+type duffelSlice struct {
+	Duration string          `json:"duration"`
+	Segments []duffelSegment `json:"segments"`
+}
+
+// includedBagCounts reduces an offer's per-segment, per-passenger baggage
+// allowances to the worst case: the counts returned are what EVERY passenger
+// gets on EVERY flown segment. A segment reporting no passenger data counts
+// as granting nothing (conservative — better to under-promise a bag than to
+// hide a fee).
+func includedBagCounts(slices []duffelSlice) (carryOn, checked int) {
+	first := true
+	for _, sl := range slices {
+		for _, seg := range sl.Segments {
+			if len(seg.Passengers) == 0 {
+				return 0, 0
+			}
+			for _, p := range seg.Passengers {
+				co, ch := 0, 0
+				for _, b := range p.Baggages {
+					switch b.Type {
+					case baggageCarryOn:
+						co += b.Quantity
+					case baggageChecked:
+						ch += b.Quantity
+					}
+				}
+				if first {
+					carryOn, checked = co, ch
+					first = false
+					continue
+				}
+				carryOn = min(carryOn, co)
+				checked = min(checked, ch)
+			}
+		}
+	}
+	return carryOn, checked
+}
+
 // SearchFlightOffers creates a Duffel offer request (with offers returned
 // inline) and returns normalized offers (unranked). Stops/duration/times are
 // taken from the outbound slice; on round trips the return slice is exposed
@@ -309,25 +416,6 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		return nil, err
 	}
 
-	type duffelSegment struct {
-		Origin struct {
-			IataCode string `json:"iata_code"`
-		} `json:"origin"`
-		Destination struct {
-			IataCode string `json:"iata_code"`
-		} `json:"destination"`
-		DepartingAt      string `json:"departing_at"`
-		ArrivingAt       string `json:"arriving_at"`
-		MarketingCarrier struct {
-			Name     string `json:"name"`
-			IataCode string `json:"iata_code"`
-		} `json:"marketing_carrier"`
-		MarketingCarrierFlightNumber string `json:"marketing_carrier_flight_number"`
-	}
-	type duffelSlice struct {
-		Duration string          `json:"duration"`
-		Segments []duffelSegment `json:"segments"`
-	}
 	var result struct {
 		Data struct {
 			Offers []struct {
@@ -391,10 +479,13 @@ func (d *DuffelService) SearchFlightOffers(ctx context.Context, req FlightSearch
 		}
 
 		price, _ := strconv.ParseFloat(o.TotalAmount, 64)
+		carryOn, checked := includedBagCounts(o.Slices)
 		offers = append(offers, FlightOffer{
 			ID:                o.ID,
 			Price:             price,
 			Currency:          o.TotalCurrency,
+			IncludedCarryOn:   carryOn,
+			IncludedChecked:   checked,
 			Stops:             len(segs) - 1,
 			DurationMin:       parseISO8601Duration(outbound.Duration),
 			Airlines:          airlines,
@@ -436,4 +527,146 @@ func parseISO8601Duration(s string) int {
 		}
 	}
 	return total
+}
+
+// duffelService is what one purchasable extra (an available_service) looks
+// like on a Duffel offer. One unit of a baggage service adds one bag for one
+// of its passenger_ids across all of its segment_ids.
+type duffelAvailableService struct {
+	ID              string   `json:"id"`
+	Type            string   `json:"type"` // we only use "baggage"
+	TotalAmount     string   `json:"total_amount"`
+	TotalCurrency   string   `json:"total_currency"`
+	MaximumQuantity int      `json:"maximum_quantity"`
+	SegmentIDs      []string `json:"segment_ids"`
+	PassengerIDs    []string `json:"passenger_ids"`
+	Metadata        struct {
+		Type string `json:"type"` // "carry_on" | "checked"
+	} `json:"metadata"`
+}
+
+// segmentPassenger is one (flown segment, traveler) pair that needs the
+// requested bag covered.
+type segmentPassenger struct {
+	SegmentID   string
+	PassengerID string
+}
+
+// GetOfferBagFee fetches an offer's purchasable extras and computes the total
+// cost of adding one bag of bagType for every passenger on every segment.
+// known=false means the fee cannot be determined (the airline doesn't sell
+// that bag via Duffel, coverage is incomplete, or a service is priced in a
+// different currency than the fare) — the offer should surface as
+// "bag fee unknown", not as an error.
+func (d *DuffelService) GetOfferBagFee(ctx context.Context, offerID, bagType, wantCurrency string) (fee float64, known bool, err error) {
+	path := "/air/offers/" + url.PathEscape(offerID) + "?return_available_services=true"
+	httpReq, err := d.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	body, err := d.do(httpReq)
+	if err != nil {
+		return 0, false, err
+	}
+
+	var result struct {
+		Data struct {
+			Passengers []struct {
+				ID string `json:"id"`
+			} `json:"passengers"`
+			Slices []struct {
+				Segments []struct {
+					ID string `json:"id"`
+				} `json:"segments"`
+			} `json:"slices"`
+			AvailableServices []duffelAvailableService `json:"available_services"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, false, fmt.Errorf("failed to parse offer services response: %w", err)
+	}
+
+	var pairs []segmentPassenger
+	for _, sl := range result.Data.Slices {
+		for _, seg := range sl.Segments {
+			for _, p := range result.Data.Passengers {
+				pairs = append(pairs, segmentPassenger{SegmentID: seg.ID, PassengerID: p.ID})
+			}
+		}
+	}
+	if len(pairs) == 0 {
+		return 0, false, nil
+	}
+	fee, known = computeBagFee(pairs, result.Data.AvailableServices, bagType, wantCurrency)
+	return fee, known, nil
+}
+
+// computeBagFee prices one bag of bagType for every (segment, passenger) pair
+// using the offer's purchasable services. Greedy: each uncovered pair buys one
+// unit of the cheapest service covering it; that unit covers the passenger
+// across all of the service's segments. Any pair no service can cover, or any
+// needed service priced in a currency other than wantCurrency, makes the fee
+// unknowable (false). Deliberately not optimal set cover — real Duffel
+// services are per-passenger-per-slice and greedy is exact for that shape.
+func computeBagFee(pairs []segmentPassenger, services []duffelAvailableService, bagType, wantCurrency string) (float64, bool) {
+	type bagService struct {
+		duffelAvailableService
+		price    float64
+		bought   int
+		segments map[string]bool
+		pax      map[string]bool
+	}
+	candidates := make([]*bagService, 0, len(services))
+	for _, s := range services {
+		if s.Type != "baggage" || s.Metadata.Type != bagType {
+			continue
+		}
+		price, err := strconv.ParseFloat(s.TotalAmount, 64)
+		if err != nil {
+			continue
+		}
+		bs := &bagService{duffelAvailableService: s, price: price,
+			segments: map[string]bool{}, pax: map[string]bool{}}
+		for _, id := range s.SegmentIDs {
+			bs.segments[id] = true
+		}
+		for _, id := range s.PassengerIDs {
+			bs.pax[id] = true
+		}
+		candidates = append(candidates, bs)
+	}
+
+	covered := map[segmentPassenger]bool{}
+	total := 0.0
+	for _, pair := range pairs {
+		if covered[pair] {
+			continue
+		}
+		var best *bagService
+		for _, c := range candidates {
+			if !c.segments[pair.SegmentID] || !c.pax[pair.PassengerID] {
+				continue
+			}
+			// MaximumQuantity 0 means Duffel omitted the cap; treat as uncapped.
+			if c.MaximumQuantity > 0 && c.bought >= c.MaximumQuantity {
+				continue
+			}
+			if best == nil || c.price < best.price {
+				best = c
+			}
+		}
+		if best == nil {
+			return 0, false
+		}
+		if best.TotalCurrency != wantCurrency {
+			return 0, false
+		}
+		best.bought++
+		total += best.price
+		// One unit adds this passenger's bag on every segment the service spans.
+		for segID := range best.segments {
+			covered[segmentPassenger{SegmentID: segID, PassengerID: pair.PassengerID}] = true
+		}
+	}
+	return total, true
 }

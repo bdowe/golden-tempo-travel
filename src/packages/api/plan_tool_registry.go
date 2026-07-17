@@ -261,6 +261,7 @@ var searchFlightsTool = anthropic.ToolParam{
 			"child_ages":   map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Optional ages of child travelers (one per child, 0-17) — include when the traveler mentions kids"},
 			"cabin_class":  map[string]any{"type": "string", "enum": []string{"economy", "premium_economy", "business", "first"}, "description": "Optional cabin, defaults to economy — set when the traveler asks for a specific class"},
 			"optimize_for": map[string]any{"type": "string", "enum": []string{"cost", "time", "balanced"}, "description": "Ranking emphasis"},
+			"baggage":      map[string]any{"type": "string", "enum": []string{"personal_item", "carry_on", "checked"}, "description": "Biggest bag the traveler needs; set carry_on or checked whenever they mention luggage — offers are then ranked by the effective total including that bag, not the bare fare"},
 		},
 		Required: []string{"origin", "destination", "depart_date"},
 	},
@@ -533,6 +534,7 @@ func runSearchFlightsTool(s *planSession, input json.RawMessage) (string, bool) 
 		ChildAges   []int  `json:"child_ages"`
 		CabinClass  string `json:"cabin_class"`
 		OptimizeFor string `json:"optimize_for"`
+		Baggage     string `json:"baggage"`
 	}
 	json.Unmarshal(input, &in)
 
@@ -546,16 +548,14 @@ func runSearchFlightsTool(s *planSession, input json.RawMessage) (string, bool) 
 	if adults < 1 {
 		adults = 1
 	}
-	offers, err := duffelService.SearchFlightOffers(s.ctx, FlightSearchRequest{
+	bestN, err := searchFlightsWithBaggage(s.ctx, duffelService, FlightSearchRequest{
 		Origin: originIata, Destination: destIata, DepartDate: in.DepartDate,
 		ReturnDate: in.ReturnDate, Adults: adults, ChildAges: in.ChildAges,
-		CabinClass: in.CabinClass, OptimizeFor: in.OptimizeFor,
+		CabinClass: in.CabinClass, OptimizeFor: in.OptimizeFor, Baggage: in.Baggage,
 	})
 	if err != nil {
 		return fmt.Sprintf("Error searching flights: %v", err), true
 	}
-
-	bestN := RankFlightOffers(offers, in.OptimizeFor)
 	if len(bestN) > 4 {
 		bestN = bestN[:4]
 	}
@@ -567,7 +567,8 @@ func runSearchFlightsTool(s *planSession, input json.RawMessage) (string, bool) 
 		sendSSE(s.w, "flights", map[string]any{
 			"origin": originIata, "destination": destIata,
 			"depart_date": in.DepartDate, "optimize_for": normalizeOptimizeFor(in.OptimizeFor),
-			"offers": bestN,
+			"baggage": normalizeBaggage(in.Baggage),
+			"offers":  bestN,
 		})
 	}
 	return summarizeOffers(originIata, destIata, bestN), false

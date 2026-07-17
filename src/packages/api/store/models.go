@@ -198,6 +198,7 @@ type PriceAlert struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 	BaselinePrice     *float64           `json:"baseline_price"`
 	FlexDays          int16              `json:"flex_days"`
+	Baggage           string             `json:"baggage"`
 }
 
 type Session struct {

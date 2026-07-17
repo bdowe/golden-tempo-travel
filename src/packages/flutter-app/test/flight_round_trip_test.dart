@@ -505,4 +505,190 @@ void main() {
       expect(find.text('Return (optional)'), findsOneWidget);
     });
   });
+
+  group('baggage: FlightSearchRequest JSON', () {
+    test('omits baggage when unset (personal item default)', () {
+      const req = FlightSearchRequest(
+          origin: 'JFK', destination: 'CDG', departDate: '2026-09-01');
+      expect(req.toJson().containsKey('baggage'), isFalse);
+    });
+
+    test('carries the selected baggage tier', () {
+      const req = FlightSearchRequest(
+          origin: 'JFK',
+          destination: 'CDG',
+          departDate: '2026-09-01',
+          baggage: 'checked');
+      expect(req.toJson()['baggage'], 'checked');
+    });
+  });
+
+  group('baggage: FlightOffer model', () {
+    Map<String, dynamic> offerJson() => {
+          'id': 'off_1',
+          'price': 100.0,
+          'currency': 'USD',
+          'stops': 0,
+          'duration_minutes': 120,
+          'depart_time': '2026-09-01T08:00:00',
+          'arrive_time': '2026-09-01T10:00:00',
+          'score': 0.0,
+          'price_score': 0.0,
+          'duration_score': 0.0,
+          'stops_score': 0.0,
+        };
+
+    test('pre-baggage payloads parse with safe defaults', () {
+      final offer = FlightOffer.fromJson(offerJson());
+      expect(offer.includedCarryOn, 0);
+      expect(offer.includedChecked, 0);
+      expect(offer.baggageStatus, isNull);
+      expect(offer.bagFee, 0);
+      expect(offer.effectivePrice, isNull);
+      expect(offer.displayPrice, 100); // falls back to the bare fare
+      expect(offer.bagFeeUnknown, isFalse);
+    });
+
+    test('effective price drives displayPrice on paid offers', () {
+      final offer = FlightOffer.fromJson({
+        ...offerJson(),
+        'included_carry_on': 1,
+        'baggage_status': 'paid',
+        'bag_fee': 60.0,
+        'effective_price': 160.0,
+      });
+      expect(offer.includedCarryOn, 1);
+      expect(offer.displayPrice, 160);
+      expect(offer.bagFeeUnknown, isFalse);
+    });
+
+    test('unknown status flags the misleading fare', () {
+      final offer =
+          FlightOffer.fromJson({...offerJson(), 'baggage_status': 'unknown'});
+      expect(offer.bagFeeUnknown, isTrue);
+      expect(offer.displayPrice, 100);
+    });
+  });
+
+  group('baggage: FlightOfferCard badges', () {
+    Future<void> pumpCard(WidgetTester tester, FlightOffer offer) {
+      return tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: FlightOfferCard(offer: offer)),
+      ));
+    }
+
+    FlightOffer bagOffer(
+            {String? status, double bagFee = 0, double? effective}) =>
+        FlightOffer(
+          id: 'off_1',
+          price: 100,
+          currency: 'USD',
+          stops: 0,
+          durationMinutes: 120,
+          airlines: const ['TestAir'],
+          departTime: '2026-09-01T08:00:00',
+          arriveTime: '2026-09-01T10:00:00',
+          segments: const [_outboundLeg],
+          baggageStatus: status,
+          bagFee: bagFee,
+          effectivePrice: effective,
+        );
+
+    testWidgets('paid offer shows the effective total and the fee badge',
+        (tester) async {
+      await pumpCard(
+          tester, bagOffer(status: 'paid', bagFee: 60, effective: 160));
+      expect(find.text('USD 160'), findsOneWidget);
+      expect(find.text('incl. bag +USD 60'), findsOneWidget);
+    });
+
+    testWidgets('included offer shows a bag-included badge', (tester) async {
+      await pumpCard(tester, bagOffer(status: 'included', effective: 100));
+      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.text('Bag included'), findsOneWidget);
+    });
+
+    testWidgets('unknown fee is called out instead of silently underpricing',
+        (tester) async {
+      await pumpCard(tester, bagOffer(status: 'unknown'));
+      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.text('Bag fee unknown'), findsOneWidget);
+    });
+
+    testWidgets('personal-item searches render no badge', (tester) async {
+      await pumpCard(tester, bagOffer());
+      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.textContaining('Bag'), findsNothing);
+    });
+  });
+
+  group('baggage: FlightSearchScreen', () {
+    Future<(_FakeFlightsApiService, _FakeAlertsApiService)> pumpScreen(
+        WidgetTester tester, String departDate) async {
+      tester.view.physicalSize = const Size(1200, 2200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final flights = _FakeFlightsApiService();
+      final alerts = _FakeAlertsApiService();
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          flightsApiServiceProvider.overrideWithValue(flights),
+          alertsApiServiceProvider.overrideWithValue(alerts),
+          authProvider.overrideWith((ref) => _FakeAuthNotifier(_user())),
+        ],
+        child: MaterialApp(
+          home: FlightSearchScreen(
+            prefillOrigin: 'JFK',
+            prefillDestination: 'CDG',
+            prefillDepartDate: departDate,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return (flights, alerts);
+    }
+
+    testWidgets('selected bag tier flows into the search and the watch',
+        (tester) async {
+      final depart = DateTime.now().add(const Duration(days: 30));
+      final (flights, alerts) = await pumpScreen(tester, _fmt(depart));
+
+      // The prefill auto-search runs on the personal-item default.
+      expect(flights.requests.single.baggage, isNull);
+
+      await tester.tap(find.text('Checked bag'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search Flights'));
+      await tester.pumpAndSettle();
+      expect(flights.requests, hasLength(2));
+      expect(flights.requests.last.baggage, 'checked');
+
+      // "Watch this route" inherits the searched tier.
+      await tester
+          .tap(find.textContaining('Watch this route'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create alert'));
+      await tester.pumpAndSettle();
+      expect(alerts.created.single['baggage'], 'checked');
+    });
+
+    testWidgets('personal item sends no baggage field and none on the watch',
+        (tester) async {
+      final depart = DateTime.now().add(const Duration(days: 30));
+      final (flights, alerts) = await pumpScreen(tester, _fmt(depart));
+
+      await tester.tap(find.text('Search Flights'));
+      await tester.pumpAndSettle();
+      expect(flights.requests.last.baggage, isNull);
+
+      await tester
+          .tap(find.textContaining('Watch this route'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create alert'));
+      await tester.pumpAndSettle();
+      expect(alerts.created.single.containsKey('baggage'), isFalse);
+    });
+  });
 }
