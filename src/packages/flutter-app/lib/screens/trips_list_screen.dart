@@ -296,7 +296,9 @@ class _TripCard extends ConsumerWidget {
           StatusPill(status: trip.status),
           if (!trip.isOwner && (trip.ownerName ?? '').isNotEmpty)
             Text(
-              'Planned with ${trip.ownerName}',
+              trip.canEdit
+                  ? 'Planned with ${trip.ownerName}'
+                  : 'Shared by ${trip.ownerName}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
@@ -307,7 +309,11 @@ class _TripCard extends ConsumerWidget {
     if (!hasHistory) {
       return Card(
         child: ListTile(
-          leading: Icon(trip.isOwner ? Icons.map_outlined : Icons.group_outlined),
+          leading: Icon(trip.isOwner
+              ? Icons.map_outlined
+              : trip.canEdit
+                  ? Icons.group_outlined
+                  : Icons.visibility_outlined),
           title: title,
           subtitle: subtitle,
           trailing: const Icon(Icons.chevron_right),

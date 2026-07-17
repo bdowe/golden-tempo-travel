@@ -337,11 +337,17 @@ func listTripVersionsHandler(w http.ResponseWriter, r *http.Request) {
 
 func getTripHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	// Owner or editor-collaborator may read; v1 has no viewer membership, so
-	// editable == viewable.
-	trip, ok := editableTrip(w, r)
+	// Owner, editor co-planner, or viewer follow may read; mutations stay
+	// behind editableTrip.
+	row, ok := viewableTrip(w, r)
 	if !ok {
 		return
+	}
+	trip := store.Trip{
+		ID: row.ID, UserID: row.UserID, CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt, Title: row.Title, StartDate: row.StartDate,
+		EndDate: row.EndDate, Status: row.Status, ChatID: row.ChatID,
+		Summary: row.Summary, UpdatedBy: row.UpdatedBy,
 	}
 	q := store.New(dbPool)
 	items, err := q.GetItineraryItemsByTrip(r.Context(), trip.ID)
@@ -359,19 +365,22 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load segments")
 		return
 	}
-	bookingTodos, err := q.ListBookingTodosByTrip(r.Context(), trip.ID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not load booking todos")
-		return
+	// Booking todos encode the owner's booking state and prices — viewer
+	// follows don't get them, matching the public share view's boundary.
+	var bookingTodos []store.BookingTodo
+	if row.Access != "viewer" {
+		bookingTodos, err = q.ListBookingTodosByTrip(r.Context(), trip.ID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not load booking todos")
+			return
+		}
 	}
 	resp := toTripResponse(trip, items, accommodations, segments, bookingTodos)
-	if trip.UserID == user.ID {
-		resp.Access = "owner"
-	} else {
-		resp.Access = "editor"
+	resp.Access = row.Access
+	if row.Access != "owner" {
 		// The chat_id keys the OWNER's plan sessions; a collaborator seeding a
 		// freeform /plan chat with it would fork the lineage under their own
-		// account. Refine binds by trip_id, so editors never need it.
+		// account. Refine binds by trip_id, so members never need it.
 		resp.ChatID = nil
 		if owner, err := q.GetUserByID(r.Context(), trip.UserID); err == nil &&
 			owner.DisplayName != nil && *owner.DisplayName != "" {

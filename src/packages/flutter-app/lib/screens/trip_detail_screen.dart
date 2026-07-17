@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,10 +26,12 @@ import '../providers/plan_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/ferries_provider.dart';
 import '../providers/local_provider.dart';
+import '../providers/shared_with_me_provider.dart';
 import '../providers/trip_cache_provider.dart';
 import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/share_link.dart';
 import '../utils/tracked_launch.dart';
 import '../utils/trip_days.dart';
 import '../utils/trip_format.dart';
@@ -212,12 +213,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   }
 
   /// (Re)starts or stops the poll timer to match the loaded trip. Owners
-  /// poll when the trip has co-planners (`shared`), editors always.
+  /// poll when the trip has co-planners (`shared`); editors and viewer
+  /// follows always.
   void _syncStatusPolling() {
     final trip = _trip;
     final want = trip != null &&
         !_isOffline &&
-        (trip.access == 'editor' || (trip.shared ?? false));
+        (!trip.isOwner || (trip.shared ?? false));
     if (want) {
       _statusPoll ??=
           Timer.periodic(_statusPollInterval, (_) => _statusTick());
@@ -344,6 +346,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   }
 
   bool get _isOffline => _offlineSince != null;
+
+  /// Viewer follows (access == 'viewer') see the trip without any edit
+  /// affordances — the server 404s their mutations anyway.
+  bool get _readOnly => !(_trip?.canEdit ?? true);
 
   /// Belt-and-braces offline gate at the top of every mutation method. The
   /// primary affordances are also visually disabled/hidden while offline;
@@ -1036,6 +1042,37 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (mounted) showSnack(context, msg);
   }
 
+  /// Drops this shared trip from the member's own list (the owner's trip is
+  /// untouched). Editors and viewer follows alike.
+  Future<void> _leaveTrip() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove from my trips?'),
+        content: const Text(
+            "You'll lose access until you're invited again. The trip itself "
+            'is not deleted.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ref.read(tripsApiServiceProvider).leaveTrip(widget.tripId);
+      ref.invalidate(sharedWithMeProvider);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      _showSnack('Could not remove trip: $e');
+    }
+  }
+
   Future<void> _addStay() async {
     if (_guardOffline()) return;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
@@ -1097,27 +1134,42 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   }
 
   /// Where the app is mounted on its host: '/' in dev, '/app/' in the
-  /// deployment build (set via --dart-define, like API_BASE_URL). Dart can't
-  /// portably read the base href, so the build injects it.
-  static const _appBasePath =
-      String.fromEnvironment('APP_BASE_PATH', defaultValue: '/');
+  /// Anchors the app-bar share menu so the iPad share popover has a rect to
+  /// point at (share_plus requires sharePositionOrigin there).
+  final GlobalKey _shareMenuKey = GlobalKey();
 
-  /// Mints (or reuses) the trip's share link and copies it to the clipboard.
-  /// Path-style form: origin + basePath + share/<token>.
+  Rect? _shareAnchorRect() {
+    final box =
+        _shareMenuKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// "Title · dates" line that accompanies a shared link.
+  String _shareMessage(Trip trip) {
+    final dates = tripDateRange(trip.startDate, trip.endDate);
+    return dates == null
+        ? _displayTitle(trip)
+        : '${_displayTitle(trip)} · $dates';
+  }
+
+  /// Mints (or reuses) the trip's share link, then hands it to the OS share
+  /// sheet (mobile) or the clipboard (web/desktop).
   Future<void> _shareLink() async {
+    final trip = _trip;
+    if (trip == null) return;
     try {
       final token = await ref
           .read(tripsApiServiceProvider)
           .createShareLink(widget.tripId);
-      String origin;
-      try {
-        origin = Uri.base.origin;
-      } catch (_) {
-        origin = ''; // non-http platform; copy a relative link
-      }
-      final url = '$origin${_appBasePath}share/$token';
-      await Clipboard.setData(ClipboardData(text: url));
-      _showSnack('Share link copied to clipboard');
+      if (!mounted) return;
+      await shareOrCopyLink(
+        context,
+        url: shareUrl(token),
+        message: _shareMessage(trip),
+        snackOnCopy: 'Share link copied to clipboard',
+        sharePositionOrigin: _shareAnchorRect(),
+      );
     } catch (e) {
       _showSnack('Could not create share link: $e');
     }
@@ -1127,28 +1179,29 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     try {
       await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
       _showSnack(
-          'Sharing turned off — links no longer work (existing co-planners keep access)');
+          'Sharing turned off — links no longer work (existing co-planners and followers keep access)');
     } catch (e) {
       _showSnack('Could not turn off sharing: $e');
     }
   }
 
-  /// Mints an editor link and copies it — the recipient can join as a
+  /// Mints an editor link and shares/copies it — the recipient can join as a
   /// co-planner and edit this trip.
   Future<void> _inviteCoPlanner() async {
+    final trip = _trip;
+    if (trip == null) return;
     try {
       final token = await ref
           .read(tripsApiServiceProvider)
           .createShareLink(widget.tripId, role: 'editor');
-      String origin;
-      try {
-        origin = Uri.base.origin;
-      } catch (_) {
-        origin = '';
-      }
-      final url = '$origin${_appBasePath}share/$token';
-      await Clipboard.setData(ClipboardData(text: url));
-      _showSnack('Co-planner invite copied — anyone with it can edit');
+      if (!mounted) return;
+      await shareOrCopyLink(
+        context,
+        url: shareUrl(token),
+        message: 'Co-plan with me: ${_shareMessage(trip)}',
+        snackOnCopy: 'Co-planner invite copied — anyone with it can edit',
+        sharePositionOrigin: _shareAnchorRect(),
+      );
     } catch (e) {
       _showSnack('Could not create invite: $e');
     }
@@ -2042,7 +2095,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 tooltip: 'Open in Google Maps',
                 onPressed: () => _launch(_mapsUrl(item)),
               ),
-              _itemMenu(item),
+              if (!_readOnly) _itemMenu(item),
             ],
           ),
           selected: _selectedPosition == item.position,
@@ -2553,11 +2606,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 20),
-                  tooltip: 'Rename',
-                  onPressed: _isOffline ? null : _editTitle,
-                ),
+                if (trip.canEdit)
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20),
+                    tooltip: 'Rename',
+                    onPressed: _isOffline ? null : _editTitle,
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -2571,35 +2625,47 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   label: Text(hasDates
                       ? '${trip.startDate} → ${trip.endDate}'
                       : 'Add dates'),
-                  onPressed: _isOffline ? null : _editDates,
+                  onPressed:
+                      (_isOffline || !trip.canEdit) ? null : _editDates,
                 ),
-                PopupMenuButton<String>(
-                  tooltip: 'Change status',
-                  enabled: !_isOffline,
-                  onSelected: (v) => _patch(status: v),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'draft', child: Text('Draft')),
-                    PopupMenuItem(value: 'planned', child: Text('Planned')),
-                  ],
-                  child: StatusPill(
-                    status: trip.status,
-                    trailing: const Icon(Icons.arrow_drop_down),
-                  ),
-                ),
+                if (trip.canEdit)
+                  PopupMenuButton<String>(
+                    tooltip: 'Change status',
+                    enabled: !_isOffline,
+                    onSelected: (v) => _patch(status: v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'draft', child: Text('Draft')),
+                      PopupMenuItem(value: 'planned', child: Text('Planned')),
+                    ],
+                    child: StatusPill(
+                      status: trip.status,
+                      trailing: const Icon(Icons.arrow_drop_down),
+                    ),
+                  )
+                else
+                  StatusPill(status: trip.status),
               ],
             ),
             const SizedBox(height: 12),
             if (!trip.isOwner) ...[
               Row(
                 children: [
-                  Icon(Icons.group_outlined,
-                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  Icon(
+                      trip.canEdit
+                          ? Icons.group_outlined
+                          : Icons.visibility_outlined,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      trip.ownerName != null
-                          ? 'Co-planning with ${trip.ownerName} — your changes save for everyone.'
-                          : 'Co-planning a shared trip — your changes save for everyone.',
+                      trip.canEdit
+                          ? (trip.ownerName != null
+                              ? 'Co-planning with ${trip.ownerName} — your changes save for everyone.'
+                              : 'Co-planning a shared trip — your changes save for everyone.')
+                          : (trip.ownerName != null
+                              ? 'Shared by ${trip.ownerName} — view only.'
+                              : 'Shared trip — view only.'),
                       style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant),
                     ),
@@ -2695,6 +2761,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           // neither. Both mutate, so they're hidden while offline-serving.
           if (trip != null && trip.isOwner && !_isOffline)
             PopupMenuButton<String>(
+              key: _shareMenuKey,
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Share trip',
               onSelected: (v) => switch (v) {
@@ -2703,13 +2770,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 'manage' => _manageCoPlanners(),
                 _ => _revokeLink(),
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'copy', child: Text('Copy share link')),
+              itemBuilder: (context) => [
                 PopupMenuItem(
-                    value: 'invite', child: Text('Copy invite link (can edit)')),
+                    value: 'copy',
+                    child: Text(shareUsesNativeSheet
+                        ? 'Share link…'
+                        : 'Copy share link')),
                 PopupMenuItem(
-                    value: 'manage', child: Text('Manage co-planners')),
-                PopupMenuItem(value: 'revoke', child: Text('Turn off sharing')),
+                    value: 'invite',
+                    child: Text(shareUsesNativeSheet
+                        ? 'Share co-planner invite…'
+                        : 'Copy invite link (can edit)')),
+                const PopupMenuItem(
+                    value: 'manage', child: Text('Manage access')),
+                const PopupMenuItem(
+                    value: 'revoke', child: Text('Turn off sharing')),
               ],
             ),
           if (trip != null && trip.isOwner && !_isOffline)
@@ -2717,6 +2792,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete trip',
               onPressed: _delete,
+            ),
+          // Members (editors and viewer follows) can drop the trip from
+          // their own list; the owner's trip is untouched.
+          if (trip != null && !trip.isOwner && !_isOffline)
+            IconButton(
+              icon: const Icon(Icons.bookmark_remove_outlined),
+              tooltip: 'Remove from my trips',
+              onPressed: _leaveTrip,
             ),
         ],
       ),
@@ -2875,7 +2958,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                               ? null
                                               : 'Add a place to see it '
                                                   'on the map.',
-                                          emptyAction: _isOffline
+                                          emptyAction: (_isOffline ||
+                                                  _readOnly)
                                               ? null
                                               : FilledButton.tonalIcon(
                                                   onPressed: () => _addPlace(
@@ -2969,17 +3053,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                             ),
                                             const SizedBox(width: 4),
                                           ],
-                                          TextButton.icon(
-                                            onPressed:
-                                                _isOffline ? null : _addPlace,
-                                            style: TextButton.styleFrom(
-                                              visualDensity:
-                                                  VisualDensity.compact,
+                                          if (!_readOnly)
+                                            TextButton.icon(
+                                              onPressed: _isOffline
+                                                  ? null
+                                                  : _addPlace,
+                                              style: TextButton.styleFrom(
+                                                visualDensity:
+                                                    VisualDensity.compact,
+                                              ),
+                                              icon: const Icon(Icons.add,
+                                                  size: 18),
+                                              label: const Text('Add place'),
                                             ),
-                                            icon:
-                                                const Icon(Icons.add, size: 18),
-                                            label: const Text('Add place'),
-                                          ),
                                         ],
                                       ),
                                     ),
@@ -3097,6 +3183,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   // checklist above.
                                   BookingsSection(
                                     trip: trip,
+                                    readOnly: _readOnly,
                                     onAddStay: _addStay,
                                     onDeleteStay: _deleteStay,
                                     onAddSegment: _addSegment,
@@ -3105,7 +3192,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   // Bookings live embedded in their city groups;
                                   // this section appears only when something
                                   // didn't match a city (custom or stale todos).
-                                  if (grouped.residual.isEmpty)
+                                  // Viewers get no checklist at all (the server
+                                  // withholds todos from them).
+                                  if (grouped.residual.isEmpty && !_readOnly)
                                     Align(
                                       alignment: Alignment.centerRight,
                                       child: TextButton.icon(
@@ -3772,7 +3861,8 @@ class _CoPlannersSheet extends ConsumerStatefulWidget {
 }
 
 class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
-  List<({String userId, String displayName, String email})>? _collaborators;
+  List<({String userId, String displayName, String email, String role})>?
+      _collaborators;
   List<({String id, String email, DateTime expiresAt})>? _invites;
   final _emailController = TextEditingController();
   bool _sending = false;
@@ -3799,8 +3889,8 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
       ]);
       if (mounted) {
         setState(() {
-          _collaborators =
-              results[0] as List<({String userId, String displayName, String email})>;
+          _collaborators = results[0]
+              as List<({String userId, String displayName, String email, String role})>;
           _invites =
               results[1] as List<({String id, String email, DateTime expiresAt})>;
         });
@@ -3878,7 +3968,7 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Co-planners', style: theme.textTheme.titleMedium),
+            Text('Manage access', style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
             // Invite by email (specs/invite-by-email): the friend gets a
             // single-use link; they appear below once they accept.
@@ -3925,11 +4015,18 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
               for (final c in collaborators)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading:
-                      const CircleAvatar(child: Icon(Icons.person, size: 18)),
+                  leading: CircleAvatar(
+                      child: Icon(
+                          c.role == 'viewer'
+                              ? Icons.visibility_outlined
+                              : Icons.person,
+                          size: 18)),
                   title: Text(
                       c.displayName.isNotEmpty ? c.displayName : c.email),
-                  subtitle: c.displayName.isNotEmpty ? Text(c.email) : null,
+                  subtitle: Text([
+                    if (c.displayName.isNotEmpty) c.email,
+                    c.role == 'viewer' ? 'Viewer' : 'Can edit',
+                  ].join(' · ')),
                   trailing: IconButton(
                     icon: const Icon(Icons.person_remove_outlined),
                     tooltip: 'Remove access',

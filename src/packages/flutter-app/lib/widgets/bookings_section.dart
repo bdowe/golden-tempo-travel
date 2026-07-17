@@ -16,6 +16,10 @@ class BookingsSection extends StatelessWidget {
   final VoidCallback onAddSegment;
   final void Function(TripSegment) onDeleteSegment;
 
+  /// Read-only mode (viewer follows): stays and transport render without the
+  /// add buttons and delete icons.
+  final bool readOnly;
+
   const BookingsSection({
     super.key,
     required this.trip,
@@ -23,6 +27,7 @@ class BookingsSection extends StatelessWidget {
     required this.onDeleteStay,
     required this.onAddSegment,
     required this.onDeleteSegment,
+    this.readOnly = false,
   });
 
   static IconData _modeIcon(String mode) => switch (mode) {
@@ -64,16 +69,18 @@ class BookingsSection extends StatelessWidget {
             Expanded(
               child: Text('Your bookings', style: theme.textTheme.titleMedium),
             ),
-            TextButton.icon(
-              onPressed: onAddStay,
-              icon: const Icon(Icons.hotel_outlined, size: 18),
-              label: const Text('Add stay'),
-            ),
-            TextButton.icon(
-              onPressed: onAddSegment,
-              icon: const Icon(Icons.route_outlined, size: 18),
-              label: const Text('Add transport'),
-            ),
+            if (!readOnly) ...[
+              TextButton.icon(
+                onPressed: onAddStay,
+                icon: const Icon(Icons.hotel_outlined, size: 18),
+                label: const Text('Add stay'),
+              ),
+              TextButton.icon(
+                onPressed: onAddSegment,
+                icon: const Icon(Icons.route_outlined, size: 18),
+                label: const Text('Add transport'),
+              ),
+            ],
           ],
         ),
         if (stays.isEmpty && segments.isEmpty)
@@ -110,11 +117,12 @@ class BookingsSection extends StatelessWidget {
                       onPressed: () => _open(context, a.url!,
                           provider: a.provider, kind: 'stay'),
                     ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    tooltip: 'Remove stay',
-                    onPressed: () => onDeleteStay(a),
-                  ),
+                  if (!readOnly)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      tooltip: 'Remove stay',
+                      onPressed: () => onDeleteStay(a),
+                    ),
                 ],
               ),
             ),
@@ -145,11 +153,12 @@ class BookingsSection extends StatelessWidget {
                       onPressed: () => _open(context, s.url!,
                           provider: s.provider, kind: 'transport'),
                     ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    tooltip: 'Remove transport',
-                    onPressed: () => onDeleteSegment(s),
-                  ),
+                  if (!readOnly)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      tooltip: 'Remove transport',
+                      onPressed: () => onDeleteSegment(s),
+                    ),
                 ],
               ),
             ),

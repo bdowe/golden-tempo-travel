@@ -25,6 +25,7 @@ type CollaboratorResponse struct {
 	UserID      string    `json:"user_id"`
 	DisplayName string    `json:"display_name"`
 	Email       string    `json:"email"`
+	Role        string    `json:"role"`
 	JoinedAt    time.Time `json:"joined_at"`
 }
 
@@ -48,6 +49,26 @@ func editableTrip(w http.ResponseWriter, r *http.Request) (store.Trip, bool) {
 	return trip, true
 }
 
+// viewableTrip is editableTrip's read-only sibling: owner or ANY active
+// collaborator (viewer follows included). Returns the row plus the caller's
+// effective access ("owner"/"editor"/"viewer"). Mutation handlers must keep
+// using editableTrip.
+func viewableTrip(w http.ResponseWriter, r *http.Request) (store.GetViewableTripByIDRow, bool) {
+	user, _ := userFromContext(r.Context())
+	tripID, ok := tripIDFromPath(r)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "trip not found")
+		return store.GetViewableTripByIDRow{}, false
+	}
+	row, err := store.New(dbPool).GetViewableTripByID(r.Context(),
+		store.GetViewableTripByIDParams{ID: tripID, UserID: user.ID})
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "trip not found")
+		return store.GetViewableTripByIDRow{}, false
+	}
+	return row, true
+}
+
 // joinSharedTripHandler redeems an editor-role token for membership.
 // Idempotent; the owner joining their own trip is a no-op success.
 func joinSharedTripHandler(w http.ResponseWriter, r *http.Request) {
@@ -57,24 +78,23 @@ func joinSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "shared trip not found")
 		return
 	}
-	if share.Role != "editor" {
-		writeJSONError(w, http.StatusForbidden, "this link doesn't allow editing")
-		return
-	}
+	access := "owner"
 	if trip.UserID != user.ID {
-		if err := store.New(dbPool).CreateTripCollaborator(r.Context(), store.CreateTripCollaboratorParams{
-			ChatID: share.ChatID, OwnerID: share.OwnerID, UserID: user.ID,
-		}); err != nil {
+		// Viewer tokens create a viewer "follow"; editor tokens (and an
+		// editor redeeming any link) yield editor — the upsert never
+		// downgrades.
+		role, err := store.New(dbPool).CreateTripCollaborator(r.Context(), store.CreateTripCollaboratorParams{
+			ChatID: share.ChatID, OwnerID: share.OwnerID, UserID: user.ID, Role: share.Role,
+		})
+		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "could not join trip")
 			return
 		}
+		access = role
 		go recordEvent(user.ID, "collaborator_joined", &trip.ID, map[string]any{
 			"owner_id": share.OwnerID.String(),
+			"role":     role,
 		})
-	}
-	access := "editor"
-	if trip.UserID == user.ID {
-		access = "owner"
 	}
 	writeJSON(w, http.StatusOK, JoinSharedTripResponse{TripID: trip.ID.String(), Access: access})
 }
@@ -107,6 +127,7 @@ func listCollaboratorsHandler(w http.ResponseWriter, r *http.Request) {
 				UserID:      c.UserID.String(),
 				DisplayName: c.DisplayName,
 				Email:       c.Email,
+				Role:        c.Role,
 				JoinedAt:    c.CreatedAt,
 			})
 		}
@@ -120,6 +141,26 @@ func removeCollaboratorHandler(w http.ResponseWriter, r *http.Request) {
 	id, ok := tripIDFromPath(r)
 	if !ok {
 		writeJSONError(w, http.StatusNotFound, "trip not found")
+		return
+	}
+	// "me" = leaving a trip that was shared with you — the one non-owner
+	// case; works for editors and viewer follows alike.
+	if mux.Vars(r)["userId"] == "me" {
+		row, err := store.New(dbPool).GetViewableTripByID(r.Context(),
+			store.GetViewableTripByIDParams{ID: id, UserID: user.ID})
+		if err != nil || row.ChatID == nil || row.UserID == user.ID {
+			writeJSONError(w, http.StatusNotFound, "trip not found")
+			return
+		}
+		n, err := store.New(dbPool).RevokeTripCollaborator(r.Context(), store.RevokeTripCollaboratorParams{
+			OwnerID: row.UserID, ChatID: *row.ChatID, UserID: user.ID,
+		})
+		if err != nil || n == 0 {
+			writeJSONError(w, http.StatusNotFound, "trip not found")
+			return
+		}
+		go recordEvent(user.ID, "collaborator_left", &row.ID, nil)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	collabID, err := uuid.Parse(mux.Vars(r)["userId"])
@@ -172,7 +213,7 @@ func listSharedWithMeHandler(w http.ResponseWriter, r *http.Request) {
 		}, nil, nil, nil, nil)
 		resp.VersionCount = int(t.VersionCount)
 		resp.Cities = t.Cities
-		resp.Access = "editor"
+		resp.Access = t.Role
 		// Owner's plan-session key — same fork hazard as getTripHandler.
 		resp.ChatID = nil
 		if t.OwnerName != "" {

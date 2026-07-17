@@ -152,8 +152,8 @@ class TripsApiService {
     throw Exception('Failed to load shared trips (${res.statusCode})');
   }
 
-  /// Owner-only: active co-planners on a trip.
-  Future<List<({String userId, String displayName, String email})>>
+  /// Owner-only: active co-planners and viewer follows on a trip.
+  Future<List<({String userId, String displayName, String email, String role})>>
       listCollaborators(String tripId) async {
     final res = await apiClient.httpClient.get(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators'),
@@ -166,10 +166,22 @@ class TripsApiService {
                 userId: e['user_id'] as String,
                 displayName: (e['display_name'] as String?) ?? '',
                 email: (e['email'] as String?) ?? '',
+                role: (e['role'] as String?) ?? 'editor',
               ))
           .toList();
     }
     throw Exception('Failed to load co-planners (${res.statusCode})');
+  }
+
+  /// Leaves a trip that was shared with the caller (editor or viewer).
+  Future<void> leaveTrip(String tripId) async {
+    final res = await apiClient.httpClient.delete(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/collaborators/me'),
+      headers: apiClient.jsonHeaders(),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to leave trip (${res.statusCode})');
+    }
   }
 
   /// Owner-only: removes a co-planner's access.

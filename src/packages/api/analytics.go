@@ -189,7 +189,9 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 		// Skipped in degraded mode (recordEvent drops the event then anyway).
 		if tripID != nil && dbPool != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if _, err := store.New(dbPool).GetEditableTripByID(ctx, store.GetEditableTripByIDParams{
+			// Viewable (not editable): viewer follows may attribute client
+			// events (e.g. booking link clicks) to the trip they can read.
+			if _, err := store.New(dbPool).GetViewableTripByID(ctx, store.GetViewableTripByIDParams{
 				ID: *tripID, UserID: user.ID,
 			}); err != nil {
 				tripID = nil

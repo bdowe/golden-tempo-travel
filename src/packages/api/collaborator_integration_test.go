@@ -33,15 +33,125 @@ func TestEditorJoinAndEdit(t *testing.T) {
 	}
 }
 
-func TestViewerTokenCannotJoin(t *testing.T) {
+// Redeeming a viewer token creates a read-only "follow": the trip shows up
+// in Shared with you, reads work (without booking todos), mutations 404.
+func TestViewerTokenCreatesReadOnlyFollow(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	viewer, viewerToken := createTestUser(t, "viewer@example.com")
+	trip := createTestTrip(t, owner.ID, 2)
+	shareToken := createShare(t, ownerToken, trip.ID.String(), "viewer")
+
+	join := joinShare(t, viewerToken, shareToken)
+	if join.Code != http.StatusOK {
+		t.Fatalf("viewer join = %d: %s", join.Code, join.Body.String())
+	}
+	if body := decode(t, join); body["access"] != "viewer" {
+		t.Fatalf("join access = %v, want viewer", body["access"])
+	}
+
+	// Read works, without booking todos or chat_id.
+	get := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), viewerToken, nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("viewer GET = %d", get.Code)
+	}
+	body := decode(t, get)
+	if body["access"] != "viewer" {
+		t.Fatalf("GET access = %v, want viewer", body["access"])
+	}
+	if body["booking_todos"] != nil {
+		t.Fatalf("viewer sees booking todos: %v", body["booking_todos"])
+	}
+	if body["chat_id"] != nil {
+		t.Fatalf("viewer sees chat_id")
+	}
+
+	// Every mutation surface stays editor/owner-only (404 posture).
+	if rec := doJSON(t, "POST", "/api/v1/trips/"+trip.ID.String()+"/items", viewerToken, map[string]any{
+		"name": "Nope", "latitude": 1.0, "longitude": 1.0,
+	}); rec.Code != http.StatusNotFound {
+		t.Fatalf("viewer add item = %d, want 404", rec.Code)
+	}
+	if rec := doJSON(t, "PATCH", "/api/v1/trips/"+trip.ID.String(), viewerToken, map[string]any{
+		"title": "Hijacked",
+	}); rec.Code != http.StatusNotFound {
+		t.Fatalf("viewer patch trip = %d, want 404", rec.Code)
+	}
+	if rec := doJSON(t, "POST", "/api/v1/trips/"+trip.ID.String()+"/booking-todos", viewerToken, map[string]any{
+		"kind": "other", "title": "Nope",
+	}); rec.Code != http.StatusNotFound {
+		t.Fatalf("viewer add todo = %d, want 404", rec.Code)
+	}
+
+	// Shared-with-me lists the follow with the viewer role.
+	shared := doJSON(t, "GET", "/api/v1/trips/shared-with-me", viewerToken, nil)
+	var rows []map[string]any
+	_ = json.Unmarshal(shared.Body.Bytes(), &rows)
+	if len(rows) != 1 || rows[0]["access"] != "viewer" {
+		t.Fatalf("shared-with-me = %v, want one viewer row", rows)
+	}
+
+	// The status poll works for viewers (freshness), and the owner's manage
+	// list shows the role.
+	if rec := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String()+"/status", viewerToken, nil); rec.Code != http.StatusOK {
+		t.Fatalf("viewer status = %d", rec.Code)
+	}
+	collabs := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String()+"/collaborators", ownerToken, nil)
+	var crows []map[string]any
+	_ = json.Unmarshal(collabs.Body.Bytes(), &crows)
+	if len(crows) != 1 || crows[0]["role"] != "viewer" || crows[0]["user_id"] != viewer.ID.String() {
+		t.Fatalf("collaborators = %v, want the viewer with role", crows)
+	}
+}
+
+// Role transitions: editor link upgrades a viewer; a viewer link never
+// downgrades an editor.
+func TestViewerEditorRoleTransitions(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	_, friendToken := createTestUser(t, "friend@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	viewerLink := createShare(t, ownerToken, trip.ID.String(), "viewer")
+	editorLink := createShare(t, ownerToken, trip.ID.String(), "editor")
+
+	if rec := joinShare(t, friendToken, viewerLink); decode(t, rec)["access"] != "viewer" {
+		t.Fatalf("first join should be viewer")
+	}
+	if rec := joinShare(t, friendToken, editorLink); decode(t, rec)["access"] != "editor" {
+		t.Fatalf("editor link should upgrade the follow")
+	}
+	// Now an editor; the viewer link must not downgrade.
+	if rec := joinShare(t, friendToken, viewerLink); decode(t, rec)["access"] != "editor" {
+		t.Fatalf("viewer link downgraded an editor")
+	}
+	add := doJSON(t, "POST", "/api/v1/trips/"+trip.ID.String()+"/items", friendToken, map[string]any{
+		"name": "Upgraded Edit", "latitude": 1.0, "longitude": 1.0,
+	})
+	if add.Code != http.StatusCreated && add.Code != http.StatusOK {
+		t.Fatalf("upgraded editor add = %d", add.Code)
+	}
+}
+
+// Members can leave via DELETE .../collaborators/me; owners can't "leave".
+func TestCollaboratorSelfLeave(t *testing.T) {
 	resetDB(t)
 	owner, ownerToken := createTestUser(t, "owner@example.com")
 	_, viewerToken := createTestUser(t, "viewer@example.com")
 	trip := createTestTrip(t, owner.ID, 1)
 	shareToken := createShare(t, ownerToken, trip.ID.String(), "viewer")
+	if rec := joinShare(t, viewerToken, shareToken); rec.Code != http.StatusOK {
+		t.Fatalf("join = %d", rec.Code)
+	}
 
-	if rec := joinShare(t, viewerToken, shareToken); rec.Code != http.StatusForbidden {
-		t.Fatalf("viewer join = %d, want 403", rec.Code)
+	if rec := doJSON(t, "DELETE", "/api/v1/trips/"+trip.ID.String()+"/collaborators/me", viewerToken, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("self-leave = %d, want 204", rec.Code)
+	}
+	if rec := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), viewerToken, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("read after leave = %d, want 404", rec.Code)
+	}
+	// Owner "leaving" their own trip is a 404 (they aren't a member).
+	if rec := doJSON(t, "DELETE", "/api/v1/trips/"+trip.ID.String()+"/collaborators/me", ownerToken, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("owner self-leave = %d, want 404", rec.Code)
 	}
 }
 
