@@ -63,7 +63,8 @@ class TripDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<TripDetailScreen> createState() => _TripDetailScreenState();
 }
 
-class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
+class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
+    with WidgetsBindingObserver {
   Trip? _trip;
   bool _loading = true;
   String? _error;
@@ -179,13 +180,71 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _statusPoll?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  // ── Freshness polling (specs/shared-trip-freshness) ───────────────────
+  // Shared trips poll the cheap /status endpoint and silently refresh when
+  // someone else edited. Only runs foregrounded, online, on shared trips.
+
+  Timer? _statusPoll;
+  static const _statusPollInterval = Duration(seconds: 25);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncStatusPolling();
+      _statusTick(); // catch up on edits made while backgrounded
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _statusPoll?.cancel();
+      _statusPoll = null;
+    }
+  }
+
+  /// (Re)starts or stops the poll timer to match the loaded trip. Owners
+  /// poll when the trip has co-planners (`shared`), editors always.
+  void _syncStatusPolling() {
+    final trip = _trip;
+    final want = trip != null &&
+        !_isOffline &&
+        (trip.access == 'editor' || (trip.shared ?? false));
+    if (want) {
+      _statusPoll ??=
+          Timer.periodic(_statusPollInterval, (_) => _statusTick());
+    } else {
+      _statusPoll?.cancel();
+      _statusPoll = null;
+    }
+  }
+
+  Future<void> _statusTick() async {
+    final trip = _trip;
+    // Skip while the refine panel streams (its trip_updated events already
+    // drive _refresh) or a refresh is in flight.
+    if (trip == null || _isOffline || _panelOpen || _refreshFuture != null) {
+      return;
+    }
+    try {
+      final status =
+          await ref.read(tripsApiServiceProvider).getTripStatus(trip.id);
+      if (!mounted) return;
+      final loaded = DateTime.tryParse(trip.updatedAt);
+      if (loaded != null && status.updatedAt.isAfter(loaded)) {
+        await _refresh();
+      }
+    } catch (_) {
+      // Background poll: never surface errors or flip offline mode.
+    }
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -280,6 +339,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       if (mounted && !quiet) setState(() => _error = e.toString());
     } finally {
       if (mounted && !quiet) setState(() => _loading = false);
+      if (mounted) _syncStatusPolling();
     }
   }
 
@@ -2428,6 +2488,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
   String _fmtShortDt(DateTime d) => '${_months[d.month - 1]} ${d.day}';
 
+  /// Coarse relative timestamp for the "Updated by X" line.
+  String _relativeTime(String iso) {
+    final t = DateTime.tryParse(iso);
+    if (t == null) return 'recently';
+    final d = DateTime.now().difference(t.toLocal());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
+  }
+
   /// Day-header date, e.g. "Tue, Jul 15" (weekday + month + day).
   String _fmtDayHeader(DateTime d) =>
       '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
@@ -2548,6 +2619,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                   label: const Text('Refine with AI'),
                 ),
               ),
+            // "Updated by Maria · 2m ago" — only present when someone ELSE
+            // made the last edit (the server omits self-attribution).
+            if (trip.updatedByName != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Updated by ${trip.updatedByName} · ${_relativeTime(trip.updatedAt)}',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
             if (overview != null) ...[
               const SizedBox(height: 16),
               Text(

@@ -715,6 +715,7 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(getTripHandler))).Methods("GET")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(patchTripHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}", authMiddleware(http.HandlerFunc(deleteTripHandler))).Methods("DELETE")
+	api.Handle("/trips/{id}/status", authMiddleware(http.HandlerFunc(tripStatusHandler))).Methods("GET")
 	api.Handle("/trips/{id}/refine", strict(authMiddleware(http.HandlerFunc(refineTripHandler)))).Methods("POST")
 	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(createShareHandler))).Methods("POST")
 	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(revokeShareHandler))).Methods("DELETE")

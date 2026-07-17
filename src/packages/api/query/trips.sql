@@ -1,6 +1,6 @@
 -- name: CreateTrip :one
-INSERT INTO trips (user_id, title, status, chat_id, summary)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO trips (user_id, title, status, chat_id, summary, updated_by)
+VALUES ($1, $2, $3, $4, $5, $1)
 RETURNING *;
 
 -- name: CreateItineraryItem :one
@@ -106,8 +106,33 @@ WHERE trip_id = $1 AND position > $2;
 UPDATE itinerary_items SET position = $3 WHERE id = $1 AND trip_id = $2;
 
 -- name: TouchTrip :exec
--- Itinerary-item writes don't touch the trips row, so bump updated_at by hand.
-UPDATE trips SET updated_at = now() WHERE id = $1;
+-- Content writes don't touch the trips row, so bump updated_at by hand and
+-- record who made the edit (the "Updated by X" attribution on shared trips).
+-- INVARIANT: only call from real user edits — never from passive load paths
+-- like syncBookingTodos, or every reader looks like an editor and polling
+-- clients chase each other's refreshes.
+UPDATE trips SET updated_at = now(), updated_by = $2 WHERE id = $1;
+
+-- name: GetTripStatusByID :one
+-- Freshness poll for shared-trip clients: one cheap row, authorized for the
+-- owner or any active collaborator on the row's lineage.
+SELECT t.updated_at, t.updated_by,
+       COALESCE(u.display_name, '')::text AS updated_by_name
+FROM trips t
+LEFT JOIN users u ON u.id = t.updated_by
+WHERE t.id = $1
+  AND (t.user_id = $2 OR EXISTS (
+        SELECT 1 FROM trip_collaborators c
+        WHERE c.user_id = $2 AND c.revoked_at IS NULL
+          AND c.owner_id = t.user_id AND c.chat_id = t.chat_id));
+
+-- name: HasActiveCollaborators :one
+-- Whether anyone collaborates on this lineage — tells the owner's client the
+-- trip is shared (worth polling for freshness).
+SELECT EXISTS (
+  SELECT 1 FROM trip_collaborators
+  WHERE owner_id = $1 AND chat_id = $2 AND revoked_at IS NULL
+)::bool;
 
 -- name: GetTripForUpdate :one
 -- Row-locks the trip for the duration of the transaction. Full-itinerary

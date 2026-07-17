@@ -116,6 +116,8 @@ func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not save accommodation")
 		return
 	}
+	// Best-effort attribution/freshness bump — the stay itself committed.
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusCreated, toAccommodationResponse(acc))
 }
 
@@ -140,5 +142,6 @@ func deleteAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "accommodation not found")
 		return
 	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	w.WriteHeader(http.StatusNoContent)
 }

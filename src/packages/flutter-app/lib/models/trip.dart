@@ -38,6 +38,15 @@ class Trip {
   @JsonKey(name: 'owner_name')
   final String? ownerName;
 
+  /// Who last edited the trip's content — omitted for the caller's own edits
+  /// (specs/shared-trip-freshness).
+  @JsonKey(name: 'updated_by_name')
+  final String? updatedByName;
+
+  /// True on an owner's trip that has active co-planners: the detail screen
+  /// polls for freshness. Editors poll based on [access] alone.
+  final bool? shared;
+
   const Trip({
     required this.id,
     required this.title,
@@ -56,6 +65,8 @@ class Trip {
     this.bookingTodos,
     this.access,
     this.ownerName,
+    this.updatedByName,
+    this.shared,
   });
 
   /// True when the current user may edit this trip: owner or editor

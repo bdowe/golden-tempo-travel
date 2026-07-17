@@ -271,6 +271,9 @@ func addBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not save booking todo")
 		return
 	}
+	// Best-effort attribution/freshness bump — the todo itself committed.
+	// (syncBookingTodosHandler must NEVER stamp: it runs on every trip load.)
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusCreated, toBookingTodoResponse(todo))
 }
 
@@ -315,6 +318,7 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		go recordEvent(user.ID, "booking_marked_booked", &tripID, meta)
 	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toBookingTodoResponse(todo))
 }
 
@@ -339,6 +343,7 @@ func deleteBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "booking todo not found")
 		return
 	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

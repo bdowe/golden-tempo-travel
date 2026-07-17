@@ -108,9 +108,9 @@ func (q *Queries) CreateItineraryItem(ctx context.Context, arg CreateItineraryIt
 }
 
 const createTrip = `-- name: CreateTrip :one
-INSERT INTO trips (user_id, title, status, chat_id, summary)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary
+INSERT INTO trips (user_id, title, status, chat_id, summary, updated_by)
+VALUES ($1, $2, $3, $4, $5, $1)
+RETURNING id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by
 `
 
 type CreateTripParams struct {
@@ -141,6 +141,7 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		&i.Status,
 		&i.ChatID,
 		&i.Summary,
+		&i.UpdatedBy,
 	)
 	return i, err
 }
@@ -240,7 +241,7 @@ func (q *Queries) GetItineraryItemsByTrip(ctx context.Context, tripID uuid.UUID)
 }
 
 const getTripByIDAndOwner = `-- name: GetTripByIDAndOwner :one
-SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary FROM trips WHERE id = $1 AND user_id = $2
+SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by FROM trips WHERE id = $1 AND user_id = $2
 `
 
 type GetTripByIDAndOwnerParams struct {
@@ -262,12 +263,13 @@ func (q *Queries) GetTripByIDAndOwner(ctx context.Context, arg GetTripByIDAndOwn
 		&i.Status,
 		&i.ChatID,
 		&i.Summary,
+		&i.UpdatedBy,
 	)
 	return i, err
 }
 
 const getTripForUpdate = `-- name: GetTripForUpdate :one
-SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary FROM trips WHERE id = $1 FOR UPDATE
+SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by FROM trips WHERE id = $1 FOR UPDATE
 `
 
 // Row-locks the trip for the duration of the transaction. Full-itinerary
@@ -288,8 +290,62 @@ func (q *Queries) GetTripForUpdate(ctx context.Context, id uuid.UUID) (Trip, err
 		&i.Status,
 		&i.ChatID,
 		&i.Summary,
+		&i.UpdatedBy,
 	)
 	return i, err
+}
+
+const getTripStatusByID = `-- name: GetTripStatusByID :one
+SELECT t.updated_at, t.updated_by,
+       COALESCE(u.display_name, '')::text AS updated_by_name
+FROM trips t
+LEFT JOIN users u ON u.id = t.updated_by
+WHERE t.id = $1
+  AND (t.user_id = $2 OR EXISTS (
+        SELECT 1 FROM trip_collaborators c
+        WHERE c.user_id = $2 AND c.revoked_at IS NULL
+          AND c.owner_id = t.user_id AND c.chat_id = t.chat_id))
+`
+
+type GetTripStatusByIDParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+type GetTripStatusByIDRow struct {
+	UpdatedAt     time.Time   `json:"updated_at"`
+	UpdatedBy     pgtype.UUID `json:"updated_by"`
+	UpdatedByName string      `json:"updated_by_name"`
+}
+
+// Freshness poll for shared-trip clients: one cheap row, authorized for the
+// owner or any active collaborator on the row's lineage.
+func (q *Queries) GetTripStatusByID(ctx context.Context, arg GetTripStatusByIDParams) (GetTripStatusByIDRow, error) {
+	row := q.db.QueryRow(ctx, getTripStatusByID, arg.ID, arg.UserID)
+	var i GetTripStatusByIDRow
+	err := row.Scan(&i.UpdatedAt, &i.UpdatedBy, &i.UpdatedByName)
+	return i, err
+}
+
+const hasActiveCollaborators = `-- name: HasActiveCollaborators :one
+SELECT EXISTS (
+  SELECT 1 FROM trip_collaborators
+  WHERE owner_id = $1 AND chat_id = $2 AND revoked_at IS NULL
+)::bool
+`
+
+type HasActiveCollaboratorsParams struct {
+	OwnerID uuid.UUID `json:"owner_id"`
+	ChatID  string    `json:"chat_id"`
+}
+
+// Whether anyone collaborates on this lineage — tells the owner's client the
+// trip is shared (worth polling for freshness).
+func (q *Queries) HasActiveCollaborators(ctx context.Context, arg HasActiveCollaboratorsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveCollaborators, arg.OwnerID, arg.ChatID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const listLatestTripsByOwner = `-- name: ListLatestTripsByOwner :many
@@ -368,7 +424,7 @@ func (q *Queries) ListLatestTripsByOwner(ctx context.Context, userID uuid.UUID) 
 }
 
 const listTripVersionsByChat = `-- name: ListTripVersionsByChat :many
-SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary FROM trips WHERE user_id = $1 AND chat_id = $2 ORDER BY created_at DESC
+SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by FROM trips WHERE user_id = $1 AND chat_id = $2 ORDER BY created_at DESC
 `
 
 type ListTripVersionsByChatParams struct {
@@ -396,6 +452,7 @@ func (q *Queries) ListTripVersionsByChat(ctx context.Context, arg ListTripVersio
 			&i.Status,
 			&i.ChatID,
 			&i.Summary,
+			&i.UpdatedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -408,7 +465,7 @@ func (q *Queries) ListTripVersionsByChat(ctx context.Context, arg ListTripVersio
 }
 
 const listTripsByOwner = `-- name: ListTripsByOwner :many
-SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary FROM trips WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by FROM trips WHERE user_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListTripsByOwner(ctx context.Context, userID uuid.UUID) ([]Trip, error) {
@@ -431,6 +488,7 @@ func (q *Queries) ListTripsByOwner(ctx context.Context, userID uuid.UUID) ([]Tri
 			&i.Status,
 			&i.ChatID,
 			&i.Summary,
+			&i.UpdatedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -475,12 +533,21 @@ func (q *Queries) ShiftItineraryItemPositions(ctx context.Context, arg ShiftItin
 }
 
 const touchTrip = `-- name: TouchTrip :exec
-UPDATE trips SET updated_at = now() WHERE id = $1
+UPDATE trips SET updated_at = now(), updated_by = $2 WHERE id = $1
 `
 
-// Itinerary-item writes don't touch the trips row, so bump updated_at by hand.
-func (q *Queries) TouchTrip(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, touchTrip, id)
+type TouchTripParams struct {
+	ID        uuid.UUID   `json:"id"`
+	UpdatedBy pgtype.UUID `json:"updated_by"`
+}
+
+// Content writes don't touch the trips row, so bump updated_at by hand and
+// record who made the edit (the "Updated by X" attribution on shared trips).
+// INVARIANT: only call from real user edits — never from passive load paths
+// like syncBookingTodos, or every reader looks like an editor and polling
+// clients chase each other's refreshes.
+func (q *Queries) TouchTrip(ctx context.Context, arg TouchTripParams) error {
+	_, err := q.db.Exec(ctx, touchTrip, arg.ID, arg.UpdatedBy)
 	return err
 }
 
@@ -587,7 +654,7 @@ SET title      = COALESCE($1, title),
     status     = COALESCE($4, status),
     chat_id    = COALESCE($5, chat_id)
 WHERE id = $6 AND user_id = $7
-RETURNING id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary
+RETURNING id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary, updated_by
 `
 
 type UpdateTripParams struct {
@@ -622,6 +689,7 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		&i.Status,
 		&i.ChatID,
 		&i.Summary,
+		&i.UpdatedBy,
 	)
 	return i, err
 }

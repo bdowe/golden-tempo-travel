@@ -32,7 +32,7 @@ func (q *Queries) CreateTripCollaborator(ctx context.Context, arg CreateTripColl
 }
 
 const getEditableTripByID = `-- name: GetEditableTripByID :one
-SELECT t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date, t.end_date, t.status, t.chat_id, t.summary FROM trips t
+SELECT t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date, t.end_date, t.status, t.chat_id, t.summary, t.updated_by FROM trips t
 WHERE t.id = $1
   AND (t.user_id = $2 OR EXISTS (
         SELECT 1 FROM trip_collaborators c
@@ -62,6 +62,7 @@ func (q *Queries) GetEditableTripByID(ctx context.Context, arg GetEditableTripBy
 		&i.Status,
 		&i.ChatID,
 		&i.Summary,
+		&i.UpdatedBy,
 	)
 	return i, err
 }

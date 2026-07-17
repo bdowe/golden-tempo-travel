@@ -46,6 +46,24 @@ class TripsApiService {
     throw Exception('Failed to load trip versions (${res.statusCode})');
   }
 
+  /// Cheap freshness poll for shared trips (specs/shared-trip-freshness).
+  /// Returns the trip's updated_at plus who last edited (null for unknown).
+  Future<({DateTime updatedAt, String? updatedBy, String? updatedByName})>
+      getTripStatus(String id) async {
+    final res = await apiClient.httpClient.get(
+        Uri.parse('${apiClient.baseUrl}/trips/$id/status'),
+        headers: apiClient.jsonHeaders());
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return (
+        updatedAt: DateTime.parse(body['updated_at'] as String),
+        updatedBy: body['updated_by'] as String?,
+        updatedByName: body['updated_by_name'] as String?,
+      );
+    }
+    throw Exception('Failed to load trip status (${res.statusCode})');
+  }
+
   Future<Trip> getTrip(String id) async {
     final res = await apiClient.httpClient
         .get(Uri.parse('${apiClient.baseUrl}/trips/$id'), headers: apiClient.jsonHeaders());
