@@ -749,6 +749,11 @@ func buildRouter() *mux.Router {
 	// commits the server to recurring provider searches).
 	api.Handle("/alerts", strict(authMiddleware(http.HandlerFunc(createPriceAlertHandler)))).Methods("POST")
 	api.Handle("/alerts", authMiddleware(http.HandlerFunc(listPriceAlertsHandler))).Methods("GET")
+	// Alert events (specs/price-alerts-v2): the notification-center feed.
+	// Registered before /alerts/{id} so "events" is never captured as an id.
+	api.Handle("/alerts/events", authMiddleware(http.HandlerFunc(listAlertEventsHandler))).Methods("GET")
+	api.Handle("/alerts/events/read", authMiddleware(http.HandlerFunc(markAlertEventsReadHandler))).Methods("POST")
+	api.Handle("/alerts/events/unread-count", authMiddleware(http.HandlerFunc(unreadAlertEventsCountHandler))).Methods("GET")
 	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(patchPriceAlertHandler))).Methods("PATCH")
 	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(deletePriceAlertHandler))).Methods("DELETE")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")

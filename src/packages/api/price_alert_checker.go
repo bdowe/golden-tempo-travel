@@ -202,6 +202,17 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 		log.Printf("price alerts: mark notified %s: %v", a.ID, err)
 		return
 	}
+	// Persist the in-app notification event (specs/price-alerts-v2) inside the
+	// same idempotent block that marked the alert notified, with the same
+	// values the email gets. Best-effort like the email: a failed insert logs
+	// and never blocks the check loop.
+	if _, err := q.InsertAlertEvent(ctx, store.InsertAlertEventParams{
+		AlertID: a.ID, UserID: a.UserID,
+		Price: lowest.Price, Currency: lowest.Currency,
+		PreviousPrice: alertReferencePrice(a),
+	}); err != nil {
+		log.Printf("price alerts: insert event %s: %v", a.ID, err)
+	}
 	go sendAlertEmail(row.OwnerEmail, a, lowest)
 	tripID := tripIDPtr(a)
 	go recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
@@ -209,6 +220,18 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 		"price": lowest.Price, "currency": lowest.Currency,
 		"target_price": a.TargetPrice,
 	})
+}
+
+// alertReferencePrice returns the price a triggered drop was judged against —
+// the same fixed reference evaluateAlert uses: the last notified price, else
+// the creation/first-check baseline. Nil when a target-mode alert triggers on
+// its very first observation (no seed, nothing checked yet). Must be called
+// with the pre-settle alert row, before MarkPriceAlertChecked/Notified.
+func alertReferencePrice(a store.PriceAlert) *float64 {
+	if a.LastNotifiedPrice != nil {
+		return a.LastNotifiedPrice
+	}
+	return a.BaselinePrice
 }
 
 // evaluateAlert decides whether the freshly observed lowest price should

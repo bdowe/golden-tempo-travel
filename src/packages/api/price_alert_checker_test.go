@@ -258,3 +258,90 @@ func TestAlertCheckerRunOnce(t *testing.T) {
 		t.Fatalf("freshness window ignored: %d searches", calls)
 	}
 }
+
+// A triggered drop persists exactly one alert_events row with the values the
+// email gets; a non-drop check persists none; a re-check at the same price
+// persists none (the v1 notify idempotency covers events too).
+func TestAlertCheckerInsertsEvents(t *testing.T) {
+	resetDB(t)
+	userA, _ := createTestUser(t, "events-a@example.com")
+	userB, _ := createTestUser(t, "events-b@example.com")
+	q := store.New(dbPool)
+
+	depart := time.Now().AddDate(0, 2, 0).Truncate(24 * time.Hour)
+	usd := "USD"
+	// Target-mode alert seeded with the price the user was looking at, aged
+	// past the freshness window so it is due immediately. 412 <= 450 → notify.
+	alertA, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
+		UserID: userA.ID, Origin: "BOS", Destination: "CDG",
+		DepartDate: pgtype.Date{Time: depart, Valid: true},
+		CabinClass: "economy", Adults: 1, TargetPrice: f64(450),
+		LastCheckedPrice: f64(498), Currency: &usd,
+		LastCheckedAt: pgTimestamptz(time.Now().Add(-7 * time.Hour)),
+	})
+	if err != nil {
+		t.Fatalf("seed alert A: %v", err)
+	}
+	// Any-drop alert with no baseline: the first check records only.
+	if _, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
+		UserID: userB.ID, Origin: "BOS", Destination: "CDG",
+		DepartDate: pgtype.Date{Time: depart, Valid: true},
+		CabinClass: "economy", Adults: 1,
+	}); err != nil {
+		t.Fatalf("seed alert B: %v", err)
+	}
+
+	calls := 0
+	c := &alertChecker{
+		duffel:     stubDuffelOffers(t, "412.00", &calls),
+		checkEvery: 6 * time.Hour,
+		batchSize:  25,
+		perCallGap: 0,
+	}
+	c.runOnce(context.Background())
+
+	eventsFor := func(u store.User) []store.ListAlertEventsByUserRow {
+		t.Helper()
+		rows, err := q.ListAlertEventsByUser(context.Background(),
+			store.ListAlertEventsByUserParams{UserID: u.ID, Limit: 10})
+		if err != nil {
+			t.Fatalf("list events: %v", err)
+		}
+		return rows
+	}
+
+	got := eventsFor(userA)
+	if len(got) != 1 {
+		t.Fatalf("triggered drop events = %d, want exactly 1", len(got))
+	}
+	ev := got[0]
+	if ev.AlertID != alertA.ID || ev.Price != 412 || ev.Currency != "USD" {
+		t.Fatalf("event values wrong: %+v", ev)
+	}
+	if ev.PreviousPrice == nil || *ev.PreviousPrice != 498 {
+		t.Fatalf("previous_price = %v, want 498 (the seeded reference)", ev.PreviousPrice)
+	}
+	if ev.Origin != "BOS" || ev.Destination != "CDG" || dateString(ev.DepartDate) == "" {
+		t.Fatalf("joined alert context missing: %+v", ev)
+	}
+	if ev.ReadAt.Valid {
+		t.Fatalf("fresh event must be unread: %+v", ev)
+	}
+	if n := len(eventsFor(userB)); n != 0 {
+		t.Fatalf("non-drop check inserted %d events, want 0", n)
+	}
+
+	// Force both alerts due again and re-check at the same price: no further
+	// drop for A (last notified 412), no 5%+$5 drop for B (baseline now 412).
+	if _, err := dbPool.Exec(context.Background(),
+		`UPDATE price_alerts SET last_checked_at = now() - interval '7 hours'`); err != nil {
+		t.Fatalf("age alerts: %v", err)
+	}
+	c.runOnce(context.Background())
+	if n := len(eventsFor(userA)); n != 1 {
+		t.Fatalf("re-check without a new drop inserted events: %d, want 1", n)
+	}
+	if n := len(eventsFor(userB)); n != 0 {
+		t.Fatalf("re-check inserted events for the any-drop alert: %d, want 0", n)
+	}
+}
