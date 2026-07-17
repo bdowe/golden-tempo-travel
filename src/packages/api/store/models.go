@@ -28,14 +28,15 @@ type Accommodation struct {
 }
 
 type AlertEvent struct {
-	ID            uuid.UUID          `json:"id"`
-	AlertID       uuid.UUID          `json:"alert_id"`
-	UserID        uuid.UUID          `json:"user_id"`
-	Price         float64            `json:"price"`
-	Currency      string             `json:"currency"`
-	PreviousPrice *float64           `json:"previous_price"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	ReadAt        pgtype.Timestamptz `json:"read_at"`
+	ID                   uuid.UUID          `json:"id"`
+	AlertID              uuid.UUID          `json:"alert_id"`
+	UserID               uuid.UUID          `json:"user_id"`
+	Price                float64            `json:"price"`
+	Currency             string             `json:"currency"`
+	PreviousPrice        *float64           `json:"previous_price"`
+	OccurredAt           time.Time          `json:"occurred_at"`
+	ReadAt               pgtype.Timestamptz `json:"read_at"`
+	MatchedDepartureDate pgtype.Date        `json:"matched_departure_date"`
 }
 
 type AnalyticsEvent struct {
@@ -196,6 +197,7 @@ type PriceAlert struct {
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at"`
 	BaselinePrice     *float64           `json:"baseline_price"`
+	FlexDays          int16              `json:"flex_days"`
 }
 
 type Session struct {

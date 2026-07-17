@@ -48,6 +48,7 @@ class CreateAlertSheet extends ConsumerStatefulWidget {
 
 class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
   bool _anyDrop = true;
+  int _flexDays = 0;
   late final TextEditingController _targetController;
   bool _saving = false;
   String? _error;
@@ -89,6 +90,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
         if (widget.returnDate != null) 'return_date': widget.returnDate,
         'adults': widget.adults,
         'cabin_class': widget.cabinClass,
+        if (_flexDays > 0) 'flex_days': _flexDays,
         if (target != null) 'target_price': target,
         if (widget.currentPrice != null) 'current_price': widget.currentPrice,
         if (widget.currency != null) 'currency': widget.currency,
@@ -157,6 +159,28 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
               ),
             ),
           ],
+          const SizedBox(height: AppSpacing.lg),
+          Text('Date flexibility', style: theme.textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Watch a few days around your departure and we\'ll flag the '
+            'cheapest one.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            children: [
+              for (final d in const [0, 1, 2, 3])
+                ChoiceChip(
+                  label: Text(d == 0 ? 'Exact' : '±$d'),
+                  selected: _flexDays == d,
+                  onSelected:
+                      _saving ? null : (_) => setState(() => _flexDays = d),
+                ),
+            ],
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.sm),

@@ -117,50 +117,145 @@ func (c *alertChecker) runOnce(ctx context.Context) {
 		return
 	}
 
-	// One Duffel search per distinct watched route per cycle, however many
-	// users watch it.
-	groups := map[string][]store.ListDuePriceAlertsRow{}
-	var order []string
+	// Fan every due alert out to its departure window and dedupe into distinct
+	// dated searches. A flexible alert (flex_days>0) yields 2N+1 candidate
+	// dates; candidates that land on the same route+date collapse to one
+	// search across all alerts — an exact Jul-15 watch and a ±1 Jul-14..16
+	// watch share the Jul-15 call, exactly as identical exact watches did.
+	today := time.Now()
+	searches := map[string]FlightSearchRequest{}
+	var searchOrder []string
+	alertCandidates := map[uuid.UUID][]flexCandidate{}
 	for _, row := range due {
-		key := alertSearchKey(row.PriceAlert)
-		if _, seen := groups[key]; !seen {
-			order = append(order, key)
+		cands := flexCandidates(row.PriceAlert, today)
+		alertCandidates[row.PriceAlert.ID] = cands
+		for _, cand := range cands {
+			if _, seen := searches[cand.key]; !seen {
+				searches[cand.key] = cand.req
+				searchOrder = append(searchOrder, cand.key)
+			}
 		}
-		groups[key] = append(groups[key], row)
 	}
 
-	for i, key := range order {
+	// Issue at most batchSize distinct provider searches this cycle: the cost
+	// budget bounds Duffel calls, not alert rows, so a wide flexible window
+	// consumes more of the per-cycle budget rather than a bigger one. Searches
+	// beyond the cap are deferred — their alerts stay un-checked and lead the
+	// due queue (oldest-checked first) on the next cycle.
+	results := map[string]FlightOffer{}
+	attempted := map[string]bool{}
+	issued := 0
+	for _, key := range searchOrder {
+		if issued >= c.batchSize {
+			break
+		}
 		if ctx.Err() != nil {
 			return
 		}
-		if i > 0 {
+		if issued > 0 {
 			time.Sleep(c.perCallGap)
 		}
-		rows := groups[key]
-		a := rows[0].PriceAlert
-		offers, err := c.duffel.SearchFlightOffers(ctx, FlightSearchRequest{
-			Origin: a.Origin, Destination: a.Destination,
-			DepartDate: dateString(a.DepartDate), ReturnDate: dateString(a.ReturnDate),
-			Adults: int(a.Adults), CabinClass: a.CabinClass,
-		})
+		issued++
+		attempted[key] = true
+		offers, err := c.duffel.SearchFlightOffers(ctx, searches[key])
 		if err != nil {
-			// Touch (timestamp only) so a permanently-failing route rotates
-			// to the back of the due queue instead of retrying every tick
-			// and starving the batch.
 			log.Printf("price alerts: search %s failed: %v", key, err)
-			c.touch(ctx, q, rows)
 			continue
 		}
-		lowest, ok := lowestOffer(offers)
-		if !ok {
+		if lowest, ok := lowestOffer(offers); ok {
+			results[key] = lowest
+		} else {
 			log.Printf("price alerts: search %s returned no offers", key)
-			c.touch(ctx, q, rows)
-			continue
-		}
-		for _, row := range rows {
-			c.settle(ctx, q, row, lowest)
 		}
 	}
+
+	// Settle each alert against the cheapest priced date across its window.
+	for _, row := range due {
+		if ctx.Err() != nil {
+			return
+		}
+		best, matched, covered, complete := cheapestCandidate(alertCandidates[row.PriceAlert.ID], results, attempted)
+		switch {
+		case !complete:
+			// Part of the window was budget-deferred this cycle — leave the
+			// alert un-checked so its full window is priced together next time.
+			continue
+		case !covered:
+			// Every candidate was attempted but none returned a usable price
+			// (provider error / empty / cross-currency): advance the timestamp
+			// so a broken route rotates to the back instead of retrying every
+			// tick and starving the batch.
+			c.touch(ctx, q, []store.ListDuePriceAlertsRow{row})
+		default:
+			c.settle(ctx, q, row, best, matched)
+		}
+	}
+}
+
+// flexCandidate is one dated Duffel search a (possibly flexible) alert expands
+// to for a cycle: the request, its cross-alert dedupe key, and the departure
+// date it prices.
+type flexCandidate struct {
+	date time.Time
+	req  FlightSearchRequest
+	key  string
+}
+
+// flexCandidates expands an alert into the distinct dated searches for its
+// departure window [depart-flex_days, depart+flex_days]. Past candidates
+// (before today) are skipped — never search a departure that has already
+// gone — as are candidates that would depart after a fixed return date.
+// flex_days=0 yields exactly the single exact-date search (unchanged).
+func flexCandidates(a store.PriceAlert, today time.Time) []flexCandidate {
+	flex := int(a.FlexDays)
+	if flex < 0 {
+		flex = 0
+	}
+	todayStr := today.Format(dateLayout)
+	ret := dateString(a.ReturnDate)
+	out := make([]flexCandidate, 0, 2*flex+1)
+	for d := -flex; d <= flex; d++ {
+		dep := a.DepartDate.Time.AddDate(0, 0, d)
+		depStr := dep.Format(dateLayout)
+		if depStr < todayStr {
+			continue
+		}
+		if ret != "" && depStr > ret {
+			continue
+		}
+		req := FlightSearchRequest{
+			Origin: a.Origin, Destination: a.Destination,
+			DepartDate: depStr, ReturnDate: ret,
+			Adults: int(a.Adults), CabinClass: a.CabinClass,
+		}
+		out = append(out, flexCandidate{date: dep, req: req, key: flexSearchKey(req)})
+	}
+	return out
+}
+
+// cheapestCandidate picks the lowest-priced date across an alert's window from
+// the cycle's search results. complete is false when any candidate was not
+// attempted (budget-deferred), signalling the alert should be re-checked later
+// with its full window intact; covered is false when the window was fully
+// attempted but nothing priced (all failed/empty).
+func cheapestCandidate(cands []flexCandidate, results map[string]FlightOffer, attempted map[string]bool) (best FlightOffer, matched pgtype.Date, covered, complete bool) {
+	complete = true
+	for _, cand := range cands {
+		if !attempted[cand.key] {
+			complete = false
+			continue
+		}
+		offer, ok := results[cand.key]
+		if !ok {
+			continue
+		}
+		if !covered || offer.Price < best.Price {
+			best = offer
+			matched = pgtype.Date{Time: cand.date, Valid: true}
+			covered = true
+		}
+	}
+	return best, matched, covered, complete
 }
 
 func (c *alertChecker) touch(ctx context.Context, q *store.Queries, rows []store.ListDuePriceAlertsRow) {
@@ -176,7 +271,7 @@ func (c *alertChecker) touch(ctx context.Context, q *store.Queries, rows []store
 // settle applies one search result to one alert: record the check, and
 // notify if the trigger condition is met. MarkPriceAlertNotified runs BEFORE
 // the send so a crashed/retried send can never double-notify.
-func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.ListDuePriceAlertsRow, lowest FlightOffer) {
+func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.ListDuePriceAlertsRow, lowest FlightOffer, matched pgtype.Date) {
 	a := row.PriceAlert
 	// A cross-currency offer is unusable: never write its price into the row
 	// (it would display under the wrong currency label and poison the
@@ -206,14 +301,21 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 	// same idempotent block that marked the alert notified, with the same
 	// values the email gets. Best-effort like the email: a failed insert logs
 	// and never blocks the check loop.
+	// matched_departure_date names the winning date only for flexible alerts;
+	// for an exact watch it always equals depart_date, so it stays NULL.
+	matchedParam := matched
+	if a.FlexDays == 0 {
+		matchedParam = pgtype.Date{}
+	}
 	if _, err := q.InsertAlertEvent(ctx, store.InsertAlertEventParams{
 		AlertID: a.ID, UserID: a.UserID,
 		Price: lowest.Price, Currency: lowest.Currency,
-		PreviousPrice: alertReferencePrice(a),
+		PreviousPrice:        alertReferencePrice(a),
+		MatchedDepartureDate: matchedParam,
 	}); err != nil {
 		log.Printf("price alerts: insert event %s: %v", a.ID, err)
 	}
-	go sendAlertEmail(row.OwnerEmail, a, lowest)
+	go sendAlertEmail(row.OwnerEmail, a, lowest, matchedParam)
 	tripID := tripIDPtr(a)
 	go recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
 		"origin": a.Origin, "destination": a.Destination,
@@ -264,12 +366,14 @@ func evaluateAlert(a store.PriceAlert, lowestPrice float64, lowestCurrency strin
 	return lowestPrice <= *ref-minDropAbs && lowestPrice <= *ref*(1-minDropFraction)
 }
 
-// alertSearchKey collapses alerts that would issue an identical Duffel
-// search into one group.
-func alertSearchKey(a store.PriceAlert) string {
+// flexSearchKey collapses candidate dates that would issue an identical Duffel
+// search into one call. Deliberately excludes flex_days: two alerts that price
+// the same route+date+cabin share the call regardless of how wide each one's
+// window is, so cross-alert dedupe still works across mixed flexibilities.
+func flexSearchKey(req FlightSearchRequest) string {
 	return strings.Join([]string{
-		a.Origin, a.Destination, dateString(a.DepartDate), dateString(a.ReturnDate),
-		a.CabinClass, strconv.Itoa(int(a.Adults)),
+		req.Origin, req.Destination, req.DepartDate, req.ReturnDate,
+		req.CabinClass, strconv.Itoa(req.Adults),
 	}, "|")
 }
 
@@ -288,7 +392,7 @@ func lowestOffer(offers []FlightOffer) (FlightOffer, bool) {
 }
 
 // buildAlertEmail renders the notification. Pure — unit-tested.
-func buildAlertEmail(a store.PriceAlert, lowest FlightOffer) (subject, body string) {
+func buildAlertEmail(a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) (subject, body string) {
 	route := fmt.Sprintf("%s → %s", a.Origin, a.Destination)
 	price := fmt.Sprintf("%s %.0f", lowest.Currency, lowest.Price)
 	if a.TargetPrice != nil {
@@ -300,7 +404,13 @@ func buildAlertEmail(a store.PriceAlert, lowest FlightOffer) (subject, body stri
 	var b strings.Builder
 	fmt.Fprintf(&b, "Good news — the fare you're watching dropped.\n\n")
 	fmt.Fprintf(&b, "Route: %s\n", route)
-	fmt.Fprintf(&b, "Departing: %s\n", dateString(a.DepartDate))
+	// For a flexible watch the cheapest date in the window may differ from the
+	// nominal departure; name it so the traveler books the right day.
+	if a.FlexDays > 0 && matched.Valid {
+		fmt.Fprintf(&b, "Departing: %s (cheapest in your ±%dd window)\n", dateString(matched), a.FlexDays)
+	} else {
+		fmt.Fprintf(&b, "Departing: %s\n", dateString(a.DepartDate))
+	}
 	if ret := dateString(a.ReturnDate); ret != "" {
 		fmt.Fprintf(&b, "Returning: %s\n", ret)
 	}
@@ -321,8 +431,8 @@ func buildAlertEmail(a store.PriceAlert, lowest FlightOffer) (subject, body stri
 	return subject, b.String()
 }
 
-func sendAlertEmail(to string, a store.PriceAlert, lowest FlightOffer) {
-	subject, body := buildAlertEmail(a, lowest)
+func sendAlertEmail(to string, a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) {
+	subject, body := buildAlertEmail(a, lowest, matched)
 	if err := emailService.Send(to, subject, body); err != nil {
 		log.Printf("price alerts: email to %s failed: %v", to, err)
 	}

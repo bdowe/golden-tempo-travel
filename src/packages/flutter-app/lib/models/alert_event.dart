@@ -27,6 +27,11 @@ class AlertEvent {
   final String departDate;
   @JsonKey(name: 'return_date')
   final String? returnDate;
+
+  /// The winning date inside a flexible window; null for an exact-date alert
+  /// (where it equals departDate).
+  @JsonKey(name: 'matched_date')
+  final String? matchedDate;
   @JsonKey(name: 'target_price')
   final double? targetPrice;
   @JsonKey(name: 'alert_status')
@@ -44,6 +49,7 @@ class AlertEvent {
     required this.destination,
     required this.departDate,
     this.returnDate,
+    this.matchedDate,
     this.targetPrice,
     required this.alertStatus,
   });

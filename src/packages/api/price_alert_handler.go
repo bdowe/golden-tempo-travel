@@ -25,6 +25,11 @@ import (
 // a cost bound today, not a paywall.
 const maxActiveAlertsPerUser = 10
 
+// maxAlertFlexDays hard-caps departure flexibility. A flexible alert fans out
+// to 2N+1 exact-date Duffel searches per cycle, so this bound is what keeps
+// provider spend linear and finite (specs/price-alerts-v2 cost budget).
+const maxAlertFlexDays = 3
+
 type CreatePriceAlertRequest struct {
 	Origin       string   `json:"origin"`
 	Destination  string   `json:"destination"`
@@ -36,6 +41,10 @@ type CreatePriceAlertRequest struct {
 	CurrentPrice *float64 `json:"current_price"`
 	Currency     *string  `json:"currency"`
 	TripID       *string  `json:"trip_id"`
+	// FlexDays is the departure-window half-width (0–3). 0 (the default) is
+	// the exact-date behavior; N>0 watches [depart-N, depart+N]. Capped
+	// server-side because each extra day multiplies provider searches.
+	FlexDays int `json:"flex_days"`
 }
 
 type PriceAlertResponse struct {
@@ -47,6 +56,7 @@ type PriceAlertResponse struct {
 	CabinClass        string   `json:"cabin_class"`
 	Adults            int      `json:"adults"`
 	TargetPrice       *float64 `json:"target_price"`
+	FlexDays          int      `json:"flex_days"`
 	Currency          *string  `json:"currency"`
 	BaselinePrice     *float64 `json:"baseline_price"`
 	LastCheckedPrice  *float64 `json:"last_checked_price"`
@@ -67,6 +77,7 @@ func toPriceAlertResponse(a store.PriceAlert) PriceAlertResponse {
 		CabinClass:        a.CabinClass,
 		Adults:            int(a.Adults),
 		TargetPrice:       a.TargetPrice,
+		FlexDays:          int(a.FlexDays),
 		Currency:          a.Currency,
 		BaselinePrice:     a.BaselinePrice,
 		LastCheckedPrice:  a.LastCheckedPrice,
@@ -139,6 +150,11 @@ func validateCreateAlert(req *CreatePriceAlertRequest, today time.Time) error {
 	if req.TargetPrice != nil && *req.TargetPrice <= 0 {
 		return fmt.Errorf("target_price must be positive")
 	}
+	// Flexibility is hard-capped: each extra day multiplies provider searches
+	// (2N+1 per cycle), so the window can only ever be ±3 days.
+	if req.FlexDays < 0 || req.FlexDays > maxAlertFlexDays {
+		return fmt.Errorf("flex_days must be between 0 and %d", maxAlertFlexDays)
+	}
 	if req.CurrentPrice != nil && *req.CurrentPrice <= 0 {
 		req.CurrentPrice = nil
 	}
@@ -176,6 +192,7 @@ func createPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 		CabinClass:  req.CabinClass,
 		Adults:      int32(req.Adults),
 		TargetPrice: req.TargetPrice,
+		FlexDays:    int16(req.FlexDays),
 	}
 	depart, _ := time.Parse(dateLayout, req.DepartDate)
 	params.DepartDate = pgtype.Date{Time: depart, Valid: true}

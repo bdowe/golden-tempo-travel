@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,19 +100,78 @@ func TestEvaluateAlertCurrencyMismatch(t *testing.T) {
 	}
 }
 
-func TestAlertSearchKeyGrouping(t *testing.T) {
-	a := alertFixture(nil)
-	b := alertFixture(nil)
-	if alertSearchKey(a) != alertSearchKey(b) {
+func TestFlexSearchKeyGrouping(t *testing.T) {
+	base := FlightSearchRequest{Origin: "BOS", Destination: "CDG",
+		DepartDate: "2026-09-01", CabinClass: "economy", Adults: 1}
+	same := base
+	if flexSearchKey(base) != flexSearchKey(same) {
 		t.Fatal("identical searches must share a key")
 	}
-	c := alertFixture(func(x *store.PriceAlert) { x.Adults = 2 })
-	if alertSearchKey(a) == alertSearchKey(c) {
+	adults := base
+	adults.Adults = 2
+	if flexSearchKey(base) == flexSearchKey(adults) {
 		t.Fatal("different adults must not share a key")
 	}
-	d := alertFixture(func(x *store.PriceAlert) { x.CabinClass = "business" })
-	if alertSearchKey(a) == alertSearchKey(d) {
+	cabin := base
+	cabin.CabinClass = "business"
+	if flexSearchKey(base) == flexSearchKey(cabin) {
 		t.Fatal("different cabin must not share a key")
+	}
+	date := base
+	date.DepartDate = "2026-09-02"
+	if flexSearchKey(base) == flexSearchKey(date) {
+		t.Fatal("different depart date must not share a key")
+	}
+}
+
+// A flexible alert and an exact alert that price the same route+date share
+// that dated search (flex_days is intentionally not part of the key).
+func TestFlexCandidatesShareExactDate(t *testing.T) {
+	depart := time.Now().AddDate(0, 1, 0)
+	exact := alertFixture(func(a *store.PriceAlert) {
+		a.DepartDate = pgtype.Date{Time: depart, Valid: true}
+	})
+	flex := alertFixture(func(a *store.PriceAlert) {
+		a.DepartDate = pgtype.Date{Time: depart, Valid: true}
+		a.FlexDays = 1
+	})
+	exactCands := flexCandidates(exact, time.Now())
+	flexCands := flexCandidates(flex, time.Now())
+	if len(exactCands) != 1 {
+		t.Fatalf("exact alert expanded to %d candidates, want 1", len(exactCands))
+	}
+	if len(flexCands) != 3 {
+		t.Fatalf("±1 alert expanded to %d candidates, want 3", len(flexCands))
+	}
+	// The exact date's key must appear in the flexible window.
+	found := false
+	for _, c := range flexCands {
+		if c.key == exactCands[0].key {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("flexible window must share the exact date's search key")
+	}
+}
+
+// Candidate dates before today are dropped — never search a departed flight.
+func TestFlexCandidatesSkipsPast(t *testing.T) {
+	today := time.Now()
+	// Depart today with ±3: only today..+3 are valid (4 candidates).
+	a := alertFixture(func(a *store.PriceAlert) {
+		a.DepartDate = pgtype.Date{Time: today, Valid: true}
+		a.FlexDays = 3
+	})
+	cands := flexCandidates(a, today)
+	if len(cands) != 4 {
+		t.Fatalf("±3 window on a today-departure yielded %d candidates, want 4 (no past dates)", len(cands))
+	}
+	todayStr := today.Format(dateLayout)
+	for _, c := range cands {
+		if c.req.DepartDate < todayStr {
+			t.Fatalf("past candidate not skipped: %s", c.req.DepartDate)
+		}
 	}
 }
 
@@ -128,7 +188,7 @@ func TestLowestOffer(t *testing.T) {
 func TestBuildAlertEmail(t *testing.T) {
 	t.Setenv("PUBLIC_BASE_URL", "https://app.example.com")
 	a := alertFixture(func(a *store.PriceAlert) { a.TargetPrice = f64(450) })
-	subject, body := buildAlertEmail(a, FlightOffer{Price: 412, Currency: "USD", Airlines: []string{"Air France"}})
+	subject, body := buildAlertEmail(a, FlightOffer{Price: 412, Currency: "USD", Airlines: []string{"Air France"}}, pgtype.Date{})
 
 	if !strings.Contains(subject, "Target price hit") || !strings.Contains(subject, "BOS → CDG") {
 		t.Fatalf("subject = %q", subject)
@@ -164,12 +224,23 @@ func TestValidateCreateAlert(t *testing.T) {
 		func(r *CreatePriceAlertRequest) { r.CabinClass = "steerage" },
 		func(r *CreatePriceAlertRequest) { r.Adults = 12 },
 		func(r *CreatePriceAlertRequest) { r.TargetPrice = f64(-5) },
+		func(r *CreatePriceAlertRequest) { r.FlexDays = 4 },  // above the ±3 cap
+		func(r *CreatePriceAlertRequest) { r.FlexDays = -1 }, // negative window
 	}
 	for i, mutate := range bad {
 		r := valid()
 		mutate(&r)
 		if err := validateCreateAlert(&r, today); err == nil {
 			t.Fatalf("bad case %d accepted: %+v", i, r)
+		}
+	}
+
+	// flex_days within the cap is accepted.
+	for _, fd := range []int{0, 1, 2, 3} {
+		r := valid()
+		r.FlexDays = fd
+		if err := validateCreateAlert(&r, today); err != nil {
+			t.Fatalf("flex_days=%d rejected: %v", fd, err)
 		}
 	}
 }
@@ -343,5 +414,151 @@ func TestAlertCheckerInsertsEvents(t *testing.T) {
 	}
 	if n := len(eventsFor(userB)); n != 0 {
 		t.Fatalf("re-check inserted events for the any-drop alert: %d, want 0", n)
+	}
+}
+
+// stubDuffelByDate prices each search by its requested departure_date (falling
+// back to base), so a flexible fan-out can be checked for cheapest-date logic.
+func stubDuffelByDate(t *testing.T, base string, byDate map[string]string, calls *int) *DuffelService {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+		var body struct {
+			Data struct {
+				Slices []struct {
+					DepartureDate string `json:"departure_date"`
+				} `json:"slices"`
+			} `json:"data"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		date := ""
+		if len(body.Data.Slices) > 0 {
+			date = body.Data.Slices[0].DepartureDate
+		}
+		price := base
+		if p, ok := byDate[date]; ok {
+			price = p
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"offers":[{
+			"id":"off_1","total_amount":"` + price + `","total_currency":"USD",
+			"owner":{"iata_code":"AF","name":"Air France"},
+			"slices":[{"duration":"PT8H","segments":[{
+				"origin":{"iata_code":"BOS"},"destination":{"iata_code":"CDG"},
+				"departing_at":"` + date + `T18:00:00","arriving_at":"2026-09-02T07:00:00",
+				"marketing_carrier":{"name":"Air France","iata_code":"AF"},
+				"marketing_carrier_flight_number":"332"}]}]}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	return &DuffelService{Token: "test-token", BaseURL: srv.URL, Version: "v2",
+		Client: &http.Client{Timeout: 5 * time.Second}}
+}
+
+// A ±1 flexible alert issues one Duffel search per date in its window (3),
+// picks the cheapest date, records it as matched_departure_date on the event,
+// and marks the alert checked at that cheapest price.
+func TestAlertCheckerFlexFanOut(t *testing.T) {
+	resetDB(t)
+	user, _ := createTestUser(t, "flex@example.com")
+
+	depart := time.Now().AddDate(0, 2, 0).Truncate(24 * time.Hour)
+	dayBefore := depart.AddDate(0, 0, -1)
+	dayAfter := depart.AddDate(0, 0, 1)
+	fmtd := func(x time.Time) string { return x.Format(dateLayout) }
+
+	q := store.New(dbPool)
+	if _, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
+		UserID: user.ID, Origin: "BOS", Destination: "CDG",
+		DepartDate: pgtype.Date{Time: depart, Valid: true},
+		CabinClass: "economy", Adults: 1, TargetPrice: f64(450), FlexDays: 1,
+	}); err != nil {
+		t.Fatalf("seed flex alert: %v", err)
+	}
+
+	// The day before is the cheapest at 400 (<= target 450 → notify); the
+	// nominal date and the day after are pricier and must lose.
+	calls := 0
+	c := &alertChecker{
+		duffel: stubDuffelByDate(t, "500.00", map[string]string{
+			fmtd(dayBefore): "400.00",
+			fmtd(depart):    "500.00",
+			fmtd(dayAfter):  "480.00",
+		}, &calls),
+		checkEvery: 6 * time.Hour,
+		batchSize:  25,
+		perCallGap: 0,
+	}
+	c.runOnce(context.Background())
+
+	if calls != 3 {
+		t.Fatalf("±1 alert issued %d Duffel searches, want 3 (one per date)", calls)
+	}
+
+	rows, err := q.ListAlertEventsByUser(context.Background(),
+		store.ListAlertEventsByUserParams{UserID: user.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("flex trigger events = %d, want 1", len(rows))
+	}
+	ev := rows[0]
+	if ev.Price != 400 {
+		t.Fatalf("event price = %v, want 400 (cheapest date)", ev.Price)
+	}
+	if dateString(ev.MatchedDepartureDate) != fmtd(dayBefore) {
+		t.Fatalf("matched_departure_date = %q, want %q", dateString(ev.MatchedDepartureDate), fmtd(dayBefore))
+	}
+
+	alerts, _ := q.ListPriceAlertsByUser(context.Background(), user.ID)
+	a := alerts[0]
+	if a.LastCheckedPrice == nil || *a.LastCheckedPrice != 400 {
+		t.Fatalf("alert not checked at cheapest price: %+v", a.LastCheckedPrice)
+	}
+	if a.LastNotifiedPrice == nil || *a.LastNotifiedPrice != 400 {
+		t.Fatalf("alert not notified at cheapest price: %+v", a.LastNotifiedPrice)
+	}
+}
+
+// The per-cycle batch limiter bounds provider calls even under fan-out: a ±1
+// alert (3 searches) against a batchSize of 2 issues only 2 searches, and the
+// alert whose window was left incomplete is deferred (not checked/notified),
+// staying at the front of the due queue for the next cycle.
+func TestAlertCheckerFlexRespectsBatchLimit(t *testing.T) {
+	resetDB(t)
+	user, _ := createTestUser(t, "flex-batch@example.com")
+
+	depart := time.Now().AddDate(0, 2, 0).Truncate(24 * time.Hour)
+	q := store.New(dbPool)
+	if _, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
+		UserID: user.ID, Origin: "BOS", Destination: "CDG",
+		DepartDate: pgtype.Date{Time: depart, Valid: true},
+		CabinClass: "economy", Adults: 1, TargetPrice: f64(450), FlexDays: 1,
+	}); err != nil {
+		t.Fatalf("seed flex alert: %v", err)
+	}
+
+	calls := 0
+	c := &alertChecker{
+		duffel:     stubDuffelOffers(t, "400.00", &calls),
+		checkEvery: 6 * time.Hour,
+		batchSize:  2, // fewer than the window's 3 searches
+		perCallGap: 0,
+	}
+	c.runOnce(context.Background())
+
+	if calls != 2 {
+		t.Fatalf("batch limit ignored: %d searches, want 2", calls)
+	}
+	alerts, _ := q.ListPriceAlertsByUser(context.Background(), user.ID)
+	a := alerts[0]
+	if a.LastCheckedAt.Valid {
+		t.Fatalf("partially-searched flex alert must stay un-checked (deferred), got last_checked_at set")
+	}
+	if a.LastNotifiedPrice != nil {
+		t.Fatalf("deferred flex alert must not notify: %+v", a.LastNotifiedPrice)
+	}
+	if n, _ := q.CountUnreadAlertEvents(context.Background(), user.ID); n != 0 {
+		t.Fatalf("deferred flex alert wrote %d events, want 0", n)
 	}
 }

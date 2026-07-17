@@ -2,8 +2,8 @@
 INSERT INTO price_alerts (
     user_id, trip_id, origin, destination, depart_date, return_date,
     cabin_class, adults, target_price, currency, last_checked_price,
-    last_checked_at, baseline_price
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $11)
+    last_checked_at, baseline_price, flex_days
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $11, $13)
 RETURNING *;
 
 -- name: ListPriceAlertsByUser :many

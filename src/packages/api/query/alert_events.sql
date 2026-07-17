@@ -1,6 +1,6 @@
 -- name: InsertAlertEvent :one
-INSERT INTO alert_events (alert_id, user_id, price, currency, previous_price)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO alert_events (alert_id, user_id, price, currency, previous_price, matched_departure_date)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListAlertEventsByUser :many
@@ -9,6 +9,7 @@ RETURNING *;
 -- purpose: deleting an alert cascades its events away.
 SELECT alert_events.id, alert_events.alert_id, alert_events.price,
        alert_events.currency, alert_events.previous_price,
+       alert_events.matched_departure_date,
        alert_events.occurred_at, alert_events.read_at,
        price_alerts.origin, price_alerts.destination,
        price_alerts.depart_date, price_alerts.return_date,

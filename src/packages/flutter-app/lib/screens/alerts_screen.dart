@@ -164,6 +164,7 @@ class _AlertCard extends ConsumerWidget {
   String _datesLine() {
     var s = alert.departDate;
     if (alert.returnDate != null) s += ' → ${alert.returnDate}';
+    if (alert.flexDays > 0) s += ' · ±${alert.flexDays}d';
     if (alert.adults > 1) s += ' · ${alert.adults} adults';
     if (alert.cabinClass != 'economy') {
       s += ' · ${alert.cabinClass.replaceAll('_', ' ')}';
