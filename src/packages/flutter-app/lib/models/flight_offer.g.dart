@@ -25,6 +25,11 @@ FlightOffer _$FlightOfferFromJson(Map<String, dynamic> json) => FlightOffer(
               .toList() ??
           [],
       bookingUrl: json['booking_url'] as String?,
+      includedCarryOn: (json['included_carry_on'] as num?)?.toInt() ?? 0,
+      includedChecked: (json['included_checked'] as num?)?.toInt() ?? 0,
+      baggageStatus: json['baggage_status'] as String?,
+      bagFee: (json['bag_fee'] as num?)?.toDouble() ?? 0,
+      effectivePrice: (json['effective_price'] as num?)?.toDouble(),
       returnSegments: (json['return_segments'] as List<dynamic>?)
               ?.map((e) => FlightLeg.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -54,6 +59,11 @@ Map<String, dynamic> _$FlightOfferToJson(FlightOffer instance) =>
       'return_segments':
           instance.returnSegments.map((e) => e.toJson()).toList(),
       'return_duration_minutes': instance.returnDurationMinutes,
+      'included_carry_on': instance.includedCarryOn,
+      'included_checked': instance.includedChecked,
+      'baggage_status': instance.baggageStatus,
+      'bag_fee': instance.bagFee,
+      'effective_price': instance.effectivePrice,
       'score': instance.score,
       'price_score': instance.priceScore,
       'duration_score': instance.durationScore,

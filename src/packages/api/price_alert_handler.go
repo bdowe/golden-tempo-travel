@@ -45,6 +45,9 @@ type CreatePriceAlertRequest struct {
 	// the exact-date behavior; N>0 watches [depart-N, depart+N]. Capped
 	// server-side because each extra day multiplies provider searches.
 	FlexDays int `json:"flex_days"`
+	// Baggage is the tier the watched search was made with; the checker
+	// tracks the effective price for it (fare + bag fee when not included).
+	Baggage string `json:"baggage"`
 }
 
 type PriceAlertResponse struct {
@@ -57,6 +60,7 @@ type PriceAlertResponse struct {
 	Adults            int      `json:"adults"`
 	TargetPrice       *float64 `json:"target_price"`
 	FlexDays          int      `json:"flex_days"`
+	Baggage           string   `json:"baggage"`
 	Currency          *string  `json:"currency"`
 	BaselinePrice     *float64 `json:"baseline_price"`
 	LastCheckedPrice  *float64 `json:"last_checked_price"`
@@ -78,6 +82,7 @@ func toPriceAlertResponse(a store.PriceAlert) PriceAlertResponse {
 		Adults:            int(a.Adults),
 		TargetPrice:       a.TargetPrice,
 		FlexDays:          int(a.FlexDays),
+		Baggage:           a.Baggage,
 		Currency:          a.Currency,
 		BaselinePrice:     a.BaselinePrice,
 		LastCheckedPrice:  a.LastCheckedPrice,
@@ -141,6 +146,10 @@ func validateCreateAlert(req *CreatePriceAlertRequest, today time.Time) error {
 	if !allowedCabinClasses[req.CabinClass] {
 		return fmt.Errorf("cabin_class must be one of: 'economy', 'premium_economy', 'business', 'first'")
 	}
+	req.Baggage = normalizeBaggage(req.Baggage)
+	if !allowedBaggageTiers[req.Baggage] {
+		return fmt.Errorf("baggage must be one of: 'personal_item', 'carry_on', 'checked'")
+	}
 	if req.Adults == 0 {
 		req.Adults = 1
 	}
@@ -193,6 +202,7 @@ func createPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 		Adults:      int32(req.Adults),
 		TargetPrice: req.TargetPrice,
 		FlexDays:    int16(req.FlexDays),
+		Baggage:     req.Baggage,
 	}
 	depart, _ := time.Parse(dateLayout, req.DepartDate)
 	params.DepartDate = pgtype.Date{Time: depart, Valid: true}

@@ -63,6 +63,34 @@ func scoringStops(o FlightOffer) float64 {
 	return float64(stops)
 }
 
+// scoringPrice is the price an offer is *ranked* on: the effective total
+// (fare + bag fee) once baggage pricing has run, else the bare fare. Offers
+// whose bag fee is unknown score on the bare fare but are sorted below every
+// priced offer (see RankFlightOffers) — their score is optimistic, their
+// position is not.
+func scoringPrice(o FlightOffer) float64 {
+	if o.EffectivePrice > 0 {
+		return o.EffectivePrice
+	}
+	return o.Price
+}
+
+// bagKey extends the dedup signature on baggage-aware searches so the
+// cheapest bag-inclusive fare and the cheapest bag-exclusive fare of the same
+// schedule BOTH survive to effective-price ranking. Without it, keep-cheapest
+// dedup would drop exactly the fare brands the baggage search exists to find.
+// Empty on personal-item searches: dedup behaves exactly as before.
+func bagKey(o FlightOffer) string {
+	switch o.BaggageStatus {
+	case "":
+		return ""
+	case baggageStatusIncluded:
+		return "|bag:1"
+	default:
+		return "|bag:0"
+	}
+}
+
 // scheduleSignature identifies an offer at the level a traveler perceives it on
 // a summary card: origin, final destination, overall departure/arrival times,
 // and the ordered list of connecting airports. Offers that share a signature
@@ -109,8 +137,9 @@ func dedupBySchedule(offers []FlightOffer) []FlightOffer {
 		if sig == "" {
 			sig = o.DepartTime + "-" + o.ArriveTime
 		}
+		sig += bagKey(o)
 		if idx, ok := best[sig]; ok {
-			if o.Price < result[idx].Price {
+			if scoringPrice(o) < scoringPrice(result[idx]) {
 				result[idx] = o
 			}
 			continue
@@ -142,20 +171,27 @@ func RankFlightOffers(offers []FlightOffer, optimizeFor string) []FlightOffer {
 	minDur, maxDur := math.Inf(1), math.Inf(-1)
 	minStops, maxStops := math.Inf(1), math.Inf(-1)
 	for _, o := range offers {
-		minPrice, maxPrice = math.Min(minPrice, o.Price), math.Max(maxPrice, o.Price)
+		minPrice, maxPrice = math.Min(minPrice, scoringPrice(o)), math.Max(maxPrice, scoringPrice(o))
 		minDur, maxDur = math.Min(minDur, scoringDuration(o)), math.Max(maxDur, scoringDuration(o))
 		minStops, maxStops = math.Min(minStops, scoringStops(o)), math.Max(maxStops, scoringStops(o))
 	}
 
 	for i := range offers {
 		o := &offers[i]
-		o.PriceScore = round2(invScore(o.Price, minPrice, maxPrice))
+		o.PriceScore = round2(invScore(scoringPrice(*o), minPrice, maxPrice))
 		o.DurationScore = round2(invScore(scoringDuration(*o), minDur, maxDur))
 		o.StopsScore = round2(invScore(scoringStops(*o), minStops, maxStops))
 		o.Score = round2(o.PriceScore*w.price + o.DurationScore*w.duration + o.StopsScore*w.stops)
 	}
 
+	// Unknown-fee offers sort below every priced offer regardless of score:
+	// their score is computed from the bare fare (optimistic), so letting
+	// them compete would rank exactly the misleading basic fares first.
 	sort.SliceStable(offers, func(i, j int) bool {
+		ui, uj := offers[i].BaggageStatus == baggageStatusUnknown, offers[j].BaggageStatus == baggageStatusUnknown
+		if ui != uj {
+			return uj
+		}
 		return offers[i].Score > offers[j].Score
 	})
 	return offers

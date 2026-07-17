@@ -15,6 +15,8 @@ class FlightSearchRequest {
   final List<int>? childAges; // one entry per child (0-17)
   @JsonKey(name: 'cabin_class', includeIfNull: false)
   final String? cabinClass; // economy | premium_economy | business | first
+  @JsonKey(includeIfNull: false)
+  final String? baggage; // personal_item (default) | carry_on | checked
   @JsonKey(name: 'optimize_for')
   final String optimizeFor; // cost | time | balanced
 
@@ -26,6 +28,7 @@ class FlightSearchRequest {
     this.adults = 1,
     this.childAges,
     this.cabinClass,
+    this.baggage,
     this.optimizeFor = 'balanced',
   });
 

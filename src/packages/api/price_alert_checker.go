@@ -157,7 +157,7 @@ func (c *alertChecker) runOnce(ctx context.Context) {
 		}
 		issued++
 		attempted[key] = true
-		offers, err := c.duffel.SearchFlightOffers(ctx, searches[key])
+		offers, err := searchFlightsWithBaggage(ctx, c.duffel, searches[key])
 		if err != nil {
 			log.Printf("price alerts: search %s failed: %v", key, err)
 			continue
@@ -227,6 +227,7 @@ func flexCandidates(a store.PriceAlert, today time.Time) []flexCandidate {
 			Origin: a.Origin, Destination: a.Destination,
 			DepartDate: depStr, ReturnDate: ret,
 			Adults: int(a.Adults), CabinClass: a.CabinClass,
+			Baggage: a.Baggage,
 		}
 		out = append(out, flexCandidate{date: dep, req: req, key: flexSearchKey(req)})
 	}
@@ -249,7 +250,7 @@ func cheapestCandidate(cands []flexCandidate, results map[string]FlightOffer, at
 		if !ok {
 			continue
 		}
-		if !covered || offer.Price < best.Price {
+		if !covered || scoringPrice(offer) < scoringPrice(best) {
 			best = offer
 			matched = pgtype.Date{Time: cand.date, Valid: true}
 			covered = true
@@ -280,10 +281,13 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 		c.touch(ctx, q, []store.ListDuePriceAlertsRow{row})
 		return
 	}
-	notify := evaluateAlert(a, lowest.Price, lowest.Currency)
+	// Every recorded/compared price is the EFFECTIVE price (fare + bag fee)
+	// on baggage-aware alerts; scoringPrice is the bare fare otherwise.
+	effective := scoringPrice(lowest)
+	notify := evaluateAlert(a, effective, lowest.Currency)
 
 	if err := q.MarkPriceAlertChecked(ctx, store.MarkPriceAlertCheckedParams{
-		ID: a.ID, LastCheckedPrice: &lowest.Price, Currency: &lowest.Currency,
+		ID: a.ID, LastCheckedPrice: &effective, Currency: &lowest.Currency,
 	}); err != nil {
 		log.Printf("price alerts: mark checked %s: %v", a.ID, err)
 		return
@@ -292,7 +296,7 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 		return
 	}
 	if err := q.MarkPriceAlertNotified(ctx, store.MarkPriceAlertNotifiedParams{
-		ID: a.ID, LastNotifiedPrice: &lowest.Price,
+		ID: a.ID, LastNotifiedPrice: &effective,
 	}); err != nil {
 		log.Printf("price alerts: mark notified %s: %v", a.ID, err)
 		return
@@ -309,7 +313,7 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 	}
 	if _, err := q.InsertAlertEvent(ctx, store.InsertAlertEventParams{
 		AlertID: a.ID, UserID: a.UserID,
-		Price: lowest.Price, Currency: lowest.Currency,
+		Price: effective, Currency: lowest.Currency,
 		PreviousPrice:        alertReferencePrice(a),
 		MatchedDepartureDate: matchedParam,
 	}); err != nil {
@@ -319,7 +323,7 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 	tripID := tripIDPtr(a)
 	go recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
 		"origin": a.Origin, "destination": a.Destination,
-		"price": lowest.Price, "currency": lowest.Currency,
+		"price": effective, "currency": lowest.Currency,
 		"target_price": a.TargetPrice,
 	})
 }
@@ -373,28 +377,33 @@ func evaluateAlert(a store.PriceAlert, lowestPrice float64, lowestCurrency strin
 func flexSearchKey(req FlightSearchRequest) string {
 	return strings.Join([]string{
 		req.Origin, req.Destination, req.DepartDate, req.ReturnDate,
-		req.CabinClass, strconv.Itoa(req.Adults),
+		req.CabinClass, strconv.Itoa(req.Adults), normalizeBaggage(req.Baggage),
 	}, "|")
 }
 
-// lowestOffer returns the cheapest offer of a search.
+// lowestOffer returns the cheapest offer of a search, by effective price on
+// baggage-aware searches. Offers whose bag fee is unknown are skipped there —
+// an unpriceable fare is not a comparable "lowest price" and would understate
+// what the traveler pays. All-unknown behaves like an empty search (not ok).
 func lowestOffer(offers []FlightOffer) (FlightOffer, bool) {
-	if len(offers) == 0 {
-		return FlightOffer{}, false
-	}
-	best := offers[0]
-	for _, o := range offers[1:] {
-		if o.Price < best.Price {
+	var best FlightOffer
+	found := false
+	for _, o := range offers {
+		if o.BaggageStatus == baggageStatusUnknown {
+			continue
+		}
+		if !found || scoringPrice(o) < scoringPrice(best) {
 			best = o
+			found = true
 		}
 	}
-	return best, true
+	return best, found
 }
 
 // buildAlertEmail renders the notification. Pure — unit-tested.
 func buildAlertEmail(a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) (subject, body string) {
 	route := fmt.Sprintf("%s → %s", a.Origin, a.Destination)
-	price := fmt.Sprintf("%s %.0f", lowest.Currency, lowest.Price)
+	price := fmt.Sprintf("%s %.0f", lowest.Currency, scoringPrice(lowest))
 	if a.TargetPrice != nil {
 		subject = fmt.Sprintf("Target price hit: %s now %s", route, price)
 	} else {
@@ -415,6 +424,12 @@ func buildAlertEmail(a store.PriceAlert, lowest FlightOffer, matched pgtype.Date
 		fmt.Fprintf(&b, "Returning: %s\n", ret)
 	}
 	fmt.Fprintf(&b, "Cabin: %s · Adults: %d\n", a.CabinClass, a.Adults)
+	switch a.Baggage {
+	case baggageCarryOn:
+		fmt.Fprintf(&b, "Price includes a carry-on bag per traveler\n")
+	case baggageChecked:
+		fmt.Fprintf(&b, "Price includes a checked bag per traveler\n")
+	}
 	fmt.Fprintf(&b, "\nBest price now: %s", price)
 	if len(lowest.Airlines) > 0 {
 		fmt.Fprintf(&b, " on %s", strings.Join(lowest.Airlines, "/"))

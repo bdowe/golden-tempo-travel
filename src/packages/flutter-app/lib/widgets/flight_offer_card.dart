@@ -15,6 +15,17 @@ class FlightOfferCard extends StatelessWidget {
   final bool isBest;
   const FlightOfferCard({super.key, required this.offer, this.isBest = false});
 
+  /// Baggage badge under the price on baggage-aware searches; null otherwise.
+  /// "paid" prices already fold the fee into [FlightOffer.displayPrice] — the
+  /// badge explains where the number came from.
+  String? get _bagBadge => switch (offer.baggageStatus) {
+        'included' => 'Bag included',
+        'paid' =>
+          'incl. bag +${offer.currency} ${offer.bagFee.toStringAsFixed(0)}',
+        'unknown' => 'Bag fee unknown',
+        _ => null,
+      };
+
   Future<void> _book(BuildContext context) async {
     final url = offer.bookingUrl;
     if (url == null || url.isEmpty) return;
@@ -98,10 +109,16 @@ class FlightOfferCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${offer.currency} ${offer.price.toStringAsFixed(0)}',
+                        '${offer.currency} ${offer.displayPrice.toStringAsFixed(0)}',
                         style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold, color: accent),
                       ),
+                      if (_bagBadge case final badge?)
+                        Text(badge,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                                color: offer.bagFeeUnknown
+                                    ? theme.colorScheme.error
+                                    : theme.colorScheme.onSurfaceVariant)),
                       Text('score ${offer.score.toStringAsFixed(1)}',
                           style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant)),

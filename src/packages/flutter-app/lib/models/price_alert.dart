@@ -24,6 +24,11 @@ class PriceAlert {
   /// watches [depart-N, depart+N] for the cheapest day.
   @JsonKey(name: 'flex_days')
   final int flexDays;
+
+  /// Baggage tier the watched search was made with; the checker tracks the
+  /// effective price (fare + bag fee) for it.
+  @JsonKey(defaultValue: 'personal_item')
+  final String baggage; // personal_item | carry_on | checked
   final String? currency;
   @JsonKey(name: 'baseline_price')
   final double? baselinePrice;
@@ -51,6 +56,7 @@ class PriceAlert {
     this.adults = 1,
     this.targetPrice,
     this.flexDays = 0,
+    this.baggage = 'personal_item',
     this.currency,
     this.baselinePrice,
     this.lastCheckedPrice,

@@ -65,6 +65,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
     String? returnDate,
     int adults,
     String cabinClass,
+    String baggage,
     bool hasChildren,
   })? _watched;
 
@@ -83,6 +84,16 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
     'cost': 'Cheapest',
     'time': 'Fastest',
     'balanced': 'Balanced',
+  };
+
+  /// Biggest bag needed. Beyond personal_item, results are ranked by the
+  /// effective total (fare + bag fee when the bag isn't included).
+  String _baggage = 'personal_item';
+
+  static const _baggageLabels = {
+    'personal_item': 'Personal item',
+    'carry_on': 'Carry-on',
+    'checked': 'Checked bag',
   };
 
   @override
@@ -281,6 +292,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
       returnDate: returnDate,
       adults: _adults,
       cabinClass: _cabinClass,
+      baggage: _baggage,
       hasChildren: _childAges.isNotEmpty,
     );
     ref.read(flightsProvider.notifier).search(FlightSearchRequest(
@@ -291,6 +303,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
           adults: _adults,
           childAges: _childAges.isEmpty ? null : List.of(_childAges),
           cabinClass: _cabinClass == 'economy' ? null : _cabinClass,
+          baggage: _baggage == 'personal_item' ? null : _baggage,
           optimizeFor: _optimizeFor,
         ));
   }
@@ -436,6 +449,17 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                 ),
                 const SizedBox(height: 12),
                 SegmentedButton<String>(
+                  segments: _baggageLabels.entries
+                      .map((e) => ButtonSegment(
+                            value: e.key,
+                            label: Text(e.value),
+                          ))
+                      .toList(),
+                  selected: {_baggage},
+                  onSelectionChanged: (s) => setState(() => _baggage = s.first),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
                   segments: _presets.entries
                       .map((e) => ButtonSegment(
                             value: e.key,
@@ -489,8 +513,18 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                   label: const Text('Watch this route — email me on a drop'),
                   onPressed: () {
                     final w = _watched!;
-                    final cheapest = state.offers
-                        .reduce((a, b) => a.price <= b.price ? a : b);
+                    // Seed the baseline from the cheapest EFFECTIVE price —
+                    // the checker tracks fare + bag fee on baggage-aware
+                    // watches, so a bare-fare baseline would read as a drop.
+                    // Unknown-fee offers can't seed a comparable baseline.
+                    final priced = state.offers
+                        .where((o) => !o.bagFeeUnknown)
+                        .toList();
+                    final cheapest = priced.isEmpty
+                        ? null
+                        : priced.reduce((a, b) =>
+                            a.displayPrice <= b.displayPrice ? a : b);
+                    final seedPrice = w.hasChildren ? null : cheapest;
                     CreateAlertSheet.show(
                       context,
                       CreateAlertSheet(
@@ -500,8 +534,9 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                         returnDate: w.returnDate,
                         adults: w.adults,
                         cabinClass: w.cabinClass,
-                        currentPrice: w.hasChildren ? null : cheapest.price,
-                        currency: w.hasChildren ? null : cheapest.currency,
+                        baggage: w.baggage,
+                        currentPrice: seedPrice?.displayPrice,
+                        currency: seedPrice?.currency,
                       ),
                     );
                   },
