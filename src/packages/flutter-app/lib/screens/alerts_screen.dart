@@ -5,9 +5,11 @@ import '../providers/alerts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/spacing.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/offline_banner.dart' show relativeTime;
 import '../widgets/page_container.dart';
 import '../widgets/status_pill.dart';
 import 'auth_screen.dart';
+import 'notification_center_screen.dart';
 import '../utils/snack.dart';
 
 /// The traveler's watched routes (specs/price-alerts): state at a glance,
@@ -110,9 +112,33 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Price alerts')),
+      appBar: AppBar(
+        title: const Text('Price alerts'),
+        actions: [if (auth.isSignedIn) const _NotificationBell()],
+      ),
       body: PageContainer(child: body),
     );
+  }
+}
+
+/// Bell with an unread badge that opens the notification center
+/// (specs/price-alerts-v2). The badge is the "something happened" pull; opening
+/// the center marks all read and clears it.
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final bell = IconButton(
+      tooltip: 'Notifications',
+      icon: const Icon(Icons.notifications_none),
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const NotificationCenterScreen()),
+      ),
+    );
+    if (count == 0) return bell;
+    return Badge.count(count: count, child: bell);
   }
 }
 
@@ -145,12 +171,97 @@ class _AlertCard extends ConsumerWidget {
     return s;
   }
 
+  /// "down $X from when you started watching" — only when the latest check is
+  /// below the baseline the watch started from (both present).
+  String? _baselineDeltaLine() {
+    final base = alert.baselinePrice;
+    final checked = alert.lastCheckedPrice;
+    if (base == null || checked == null || checked >= base) return null;
+    final cur = alert.currency ?? '';
+    final delta = (base - checked).toStringAsFixed(0);
+    return 'Down $cur $delta from when you started watching';
+  }
+
+  /// "Checked 2 hours ago" from the last check time, if we have one.
+  String? _freshnessLine() {
+    final at = alert.lastCheckedAt;
+    if (at == null) return null;
+    final parsed = DateTime.tryParse(at);
+    if (parsed == null) return null;
+    return 'Checked ${relativeTime(parsed.toLocal())}';
+  }
+
+  Future<void> _editTarget(BuildContext context, WidgetRef ref) async {
+    final cur = alert.currency ?? '';
+    final controller = TextEditingController(
+      text: alert.targetPrice?.toStringAsFixed(0) ?? '',
+    );
+    final target = await showDialog<double>(
+      context: context,
+      builder: (dialogCtx) {
+        String? error;
+        return StatefulBuilder(
+          builder: (ctx, setState) => AlertDialog(
+            title: const Text('Set target price'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Get notified when the fare hits or drops below this price.',
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Notify me at or below',
+                    prefixText: cur.isEmpty ? null : '$cur ',
+                    border: const OutlineInputBorder(),
+                    errorText: error,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final v = double.tryParse(controller.text.trim());
+                  if (v == null || v <= 0) {
+                    setState(() => error = 'Enter a valid target price');
+                    return;
+                  }
+                  Navigator.of(dialogCtx).pop(v);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (target == null || !context.mounted) return;
+    try {
+      await ref.read(alertsProvider.notifier).updateTarget(alert.id, target);
+    } catch (e) {
+      if (context.mounted) showSnack(context, '$e');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final notifier = ref.read(alertsProvider.notifier);
     final paused = alert.status == 'paused';
     final expired = alert.status == 'expired';
+    final baselineDelta = _baselineDeltaLine();
+    final freshness = _freshnessLine();
 
     Future<void> guard(Future<void> Function() action) async {
       try {
@@ -191,12 +302,32 @@ class _AlertCard extends ConsumerWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  if (baselineDelta != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      baselineDelta,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.green.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  if (freshness != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      freshness,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
             PopupMenuButton<String>(
               tooltip: 'Alert actions',
               onSelected: (v) {
+                if (v == 'edit_target') _editTarget(context, ref);
                 if (v == 'pause') guard(() => notifier.setPaused(alert.id, true));
                 if (v == 'resume') {
                   guard(() => notifier.setPaused(alert.id, false));
@@ -204,6 +335,13 @@ class _AlertCard extends ConsumerWidget {
                 if (v == 'delete') guard(() => notifier.remove(alert.id));
               },
               itemBuilder: (_) => [
+                if (!expired)
+                  PopupMenuItem(
+                    value: 'edit_target',
+                    child: Text(alert.targetPrice == null
+                        ? 'Set target price'
+                        : 'Edit target price'),
+                  ),
                 if (!expired)
                   PopupMenuItem(
                     value: paused ? 'resume' : 'pause',
