@@ -821,12 +821,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     // Chat/refine needs the network; also keeps the refine panel from ever
     // observing a cached (read-only) trip.
     if (_guardOffline()) return;
-    // AI refine is owner-only (keeps the version lineage single-writer);
-    // the buttons are hidden for editors, this is the belt-and-braces guard.
-    if (!trip.isOwner) {
-      _showSnack('Only the trip owner can refine with AI.');
-      return;
-    }
+    // Owners and editor co-planners refine; viewer-role members are
+    // read-only. Buttons are hidden, this is the belt-and-braces guard.
+    if (!trip.canEdit) return;
     final items = trip.items ?? [];
     if (items.isEmpty) {
       _showSnack('Add some places before refining with AI.');
@@ -848,8 +845,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   /// otherwise starts a fresh whole-trip assistant session.
   void _openChat(Trip trip) {
     if (_guardOffline()) return;
-    // The FAB is hidden for viewers; belt-and-braces like _openRefine.
-    if (!trip.isOwner) return;
+    // The FAB is hidden for read-only viewers; belt-and-braces like
+    // _openRefine.
+    if (!trip.canEdit) return;
     final hasConversation =
         ref.read(tripRefineProvider(widget.tripId)).messages.isNotEmpty;
     if (hasConversation) {
@@ -1265,9 +1263,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             }
           });
         },
-            // Refine is owner-only (and online-only); editors and offline
-            // viewers get no per-day refine icon.
-            (!_isOffline && (_trip?.isOwner ?? true))
+            // Refine needs the network; owners and editor co-planners both
+            // get the per-day refine icon (viewers don't).
+            (!_isOffline && (_trip?.canEdit ?? true))
                 ? () {
                     final trip = _trip;
                     if (trip == null) return;
@@ -1364,7 +1362,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                   // 'Other places' has no hub the section tool can target;
                   // refine also needs the network.
                   if (group.label != 'Other places' &&
-                      trip.isOwner &&
+                      trip.canEdit &&
                       !_isOffline)
                     IconButton(
                       icon: const Icon(Icons.auto_awesome, size: 16),
@@ -2519,7 +2517,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            if (!trip.isOwner)
+            if (!trip.isOwner) ...[
               Row(
                 children: [
                   Icon(Icons.group_outlined,
@@ -2535,8 +2533,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                     ),
                   ),
                 ],
-              )
-            else
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (trip.canEdit)
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
@@ -2597,7 +2597,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       // the panel is docked (redundant), on narrow it would overlap the sheet.
       floatingActionButton: (trip != null &&
               !_panelOpen &&
-              trip.isOwner &&
+              trip.canEdit &&
               !_isOffline &&
               (trip.items?.isNotEmpty ?? false))
           ? FloatingActionButton(

@@ -379,6 +379,13 @@ func reorderItineraryItemsHandler(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
 
+	// Serialize against concurrent whole-itinerary rewrites (refine agent) —
+	// the stale-set 409 below is only reliable if the item set can't change
+	// between this read and commit.
+	if _, err := q.GetTripForUpdate(ctx, tripID); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder itinerary")
+		return
+	}
 	items, err := q.GetItineraryItemsByTrip(ctx, tripID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")

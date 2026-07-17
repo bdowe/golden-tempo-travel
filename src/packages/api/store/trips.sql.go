@@ -266,6 +266,32 @@ func (q *Queries) GetTripByIDAndOwner(ctx context.Context, arg GetTripByIDAndOwn
 	return i, err
 }
 
+const getTripForUpdate = `-- name: GetTripForUpdate :one
+SELECT id, user_id, created_at, updated_at, title, start_date, end_date, status, chat_id, summary FROM trips WHERE id = $1 FOR UPDATE
+`
+
+// Row-locks the trip for the duration of the transaction. Full-itinerary
+// rewrites (replaceTripSection) and reorders read-then-write the whole item
+// set; without this lock two concurrent writers interleave under READ
+// COMMITTED and both item sets survive the delete/reinsert.
+func (q *Queries) GetTripForUpdate(ctx context.Context, id uuid.UUID) (Trip, error) {
+	row := q.db.QueryRow(ctx, getTripForUpdate, id)
+	var i Trip
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Title,
+		&i.StartDate,
+		&i.EndDate,
+		&i.Status,
+		&i.ChatID,
+		&i.Summary,
+	)
+	return i, err
+}
+
 const listLatestTripsByOwner = `-- name: ListLatestTripsByOwner :many
 SELECT latest.id, latest.user_id, latest.created_at, latest.updated_at,
        latest.title, latest.start_date, latest.end_date, latest.status,

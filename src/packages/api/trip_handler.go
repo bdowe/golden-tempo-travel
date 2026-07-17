@@ -349,6 +349,10 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Access = "owner"
 	} else {
 		resp.Access = "editor"
+		// The chat_id keys the OWNER's plan sessions; a collaborator seeding a
+		// freeform /plan chat with it would fork the lineage under their own
+		// account. Refine binds by trip_id, so editors never need it.
+		resp.ChatID = nil
 		if owner, err := q.GetUserByID(r.Context(), trip.UserID); err == nil &&
 			owner.DisplayName != nil && *owner.DisplayName != "" {
 			resp.OwnerName = owner.DisplayName

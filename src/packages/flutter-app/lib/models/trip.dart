@@ -58,6 +58,10 @@ class Trip {
     this.ownerName,
   });
 
+  /// True when the current user may edit this trip: owner or editor
+  /// co-planner. Viewer-role members (future) are read-only.
+  bool get canEdit => access == null || access == 'owner' || access == 'editor';
+
   /// True when the current user owns this trip (missing access ⇒ owner,
   /// for responses that predate collaboration).
   bool get isOwner => access == null || access == 'owner';

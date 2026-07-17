@@ -38,6 +38,9 @@ type planSession struct {
 	authed      bool
 	uid         uuid.UUID
 	boundTripID *uuid.UUID
+	// boundTripOwnerID is the lineage owner of the bound trip (zero when
+	// unbound); differs from uid when an editor collaborator is refining.
+	boundTripOwnerID uuid.UUID
 
 	// tripID is the trip this session persisted or refined (nil if none);
 	// the handler's completion instrumentation reads it.
@@ -89,7 +92,7 @@ var planToolRegistry = []planTool{
 		run: runCreateItineraryTool, noResultEvent: true},
 	{def: savePrefsTool, enabled: authedOnly, run: runSavePreferencesTool},
 	{def: getTripTool, enabled: authedOnly, run: func(s *planSession, input json.RawMessage) (string, bool) {
-		return runGetTripTool(s.ctx, s.authed, s.uid, input)
+		return runGetTripTool(s.ctx, s.authed, s.uid, s.boundTripID, input)
 	}},
 	{def: addBookingTodoTool, enabled: authedOnly, run: runAddBookingTodoTool},
 	{def: updateBookingTodoTool, enabled: authedOnly, run: runUpdateBookingTodoTool},
@@ -406,7 +409,8 @@ func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (strin
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": s.boundTripID.String()})
 	s.tripID = s.boundTripID
 	go recordEvent(s.uid, "trip_refined", s.boundTripID, map[string]any{
-		"scope": in.Scope,
+		"scope":           in.Scope,
+		"is_collaborator": s.uid != s.boundTripOwnerID,
 	})
 	return "Section updated — the traveler's trip page has refreshed.", false
 }

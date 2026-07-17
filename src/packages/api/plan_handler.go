@@ -186,9 +186,11 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
-	// A trip-bound session must verifiably own the trip before anything streams;
-	// failing closed here guarantees a refine panel can never fall back to the
-	// version-creating create_itinerary flow.
+	// A trip-bound session must verifiably be editable by the caller (owner or
+	// editor collaborator) before anything streams; failing closed here
+	// guarantees a refine panel can never fall back to the version-creating
+	// create_itinerary flow. Collaborator refines patch the owner's trip row
+	// in place — the lineage never forks.
 	var boundTripID *uuid.UUID
 	if strings.TrimSpace(req.TripID) != "" {
 		tid, err := uuid.Parse(req.TripID)
@@ -196,11 +198,13 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			sendSSE(w, "error", map[string]string{"message": "sign in to refine this trip"})
 			return
 		}
-		if _, err := store.New(dbPool).GetTripByIDAndOwner(r.Context(), store.GetTripByIDAndOwnerParams{ID: tid, UserID: uid}); err != nil {
+		boundTrip, err := store.New(dbPool).GetEditableTripByID(r.Context(), store.GetEditableTripByIDParams{ID: tid, UserID: uid})
+		if err != nil {
 			sendSSE(w, "error", map[string]string{"message": "trip not found"})
 			return
 		}
 		boundTripID = &tid
+		session.boundTripOwnerID = boundTrip.UserID
 	}
 	session.boundTripID = boundTripID
 
