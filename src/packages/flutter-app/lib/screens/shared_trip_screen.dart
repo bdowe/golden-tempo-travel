@@ -156,6 +156,19 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     if (_selectedDay != null && _selectedDay! > mapDayCount) {
       _selectedDay = null; // trip shrank under a stale selection
     }
+    // Days that would plot something, so empty days get muted chips.
+    final mappedDays = daysWithMappedContent(
+      trip.startDate,
+      mapDayCount,
+      [
+        for (final i in items)
+          if (i.latitude != 0 || i.longitude != 0) i.day,
+      ],
+      [
+        for (final a in stays)
+          if (TripMap.stayHasCoords(a)) (checkIn: a.checkIn, checkOut: a.checkOut),
+      ],
+    );
     final dayItems = _selectedDay == null
         ? items
         : items.where((i) => i.day == _selectedDay).toList();
@@ -215,7 +228,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                               : 0,
                           emptyLabel: _selectedDay == null
                               ? 'No mapped places'
-                              : 'No mapped places on this day',
+                              : 'No places pinned on Day $_selectedDay',
                           onPinTap: (pos) =>
                               setState(() => _selectedPosition = pos),
                         ),
@@ -229,6 +242,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                         child: MapDayChips(
                           dayCount: mapDayCount,
                           selected: _selectedDay,
+                          mappedDays: mappedDays,
                           onSelected: (d) =>
                               setState(() => _selectedDay = d),
                         ),

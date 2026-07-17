@@ -2685,6 +2685,25 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       if (_selectedDay != null && _selectedDay! > mapDayCount) {
                         _selectedDay = null;
                       }
+                      // Days that would plot something, so empty days (e.g.
+                      // the fly-out day, all booking todos) get muted chips.
+                      // Trip-wide like mapDayCount — the category filter never
+                      // flickers the chip treatment.
+                      final mappedDays = daysWithMappedContent(
+                        trip.startDate,
+                        mapDayCount,
+                        [
+                          for (final i
+                              in trip.items ?? const <ItineraryItem>[])
+                            if (i.latitude != 0 || i.longitude != 0) i.day,
+                        ],
+                        [
+                          for (final a in trip.accommodations ??
+                              const <Accommodation>[])
+                            if (TripMap.stayHasCoords(a))
+                              (checkIn: a.checkIn, checkOut: a.checkOut),
+                        ],
+                      );
                       // Today mode: the jump chip renders only when today
                       // falls inside the trip's dates AND some item carries a
                       // day tag (the same gate as the auto-scroll, so the
@@ -2767,7 +2786,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                               : 0,
                                           emptyLabel: _selectedDay == null
                                               ? 'No mapped places'
-                                              : 'No mapped places on this day',
+                                              : 'No places pinned on '
+                                                  'Day $_selectedDay',
+                                          emptyMessage: _isOffline
+                                              ? null
+                                              : 'Add a place to see it '
+                                                  'on the map.',
+                                          emptyAction: _isOffline
+                                              ? null
+                                              : FilledButton.tonalIcon(
+                                                  onPressed: _addPlace,
+                                                  icon: const Icon(Icons.add,
+                                                      size: 18),
+                                                  label:
+                                                      const Text('Add place'),
+                                                ),
                                           onPinTap: (pos) {
                                             setState(
                                                 () => _selectedPosition = pos);
@@ -2787,6 +2820,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                         child: MapDayChips(
                                           dayCount: mapDayCount,
                                           selected: _selectedDay,
+                                          mappedDays: mappedDays,
                                           onSelected: (d) => setState(
                                               () => _selectedDay = d),
                                         ),

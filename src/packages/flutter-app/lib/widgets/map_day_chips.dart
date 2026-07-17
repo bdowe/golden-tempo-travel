@@ -22,15 +22,29 @@ class MapDayChips extends StatelessWidget {
   final int? selected;
   final ValueChanged<int?> onSelected;
 
+  /// Days that have something plottable (a coordinate-bearing item tagged to
+  /// the day, or a stay covering its night — see `daysWithMappedContent`).
+  /// Chips for other days stay tappable but render muted, signalling "nothing
+  /// on the map here" before the tap. Null (the default) mutes nothing.
+  final Set<int>? mappedDays;
+
   const MapDayChips({
     super.key,
     required this.dayCount,
     required this.selected,
     required this.onSelected,
+    this.mappedDays,
   });
 
-  Widget _chip({required String label, required int? value}) {
+  Widget _chip({
+    required String label,
+    required int? value,
+    bool muted = false,
+  }) {
     final isSelected = selected == value;
+    // A selected chip keeps the full treatment even when its day is empty —
+    // the ring is what says "you are here"; the map's empty state says empty.
+    final dim = muted && !isSelected;
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
@@ -44,12 +58,16 @@ class MapDayChips extends StatelessWidget {
       // Dark translucent scrim so the text reads over satellite imagery
       // (same treatment as TripMap's segment labels); selection is a solid
       // white ring + brighter fill rather than a theme tint, which would
-      // vanish against imagery.
-      backgroundColor: Colors.black.withValues(alpha: 0.6),
+      // vanish against imagery. Muted (nothing mapped that day) fades the
+      // scrim, border, and label together.
+      backgroundColor: Colors.black.withValues(alpha: dim ? 0.35 : 0.6),
       selectedColor: Colors.black.withValues(alpha: 0.8),
-      side: BorderSide(color: isSelected ? Colors.white : Colors.white24),
+      side: BorderSide(
+          color: isSelected
+              ? Colors.white
+              : (dim ? Colors.white12 : Colors.white24)),
       labelStyle: TextStyle(
-        color: Colors.white,
+        color: dim ? Colors.white60 : Colors.white,
         fontSize: 11,
         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
       ),
@@ -66,7 +84,11 @@ class MapDayChips extends StatelessWidget {
           _chip(label: 'All', value: null),
           for (var d = 1; d <= dayCount; d++) ...[
             const SizedBox(width: 6),
-            _chip(label: 'Day $d', value: d),
+            _chip(
+              label: 'Day $d',
+              value: d,
+              muted: mappedDays != null && !mappedDays!.contains(d),
+            ),
           ],
         ],
       ),

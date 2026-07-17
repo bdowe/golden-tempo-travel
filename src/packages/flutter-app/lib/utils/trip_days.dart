@@ -41,6 +41,38 @@ int dayCount(String? startDate, String? endDate, Iterable<int?> itemDays) {
   return max;
 }
 
+/// The set of 1-based days in `1..dayCount` that would plot something on the
+/// trip map: days carried by a coordinate-bearing itinerary item, plus days
+/// whose night is covered by a geocoded stay (checkout-exclusive, via
+/// [stayCoversDate]). Callers pre-filter to mapped entries — pass only the
+/// day tags of items with real coordinates and the date ranges of stays with
+/// real coordinates. Lets day chips mute days that would show an empty map.
+Set<int> daysWithMappedContent(
+  String? startDate,
+  int dayCount,
+  Iterable<int?> mappedItemDays,
+  Iterable<({String? checkIn, String? checkOut})> mappedStayDates,
+) {
+  final days = <int>{
+    for (final d in mappedItemDays)
+      if (d != null && d >= 1 && d <= dayCount) d,
+  };
+  final start = DateTime.tryParse(startDate ?? '');
+  if (start != null) {
+    for (var d = 1; d <= dayCount; d++) {
+      if (days.contains(d)) continue;
+      // Calendar-day arithmetic (constructor normalizes overflow) rather than
+      // Duration, which drifts a date across a DST transition.
+      final night = DateTime(start.year, start.month, start.day + d - 1);
+      if (mappedStayDates
+          .any((s) => stayCoversDate(s.checkIn, s.checkOut, night))) {
+        days.add(d);
+      }
+    }
+  }
+  return days;
+}
+
 /// Whether a stay covers the night of [date] (device-local calendar date):
 /// check-in <= date < check-out — **checkout-exclusive**, since nobody sleeps
 /// there on checkout day. False when either date is missing or unparseable.

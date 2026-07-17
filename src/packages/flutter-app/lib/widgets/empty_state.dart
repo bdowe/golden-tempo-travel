@@ -15,6 +15,11 @@ class EmptyState extends StatelessWidget {
   /// Tints the icon. Defaults to a muted primary.
   final Color? iconColor;
 
+  /// Tighter metrics (smaller icon and type, less padding) for short
+  /// containers — e.g. the 240px trip-map header, where the default 64px icon
+  /// plus a title and a button would overflow.
+  final bool compact;
+
   const EmptyState({
     super.key,
     required this.icon,
@@ -22,6 +27,7 @@ class EmptyState extends StatelessWidget {
     this.message,
     this.actions = const [],
     this.iconColor,
+    this.compact = false,
   });
 
   @override
@@ -29,21 +35,22 @@ class EmptyState extends StatelessWidget {
     final theme = Theme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
+        padding: EdgeInsets.all(compact ? AppSpacing.lg : AppSpacing.xxl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
-              size: 64,
+              size: compact ? 32 : 64,
               color: iconColor ?? theme.colorScheme.primary.withValues(alpha: 0.5),
             ),
-            const SizedBox(height: AppSpacing.lg),
+            SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
             Text(
               title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: (compact
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.titleLarge)
+                  ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             if (message != null) ...[
@@ -51,13 +58,14 @@ class EmptyState extends StatelessWidget {
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: (compact
+                        ? theme.textTheme.bodySmall
+                        : theme.textTheme.bodyMedium)
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             ],
             if (actions.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.xl),
+              SizedBox(height: compact ? AppSpacing.md : AppSpacing.xl),
               Wrap(
                 spacing: AppSpacing.sm,
                 runSpacing: AppSpacing.sm,
