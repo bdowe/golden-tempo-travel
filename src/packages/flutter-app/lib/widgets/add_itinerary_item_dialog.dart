@@ -6,6 +6,7 @@ import '../models/itinerary_item.dart';
 import '../models/place_search_result.dart';
 import '../providers/places_api_provider.dart';
 import '../providers/trips_provider.dart';
+import '../utils/trip_days.dart';
 
 /// Manually adds one place to a trip's itinerary: Google Places search picks a
 /// real place (coordinates/address auto-filled), with a typed-name fallback
@@ -35,13 +36,16 @@ class _AddItineraryItemDialogState
   bool _saving = false;
   String? _error;
 
-  int get _maxDay {
-    var max = 0;
-    for (final it in widget.trip.items ?? const <ItineraryItem>[]) {
-      if (it.day != null && it.day! > max) max = it.day!;
-    }
-    return max;
-  }
+  /// Days offered by the Day dropdown: the same span as the map's day chips
+  /// (trip date range or highest tagged day, whichever is later), so every
+  /// real trip day is offered — including trailing days with no items yet —
+  /// and any chip-selected [AddItineraryItemDialog.initialDay] has a
+  /// matching entry.
+  int get _dayCount => dayCount(
+        widget.trip.startDate,
+        widget.trip.endDate,
+        (widget.trip.items ?? const <ItineraryItem>[]).map((i) => i.day),
+      );
 
   /// The hub city of the chosen day's existing items, so the new place joins
   /// that city group. Without this the group key falls back to the address
@@ -62,7 +66,12 @@ class _AddItineraryItemDialogState
   @override
   void initState() {
     super.initState();
-    _day = widget.initialDay;
+    // Only accept a day the dropdown actually offers; a stale out-of-range
+    // value would trip DropdownButtonFormField's items assertion.
+    final initial = widget.initialDay;
+    _day = (initial != null && initial >= 1 && initial <= _dayCount + 1)
+        ? initial
+        : null;
   }
 
   @override
@@ -189,6 +198,9 @@ class _AddItineraryItemDialogState
                   Expanded(
                     child: DropdownButtonFormField<int?>(
                       initialValue: _day,
+                      // Fill the field and ellipsize instead of overflowing
+                      // when an item label outgrows the half-width column.
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Day',
                         border: OutlineInputBorder(),
@@ -197,13 +209,13 @@ class _AddItineraryItemDialogState
                       items: [
                         const DropdownMenuItem(
                             value: null, child: Text('Unscheduled')),
-                        for (var d = 1; d <= _maxDay; d++)
+                        for (var d = 1; d <= _dayCount; d++)
                           DropdownMenuItem(value: d, child: Text('Day $d')),
                         DropdownMenuItem(
-                            value: _maxDay + 1,
-                            child: Text(_maxDay == 0
+                            value: _dayCount + 1,
+                            child: Text(_dayCount == 0
                                 ? 'Day 1'
-                                : 'New day (${_maxDay + 1})')),
+                                : 'New day (${_dayCount + 1})')),
                       ],
                       onChanged: (v) => setState(() => _day = v),
                     ),
@@ -212,6 +224,7 @@ class _AddItineraryItemDialogState
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       initialValue: _timeOfDay,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Time of day',
                         border: OutlineInputBorder(),

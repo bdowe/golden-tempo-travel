@@ -167,6 +167,27 @@ void main() {
     expect(map(tester).items, hasLength(3));
   });
 
+  testWidgets('the empty-day CTA opens Add place with that day preselected',
+      (WidgetTester tester) async {
+    await pumpScreen(tester);
+    await tapChip(tester, 'Day 3');
+
+    await tester.tap(find.descendant(
+      of: find.byType(TripMap),
+      matching: find.text('Add place'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    // Day 3 has no tagged items, so it's only offered because the dropdown
+    // spans the trip's dates; the CTA preselects it. Asserted via the form
+    // field's value — the dropdown renders every item's text offstage, so a
+    // text find would pass vacuously.
+    final dayField = tester.state<FormFieldState<int?>>(
+        find.byType(DropdownButtonFormField<int?>));
+    expect(dayField.value, 3);
+  });
+
   testWidgets('chips for days with nothing mappable render muted but stay '
       'tappable', (WidgetTester tester) async {
     await pumpScreen(tester);

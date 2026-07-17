@@ -743,13 +743,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (added == true) await _load();
   }
 
-  Future<void> _addPlace() async {
+  /// [day] preselects the dialog's Day dropdown (e.g. from the map's
+  /// empty-day CTA, where the user is already looking at a specific day).
+  Future<void> _addPlace({int? day}) async {
     if (_guardOffline()) return;
     final trip = _trip;
     if (trip == null) return;
     final added = await showDialog<bool>(
       context: context,
-      builder: (_) => AddItineraryItemDialog(trip: trip),
+      builder: (_) => AddItineraryItemDialog(trip: trip, initialDay: day),
     );
     if (added == true) await _load();
   }
@@ -2795,7 +2797,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                           emptyAction: _isOffline
                                               ? null
                                               : FilledButton.tonalIcon(
-                                                  onPressed: _addPlace,
+                                                  onPressed: () => _addPlace(
+                                                      day: _selectedDay),
                                                   icon: const Icon(Icons.add,
                                                       size: 18),
                                                   label:
