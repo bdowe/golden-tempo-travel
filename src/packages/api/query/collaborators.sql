@@ -1,11 +1,16 @@
--- name: CreateTripCollaborator :exec
--- Idempotent join: the partial unique index makes a second redeem a no-op.
+-- name: CreateTripCollaborator :one
+-- Idempotent join, upgrade-never-downgrade: redeeming an editor link (or
+-- invite) upgrades an existing viewer membership; redeeming a viewer link as
+-- an editor keeps editor. Returns the resulting role.
 INSERT INTO trip_collaborators (chat_id, owner_id, user_id, role)
-VALUES ($1, $2, $3, 'editor')
-ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL DO NOTHING;
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL
+DO UPDATE SET role = CASE WHEN EXCLUDED.role = 'editor' THEN 'editor'
+                          ELSE trip_collaborators.role END
+RETURNING role;
 
 -- name: ListCollaboratorsByOwnerAndChat :many
-SELECT c.user_id, c.created_at, u.email,
+SELECT c.user_id, c.created_at, c.role, u.email,
        COALESCE(u.display_name, '')::text AS display_name
 FROM trip_collaborators c
 JOIN users u ON u.id = c.user_id
@@ -27,18 +32,29 @@ WHERE t.id = $1
         WHERE c.user_id = $2 AND c.role = 'editor' AND c.revoked_at IS NULL
           AND c.owner_id = t.user_id AND c.chat_id = t.chat_id));
 
+-- name: GetViewableTripByID :one
+-- Read access: owner or ANY active collaborator (viewer follows included).
+-- Returns the effective access so callers don't need a second lookup. The
+-- partial unique index guarantees at most one active membership per person,
+-- so the LEFT JOIN can't fan out.
+SELECT t.*, CASE WHEN t.user_id = $2 THEN 'owner' ELSE c.role END::text AS access
+FROM trips t
+LEFT JOIN trip_collaborators c ON c.owner_id = t.user_id AND c.chat_id = t.chat_id
+     AND c.user_id = $2 AND c.revoked_at IS NULL
+WHERE t.id = $1 AND (t.user_id = $2 OR c.id IS NOT NULL);
+
 -- name: ListLatestCollaboratedTripsForUser :many
 -- "Shared with you": one row per collaborated lineage (latest version), same
 -- shape as ListLatestTripsByOwner plus the owner's display name.
 SELECT latest.id, latest.user_id, latest.created_at, latest.updated_at,
        latest.title, latest.start_date, latest.end_date, latest.status,
-       latest.chat_id, latest.version_count,
+       latest.chat_id, latest.role, latest.version_count,
        COALESCE(c2.cities, ARRAY[]::text[])::text[] AS cities,
        COALESCE(u.display_name, '')::text AS owner_name
 FROM (
   SELECT DISTINCT ON (t.chat_id)
          t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date,
-         t.end_date, t.status, t.chat_id,
+         t.end_date, t.status, t.chat_id, c.role,
          count(*) OVER (PARTITION BY t.chat_id) AS version_count
   FROM trips t
   JOIN trip_collaborators c ON c.owner_id = t.user_id AND c.chat_id = t.chat_id

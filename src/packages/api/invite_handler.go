@@ -288,8 +288,8 @@ func acceptInviteHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "invite not found")
 		return
 	}
-	if err := qtx.CreateTripCollaborator(ctx, store.CreateTripCollaboratorParams{
-		ChatID: invite.ChatID, OwnerID: invite.OwnerID, UserID: user.ID,
+	if _, err := qtx.CreateTripCollaborator(ctx, store.CreateTripCollaboratorParams{
+		ChatID: invite.ChatID, OwnerID: invite.OwnerID, UserID: user.ID, Role: "editor",
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not join trip")
 		return

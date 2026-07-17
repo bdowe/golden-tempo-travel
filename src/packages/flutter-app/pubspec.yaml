@@ -59,6 +59,9 @@ dependencies:
   # Open external Airbnb/Booking links
   url_launcher: ^6.3.0
 
+  # Native OS share sheet for trip links (mobile; web/desktop copy instead)
+  share_plus: ^12.0.2
+
   # Render airline logos (Duffel serves them as SVG)
   flutter_svg: ^2.0.10
 

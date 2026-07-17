@@ -13,22 +13,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createTripCollaborator = `-- name: CreateTripCollaborator :exec
+const createTripCollaborator = `-- name: CreateTripCollaborator :one
 INSERT INTO trip_collaborators (chat_id, owner_id, user_id, role)
-VALUES ($1, $2, $3, 'editor')
-ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL DO NOTHING
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL
+DO UPDATE SET role = CASE WHEN EXCLUDED.role = 'editor' THEN 'editor'
+                          ELSE trip_collaborators.role END
+RETURNING role
 `
 
 type CreateTripCollaboratorParams struct {
 	ChatID  string    `json:"chat_id"`
 	OwnerID uuid.UUID `json:"owner_id"`
 	UserID  uuid.UUID `json:"user_id"`
+	Role    string    `json:"role"`
 }
 
-// Idempotent join: the partial unique index makes a second redeem a no-op.
-func (q *Queries) CreateTripCollaborator(ctx context.Context, arg CreateTripCollaboratorParams) error {
-	_, err := q.db.Exec(ctx, createTripCollaborator, arg.ChatID, arg.OwnerID, arg.UserID)
-	return err
+// Idempotent join, upgrade-never-downgrade: redeeming an editor link (or
+// invite) upgrades an existing viewer membership; redeeming a viewer link as
+// an editor keeps editor. Returns the resulting role.
+func (q *Queries) CreateTripCollaborator(ctx context.Context, arg CreateTripCollaboratorParams) (string, error) {
+	row := q.db.QueryRow(ctx, createTripCollaborator,
+		arg.ChatID,
+		arg.OwnerID,
+		arg.UserID,
+		arg.Role,
+	)
+	var role string
+	err := row.Scan(&role)
+	return role, err
 }
 
 const getEditableTripByID = `-- name: GetEditableTripByID :one
@@ -67,8 +80,60 @@ func (q *Queries) GetEditableTripByID(ctx context.Context, arg GetEditableTripBy
 	return i, err
 }
 
+const getViewableTripByID = `-- name: GetViewableTripByID :one
+SELECT t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date, t.end_date, t.status, t.chat_id, t.summary, t.updated_by, CASE WHEN t.user_id = $2 THEN 'owner' ELSE c.role END::text AS access
+FROM trips t
+LEFT JOIN trip_collaborators c ON c.owner_id = t.user_id AND c.chat_id = t.chat_id
+     AND c.user_id = $2 AND c.revoked_at IS NULL
+WHERE t.id = $1 AND (t.user_id = $2 OR c.id IS NOT NULL)
+`
+
+type GetViewableTripByIDParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+type GetViewableTripByIDRow struct {
+	ID        uuid.UUID   `json:"id"`
+	UserID    uuid.UUID   `json:"user_id"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	Title     string      `json:"title"`
+	StartDate pgtype.Date `json:"start_date"`
+	EndDate   pgtype.Date `json:"end_date"`
+	Status    string      `json:"status"`
+	ChatID    *string     `json:"chat_id"`
+	Summary   *string     `json:"summary"`
+	UpdatedBy pgtype.UUID `json:"updated_by"`
+	Access    string      `json:"access"`
+}
+
+// Read access: owner or ANY active collaborator (viewer follows included).
+// Returns the effective access so callers don't need a second lookup. The
+// partial unique index guarantees at most one active membership per person,
+// so the LEFT JOIN can't fan out.
+func (q *Queries) GetViewableTripByID(ctx context.Context, arg GetViewableTripByIDParams) (GetViewableTripByIDRow, error) {
+	row := q.db.QueryRow(ctx, getViewableTripByID, arg.ID, arg.UserID)
+	var i GetViewableTripByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Title,
+		&i.StartDate,
+		&i.EndDate,
+		&i.Status,
+		&i.ChatID,
+		&i.Summary,
+		&i.UpdatedBy,
+		&i.Access,
+	)
+	return i, err
+}
+
 const listCollaboratorsByOwnerAndChat = `-- name: ListCollaboratorsByOwnerAndChat :many
-SELECT c.user_id, c.created_at, u.email,
+SELECT c.user_id, c.created_at, c.role, u.email,
        COALESCE(u.display_name, '')::text AS display_name
 FROM trip_collaborators c
 JOIN users u ON u.id = c.user_id
@@ -84,6 +149,7 @@ type ListCollaboratorsByOwnerAndChatParams struct {
 type ListCollaboratorsByOwnerAndChatRow struct {
 	UserID      uuid.UUID `json:"user_id"`
 	CreatedAt   time.Time `json:"created_at"`
+	Role        string    `json:"role"`
 	Email       string    `json:"email"`
 	DisplayName string    `json:"display_name"`
 }
@@ -100,6 +166,7 @@ func (q *Queries) ListCollaboratorsByOwnerAndChat(ctx context.Context, arg ListC
 		if err := rows.Scan(
 			&i.UserID,
 			&i.CreatedAt,
+			&i.Role,
 			&i.Email,
 			&i.DisplayName,
 		); err != nil {
@@ -116,13 +183,13 @@ func (q *Queries) ListCollaboratorsByOwnerAndChat(ctx context.Context, arg ListC
 const listLatestCollaboratedTripsForUser = `-- name: ListLatestCollaboratedTripsForUser :many
 SELECT latest.id, latest.user_id, latest.created_at, latest.updated_at,
        latest.title, latest.start_date, latest.end_date, latest.status,
-       latest.chat_id, latest.version_count,
+       latest.chat_id, latest.role, latest.version_count,
        COALESCE(c2.cities, ARRAY[]::text[])::text[] AS cities,
        COALESCE(u.display_name, '')::text AS owner_name
 FROM (
   SELECT DISTINCT ON (t.chat_id)
          t.id, t.user_id, t.created_at, t.updated_at, t.title, t.start_date,
-         t.end_date, t.status, t.chat_id,
+         t.end_date, t.status, t.chat_id, c.role,
          count(*) OVER (PARTITION BY t.chat_id) AS version_count
   FROM trips t
   JOIN trip_collaborators c ON c.owner_id = t.user_id AND c.chat_id = t.chat_id
@@ -154,6 +221,7 @@ type ListLatestCollaboratedTripsForUserRow struct {
 	EndDate      pgtype.Date `json:"end_date"`
 	Status       string      `json:"status"`
 	ChatID       *string     `json:"chat_id"`
+	Role         string      `json:"role"`
 	VersionCount int64       `json:"version_count"`
 	Cities       []string    `json:"cities"`
 	OwnerName    string      `json:"owner_name"`
@@ -180,6 +248,7 @@ func (q *Queries) ListLatestCollaboratedTripsForUser(ctx context.Context, userID
 			&i.EndDate,
 			&i.Status,
 			&i.ChatID,
+			&i.Role,
 			&i.VersionCount,
 			&i.Cities,
 			&i.OwnerName,

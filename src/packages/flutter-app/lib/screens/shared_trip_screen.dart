@@ -127,8 +127,9 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
     }
   }
 
-  /// Editor links: redeem membership, then land in the shared trip itself
-  /// (Trips tab underneath so back lands somewhere sensible).
+  /// Redeems membership — editor links join as co-planner, viewer links as a
+  /// read-only follow — then lands in the shared trip itself (Trips tab
+  /// underneath so back lands somewhere sensible).
   Future<void> _joinAsCoPlanner() async {
     if (!await _ensureSignedIn()) return;
     setState(() => _saving = true);
@@ -358,16 +359,30 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                           ),
                       ],
                     )
-                  : FilledButton.icon(
-                      onPressed: _saving ? null : _saveCopy,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.library_add_outlined),
-                      label: const Text('Save a copy to my trips'),
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Viewer follow (specs/share-ux-viewer-follow): the
+                        // trip appears read-only in "Shared with you" and
+                        // stays current as the owner plans.
+                        FilledButton.icon(
+                          onPressed: _saving ? null : _joinAsCoPlanner,
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.bookmark_add_outlined),
+                          label: const Text('Keep in my trips'),
+                        ),
+                        TextButton(
+                          onPressed: _saving ? null : _saveCopy,
+                          child: const Text('Or save a separate copy'),
+                        ),
+                      ],
                     ),
             ),
           ),
