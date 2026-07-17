@@ -26,17 +26,18 @@ func (q *Queries) CountUnreadAlertEvents(ctx context.Context, userID uuid.UUID) 
 }
 
 const insertAlertEvent = `-- name: InsertAlertEvent :one
-INSERT INTO alert_events (alert_id, user_id, price, currency, previous_price)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, alert_id, user_id, price, currency, previous_price, occurred_at, read_at
+INSERT INTO alert_events (alert_id, user_id, price, currency, previous_price, matched_departure_date)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, alert_id, user_id, price, currency, previous_price, occurred_at, read_at, matched_departure_date
 `
 
 type InsertAlertEventParams struct {
-	AlertID       uuid.UUID `json:"alert_id"`
-	UserID        uuid.UUID `json:"user_id"`
-	Price         float64   `json:"price"`
-	Currency      string    `json:"currency"`
-	PreviousPrice *float64  `json:"previous_price"`
+	AlertID              uuid.UUID   `json:"alert_id"`
+	UserID               uuid.UUID   `json:"user_id"`
+	Price                float64     `json:"price"`
+	Currency             string      `json:"currency"`
+	PreviousPrice        *float64    `json:"previous_price"`
+	MatchedDepartureDate pgtype.Date `json:"matched_departure_date"`
 }
 
 func (q *Queries) InsertAlertEvent(ctx context.Context, arg InsertAlertEventParams) (AlertEvent, error) {
@@ -46,6 +47,7 @@ func (q *Queries) InsertAlertEvent(ctx context.Context, arg InsertAlertEventPara
 		arg.Price,
 		arg.Currency,
 		arg.PreviousPrice,
+		arg.MatchedDepartureDate,
 	)
 	var i AlertEvent
 	err := row.Scan(
@@ -57,6 +59,7 @@ func (q *Queries) InsertAlertEvent(ctx context.Context, arg InsertAlertEventPara
 		&i.PreviousPrice,
 		&i.OccurredAt,
 		&i.ReadAt,
+		&i.MatchedDepartureDate,
 	)
 	return i, err
 }
@@ -64,6 +67,7 @@ func (q *Queries) InsertAlertEvent(ctx context.Context, arg InsertAlertEventPara
 const listAlertEventsByUser = `-- name: ListAlertEventsByUser :many
 SELECT alert_events.id, alert_events.alert_id, alert_events.price,
        alert_events.currency, alert_events.previous_price,
+       alert_events.matched_departure_date,
        alert_events.occurred_at, alert_events.read_at,
        price_alerts.origin, price_alerts.destination,
        price_alerts.depart_date, price_alerts.return_date,
@@ -81,19 +85,20 @@ type ListAlertEventsByUserParams struct {
 }
 
 type ListAlertEventsByUserRow struct {
-	ID            uuid.UUID          `json:"id"`
-	AlertID       uuid.UUID          `json:"alert_id"`
-	Price         float64            `json:"price"`
-	Currency      string             `json:"currency"`
-	PreviousPrice *float64           `json:"previous_price"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	ReadAt        pgtype.Timestamptz `json:"read_at"`
-	Origin        string             `json:"origin"`
-	Destination   string             `json:"destination"`
-	DepartDate    pgtype.Date        `json:"depart_date"`
-	ReturnDate    pgtype.Date        `json:"return_date"`
-	TargetPrice   *float64           `json:"target_price"`
-	AlertStatus   string             `json:"alert_status"`
+	ID                   uuid.UUID          `json:"id"`
+	AlertID              uuid.UUID          `json:"alert_id"`
+	Price                float64            `json:"price"`
+	Currency             string             `json:"currency"`
+	PreviousPrice        *float64           `json:"previous_price"`
+	MatchedDepartureDate pgtype.Date        `json:"matched_departure_date"`
+	OccurredAt           time.Time          `json:"occurred_at"`
+	ReadAt               pgtype.Timestamptz `json:"read_at"`
+	Origin               string             `json:"origin"`
+	Destination          string             `json:"destination"`
+	DepartDate           pgtype.Date        `json:"depart_date"`
+	ReturnDate           pgtype.Date        `json:"return_date"`
+	TargetPrice          *float64           `json:"target_price"`
+	AlertStatus          string             `json:"alert_status"`
 }
 
 // The joined alert columns give the client the route/dates context inline so
@@ -114,6 +119,7 @@ func (q *Queries) ListAlertEventsByUser(ctx context.Context, arg ListAlertEvents
 			&i.Price,
 			&i.Currency,
 			&i.PreviousPrice,
+			&i.MatchedDepartureDate,
 			&i.OccurredAt,
 			&i.ReadAt,
 			&i.Origin,

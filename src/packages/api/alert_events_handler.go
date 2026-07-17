@@ -31,8 +31,11 @@ type AlertEventResponse struct {
 	Destination   string   `json:"destination"`
 	DepartDate    string   `json:"depart_date"`
 	ReturnDate    *string  `json:"return_date"`
-	TargetPrice   *float64 `json:"target_price"`
-	AlertStatus   string   `json:"alert_status"`
+	// MatchedDate is the winning date inside a flexible window; null for an
+	// exact-date alert (where it always equals depart_date).
+	MatchedDate *string  `json:"matched_date"`
+	TargetPrice *float64 `json:"target_price"`
+	AlertStatus string   `json:"alert_status"`
 }
 
 func toAlertEventResponse(row store.ListAlertEventsByUserRow) AlertEventResponse {
@@ -55,6 +58,9 @@ func toAlertEventResponse(row store.ListAlertEventsByUserRow) AlertEventResponse
 	}
 	if ret := dateString(row.ReturnDate); ret != "" {
 		resp.ReturnDate = &ret
+	}
+	if m := dateString(row.MatchedDepartureDate); m != "" {
+		resp.MatchedDate = &m
 	}
 	return resp
 }

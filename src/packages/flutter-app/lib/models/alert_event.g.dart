@@ -18,6 +18,7 @@ AlertEvent _$AlertEventFromJson(Map<String, dynamic> json) => AlertEvent(
       destination: json['destination'] as String,
       departDate: json['depart_date'] as String,
       returnDate: json['return_date'] as String?,
+      matchedDate: json['matched_date'] as String?,
       targetPrice: (json['target_price'] as num?)?.toDouble(),
       alertStatus: json['alert_status'] as String,
     );
@@ -35,6 +36,7 @@ Map<String, dynamic> _$AlertEventToJson(AlertEvent instance) =>
       'destination': instance.destination,
       'depart_date': instance.departDate,
       'return_date': instance.returnDate,
+      'matched_date': instance.matchedDate,
       'target_price': instance.targetPrice,
       'alert_status': instance.alertStatus,
     };

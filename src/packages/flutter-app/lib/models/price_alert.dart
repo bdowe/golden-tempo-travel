@@ -19,6 +19,11 @@ class PriceAlert {
   final int adults;
   @JsonKey(name: 'target_price')
   final double? targetPrice;
+
+  /// Departure-window half-width (0–3). 0 is the exact-date default; N>0
+  /// watches [depart-N, depart+N] for the cheapest day.
+  @JsonKey(name: 'flex_days')
+  final int flexDays;
   final String? currency;
   @JsonKey(name: 'baseline_price')
   final double? baselinePrice;
@@ -45,6 +50,7 @@ class PriceAlert {
     this.cabinClass = 'economy',
     this.adults = 1,
     this.targetPrice,
+    this.flexDays = 0,
     this.currency,
     this.baselinePrice,
     this.lastCheckedPrice,

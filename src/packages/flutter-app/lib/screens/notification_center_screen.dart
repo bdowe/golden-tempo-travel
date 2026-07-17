@@ -102,8 +102,13 @@ class _EventTile extends StatelessWidget {
   }
 
   String _datesLine() {
-    var s = event.departDate;
+    // A flexible alert reports the cheapest day it found; show that instead of
+    // the nominal departure so the traveler books the right date.
+    var s = event.matchedDate ?? event.departDate;
     if (event.returnDate != null) s += ' → ${event.returnDate}';
+    if (event.matchedDate != null && event.matchedDate != event.departDate) {
+      s += ' (best in window)';
+    }
     return s;
   }
 
