@@ -117,6 +117,14 @@ void main() {
     expect(find.byType(FloatingActionButton), findsNothing);
   });
 
+  testWidgets('FAB shows for editor co-planners (specs/collaborator-refine)',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(_app(_trip(access: 'editor')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+  });
+
   testWidgets('reopening via the FAB resumes the conversation, not a reset',
       (WidgetTester tester) async {
     await tester.pumpWidget(_app(_trip()));

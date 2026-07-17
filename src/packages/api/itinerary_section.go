@@ -283,6 +283,11 @@ func replaceTripSection(ctx context.Context, tripID uuid.UUID, sel sectionSelect
 	defer tx.Rollback(ctx)
 	q := store.New(tx)
 
+	// Serialize whole-itinerary rewrites: a concurrent rewrite's delete would
+	// miss rows inserted after our snapshot, leaving both item sets merged.
+	if _, err := q.GetTripForUpdate(ctx, tripID); err != nil {
+		return err
+	}
 	existing, err := q.GetItineraryItemsByTrip(ctx, tripID)
 	if err != nil {
 		return err

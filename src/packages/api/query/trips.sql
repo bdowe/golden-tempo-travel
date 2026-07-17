@@ -109,6 +109,13 @@ UPDATE itinerary_items SET position = $3 WHERE id = $1 AND trip_id = $2;
 -- Itinerary-item writes don't touch the trips row, so bump updated_at by hand.
 UPDATE trips SET updated_at = now() WHERE id = $1;
 
+-- name: GetTripForUpdate :one
+-- Row-locks the trip for the duration of the transaction. Full-itinerary
+-- rewrites (replaceTripSection) and reorders read-then-write the whole item
+-- set; without this lock two concurrent writers interleave under READ
+-- COMMITTED and both item sets survive the delete/reinsert.
+SELECT * FROM trips WHERE id = $1 FOR UPDATE;
+
 -- name: UpdateTrip :one
 UPDATE trips
 SET title      = COALESCE(sqlc.narg('title'), title),

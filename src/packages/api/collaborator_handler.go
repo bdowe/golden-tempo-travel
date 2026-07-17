@@ -173,6 +173,8 @@ func listSharedWithMeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.VersionCount = int(t.VersionCount)
 		resp.Cities = t.Cities
 		resp.Access = "editor"
+		// Owner's plan-session key — same fork hazard as getTripHandler.
+		resp.ChatID = nil
 		if t.OwnerName != "" {
 			name := t.OwnerName
 			resp.OwnerName = &name

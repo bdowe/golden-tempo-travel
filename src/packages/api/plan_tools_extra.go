@@ -152,7 +152,7 @@ func runGetWeatherTool(ctx context.Context, input json.RawMessage) (string, bool
 	return summarizeWeather(report), false
 }
 
-func runGetTripTool(ctx context.Context, authed bool, uid uuid.UUID, input json.RawMessage) (string, bool) {
+func runGetTripTool(ctx context.Context, authed bool, uid uuid.UUID, boundTripID *uuid.UUID, input json.RawMessage) (string, bool) {
 	if !authed {
 		return "The traveler is not signed in, so there are no saved trips to read. Continue planning in this conversation.", true
 	}
@@ -193,7 +193,15 @@ func runGetTripTool(ctx context.Context, authed bool, uid uuid.UUID, input json.
 	if err != nil {
 		return "That trip_id is not valid; call get_trip without arguments to list trips.", true
 	}
-	trip, err := q.GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: uid})
+	// The bound trip of a refine session may be one the caller co-plans rather
+	// than owns; everything else stays strictly caller-owned (a collaborator
+	// must never browse the owner's other trips).
+	var trip store.Trip
+	if boundTripID != nil && tid == *boundTripID {
+		trip, err = q.GetEditableTripByID(ctx, store.GetEditableTripByIDParams{ID: tid, UserID: uid})
+	} else {
+		trip, err = q.GetTripByIDAndOwner(ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: uid})
+	}
 	if err != nil {
 		return "No such trip for this traveler; call get_trip without arguments to list trips.", true
 	}
@@ -266,8 +274,13 @@ func checkBookingTodoSession(s *planSession, tripID string) (uuid.UUID, string, 
 	if err != nil {
 		return uuid.Nil, "That trip_id is not valid; call get_trip to find the right one.", true
 	}
-	// Ownership: the agent may only write to the caller's own trips.
-	if _, err := store.New(dbPool).GetTripByIDAndOwner(s.ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: s.uid}); err != nil {
+	// The agent may write to the caller's own trips, or to the bound trip of
+	// a refine session the caller can edit (owner or collaborator).
+	if s.boundTripID != nil && tid == *s.boundTripID {
+		if _, err := store.New(dbPool).GetEditableTripByID(s.ctx, store.GetEditableTripByIDParams{ID: tid, UserID: s.uid}); err != nil {
+			return uuid.Nil, "No such trip for this traveler; call get_trip to find the right one.", true
+		}
+	} else if _, err := store.New(dbPool).GetTripByIDAndOwner(s.ctx, store.GetTripByIDAndOwnerParams{ID: tid, UserID: s.uid}); err != nil {
 		return uuid.Nil, "No such trip for this traveler; call get_trip to find the right one.", true
 	}
 	return tid, "", false

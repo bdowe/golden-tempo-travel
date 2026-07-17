@@ -132,7 +132,7 @@ func TestGetTripWeatherCaches(t *testing.T) {
 }
 
 func TestGetTripToolAnonymous(t *testing.T) {
-	msg, isErr := runGetTripTool(context.Background(), false, uuid.Nil, json.RawMessage(`{}`))
+	msg, isErr := runGetTripTool(context.Background(), false, uuid.Nil, nil, json.RawMessage(`{}`))
 	if !isErr || !strings.Contains(msg, "not signed in") {
 		t.Fatalf("anonymous get_trip = %q (err=%v)", msg, isErr)
 	}
@@ -166,19 +166,19 @@ func TestGetTripToolListsAndReads(t *testing.T) {
 	trip := createTestTrip(t, owner.ID, 2)
 	createTestTrip(t, other.ID, 1) // must never appear for owner
 
-	list, isErr := runGetTripTool(context.Background(), true, owner.ID, json.RawMessage(`{}`))
+	list, isErr := runGetTripTool(context.Background(), true, owner.ID, nil, json.RawMessage(`{}`))
 	if isErr || !strings.Contains(list, trip.ID.String()) || !strings.Contains(list, "saved trips (1)") {
 		t.Fatalf("list = %q (err=%v)", list, isErr)
 	}
 
-	detail, isErr := runGetTripTool(context.Background(), true, owner.ID,
+	detail, isErr := runGetTripTool(context.Background(), true, owner.ID, nil,
 		json.RawMessage(`{"trip_id":"`+trip.ID.String()+`"}`))
 	if isErr || !strings.Contains(detail, "Place 1") || !strings.Contains(detail, "2 places") {
 		t.Fatalf("detail = %q (err=%v)", detail, isErr)
 	}
 
 	// Cross-user read must fail closed.
-	_, isErr = runGetTripTool(context.Background(), true, other.ID,
+	_, isErr = runGetTripTool(context.Background(), true, other.ID, nil,
 		json.RawMessage(`{"trip_id":"`+trip.ID.String()+`"}`))
 	if !isErr {
 		t.Fatal("cross-user get_trip did not error")
@@ -362,7 +362,7 @@ func TestGetTripToolShowsBookingChecklist(t *testing.T) {
 	todoID := seedAgentTodo(t, s, trip.ID, "Book flights EWR to CUR")
 	seedAutoTodo(t, trip.ID)
 
-	detail, isErr := runGetTripTool(context.Background(), true, owner.ID,
+	detail, isErr := runGetTripTool(context.Background(), true, owner.ID, nil,
 		json.RawMessage(`{"trip_id":"`+trip.ID.String()+`"}`))
 	if isErr {
 		t.Fatalf("detail errored: %q", detail)
