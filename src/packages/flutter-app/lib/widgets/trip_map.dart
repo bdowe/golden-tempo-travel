@@ -10,6 +10,7 @@ import '../models/itinerary_item.dart';
 import '../theme/app_colors.dart';
 import '../utils/trip_format.dart';
 import 'app_map.dart';
+import 'empty_state.dart';
 
 /// Plots a trip's itinerary on a satellite basemap: a numbered, category-tinted
 /// pin per place, a route line connecting them in itinerary order, auto-fit to
@@ -41,6 +42,14 @@ class TripMap extends StatefulWidget {
   /// coordinates). The default keeps existing call sites unchanged.
   final String emptyLabel;
 
+  /// Optional second line under [emptyLabel] in the empty state.
+  final String? emptyMessage;
+
+  /// Optional CTA (e.g. an "Add place" button) rendered in the empty state.
+  /// Null — the default, and what read-only screens pass — shows icon + text
+  /// only.
+  final Widget? emptyAction;
+
   /// Extra top camera-fit padding (px) for overlays floating on the map's top
   /// edge (e.g. [MapDayChips]), so fitted markers never land underneath them.
   /// The default keeps existing call sites unchanged.
@@ -55,6 +64,8 @@ class TripMap extends StatefulWidget {
     this.accommodations = const [],
     this.fitSignature,
     this.emptyLabel = 'No mapped places',
+    this.emptyMessage,
+    this.emptyAction,
     this.topOverlayInset = 0,
   });
 
@@ -221,11 +232,15 @@ class _TripMapState extends State<TripMap> {
     if (mapped.isEmpty && stays.isEmpty) {
       return Container(
         color: theme.colorScheme.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: Text(
-          widget.emptyLabel,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        // Keep the centered content clear of the day-chip band overlaid on
+        // the map's top edge (same inset the camera fitting respects).
+        padding: EdgeInsets.only(top: widget.topOverlayInset),
+        child: EmptyState(
+          compact: true,
+          icon: Icons.location_off_outlined,
+          title: widget.emptyLabel,
+          message: widget.emptyMessage,
+          actions: [if (widget.emptyAction != null) widget.emptyAction!],
         ),
       );
     }

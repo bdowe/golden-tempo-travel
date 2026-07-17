@@ -116,6 +116,11 @@ void main() {
     expect(map(tester).fitSignature, isNull);
     expect(map(tester).items, hasLength(3));
     expect(map(tester).accommodations, hasLength(2));
+
+    // Both days plot something, so no chip is muted — and the read-only map
+    // carries no empty-state CTA.
+    expect(tester.widget<MapDayChips>(chips).mappedDays, {1, 2});
+    expect(map(tester).emptyAction, isNull);
   });
 
   testWidgets('day chip filters the shared map; All restores',

@@ -139,21 +139,58 @@ void main() {
     expect(map(tester).fitSignature, isNull);
   });
 
-  testWidgets('a day with nothing mappable shows the on-map empty message '
-      'while the chips stay', (WidgetTester tester) async {
+  testWidgets('a day with nothing mappable shows the on-map empty state '
+      'with an Add place CTA while the chips stay',
+      (WidgetTester tester) async {
     await pumpScreen(tester);
 
     await tapChip(tester, 'Day 3');
 
     expect(map(tester).items, isEmpty);
     expect(map(tester).accommodations, isEmpty);
-    expect(find.text('No mapped places on this day'), findsOneWidget);
+    expect(find.text('No places pinned on Day 3'), findsOneWidget);
+    // The editable screen gets the CTA on the map itself (the itinerary
+    // header has its own same-label button outside the map).
+    expect(
+      find.descendant(
+        of: find.byType(TripMap),
+        matching: find.text('Add place'),
+      ),
+      findsOneWidget,
+    );
     // The chip row survives the empty selection (the gate is keyed to the
     // unfiltered items) and can navigate back out.
     expect(find.byType(MapDayChips), findsOneWidget);
 
     await tapChip(tester, 'All');
-    expect(find.text('No mapped places on this day'), findsNothing);
+    expect(find.text('No places pinned on Day 3'), findsNothing);
     expect(map(tester).items, hasLength(3));
+  });
+
+  testWidgets('chips for days with nothing mappable render muted but stay '
+      'tappable', (WidgetTester tester) async {
+    await pumpScreen(tester);
+
+    ChoiceChip chipFor(String label) => tester.widget<ChoiceChip>(
+          find.ancestor(
+            of: find.descendant(
+              of: find.byType(MapDayChips),
+              matching: find.text(label),
+            ),
+            matching: find.byType(ChoiceChip),
+          ),
+        );
+
+    // Day 3 has no items and no covering stay; Days 1–2 plot something.
+    expect(chipFor('Day 3').labelStyle?.color, Colors.white60);
+    expect(chipFor('Day 1').labelStyle?.color, Colors.white);
+    expect(chipFor('Day 2').labelStyle?.color, Colors.white);
+    expect(chipFor('All').labelStyle?.color, Colors.white);
+
+    // Selecting the muted chip restores the full treatment (the ring says
+    // "you are here"; the map's empty state says empty).
+    await tapChip(tester, 'Day 3');
+    expect(chipFor('Day 3').labelStyle?.color, Colors.white);
+    expect(chipFor('Day 3').selected, isTrue);
   });
 }

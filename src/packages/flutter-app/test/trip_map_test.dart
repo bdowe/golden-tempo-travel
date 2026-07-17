@@ -107,6 +107,24 @@ void main() {
     expect(find.text('No mapped places'), findsOneWidget);
   });
 
+  testWidgets('empty state renders the optional message and CTA',
+      (WidgetTester tester) async {
+    var tapped = false;
+    await tester.pumpWidget(_host(TripMap(
+      items: const [],
+      emptyMessage: 'Add a place to see it on the map.',
+      emptyAction: FilledButton(
+        onPressed: () => tapped = true,
+        child: const Text('Add place'),
+      ),
+    )));
+    await tester.pump();
+
+    expect(find.text('Add a place to see it on the map.'), findsOneWidget);
+    await tester.tap(find.text('Add place'));
+    expect(tapped, isTrue);
+  });
+
   testWidgets('changing fitSignature re-fits without crashing (smoke)',
       (WidgetTester tester) async {
     await tester.pumpWidget(
