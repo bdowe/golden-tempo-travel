@@ -20,6 +20,8 @@ class PriceAlert {
   @JsonKey(name: 'target_price')
   final double? targetPrice;
   final String? currency;
+  @JsonKey(name: 'baseline_price')
+  final double? baselinePrice;
   @JsonKey(name: 'last_checked_price')
   final double? lastCheckedPrice;
   @JsonKey(name: 'last_checked_at')
@@ -44,6 +46,7 @@ class PriceAlert {
     this.adults = 1,
     this.targetPrice,
     this.currency,
+    this.baselinePrice,
     this.lastCheckedPrice,
     this.lastCheckedAt,
     this.lastNotifiedPrice,

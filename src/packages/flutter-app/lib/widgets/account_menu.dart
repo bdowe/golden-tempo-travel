@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
+import '../providers/alerts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../screens/account_settings_screen.dart';
 import '../screens/admin_metrics_screen.dart';
@@ -43,6 +44,7 @@ List<PopupMenuEntry<String>> _items(
   String? displayName,
   String? email, {
   bool isAdmin = false,
+  int unreadAlerts = 0,
 }) {
   return [
     if (displayName != null) ...[
@@ -109,8 +111,14 @@ List<PopupMenuEntry<String>> _items(
       value: 'alerts',
       child: Row(
         children: [
-          Icon(Icons.notifications_none,
-              size: 20, color: theme.colorScheme.onSurfaceVariant),
+          unreadAlerts > 0
+              ? Badge.count(
+                  count: unreadAlerts,
+                  child: Icon(Icons.notifications_none,
+                      size: 20, color: theme.colorScheme.onSurfaceVariant),
+                )
+              : Icon(Icons.notifications_none,
+                  size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
           const Text('Price alerts'),
         ],
@@ -189,6 +197,21 @@ class AccountMenu extends ConsumerWidget {
     }
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
+    final unread = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final avatar = user != null
+        ? CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.white.withValues(alpha: 0.25),
+            child: Text(
+              _initialFor(user.displayName),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        : const Icon(Icons.account_circle);
     return PopupMenuButton<String>(
       tooltip: 'Account',
       // Open below the bar, on an M3 surface, instead of the default overlapping
@@ -197,23 +220,10 @@ class AccountMenu extends ConsumerWidget {
       color: theme.colorScheme.surface,
       elevation: 3,
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
-      icon: user != null
-          ? CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white.withValues(alpha: 0.25),
-              child: Text(
-                _initialFor(user.displayName),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            )
-          : const Icon(Icons.account_circle),
+      icon: unread > 0 ? Badge.count(count: unread, child: avatar) : avatar,
       onSelected: (v) => _onSelected(context, ref, v),
       itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
-          isAdmin: user?.isAdmin ?? false),
+          isAdmin: user?.isAdmin ?? false, unreadAlerts: unread),
     );
   }
 }
@@ -227,26 +237,28 @@ class RailAccountButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
+    final unread = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final avatar = CircleAvatar(
+      radius: 18,
+      backgroundColor: AppColors.brand,
+      child: Text(
+        user != null ? _initialFor(user.displayName) : '?',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
     return PopupMenuButton<String>(
       tooltip: 'Account',
       color: theme.colorScheme.surface,
       elevation: 3,
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
-      icon: CircleAvatar(
-        radius: 18,
-        backgroundColor: AppColors.brand,
-        child: Text(
-          user != null ? _initialFor(user.displayName) : '?',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+      icon: unread > 0 ? Badge.count(count: unread, child: avatar) : avatar,
       onSelected: (v) => _onSelected(context, ref, v),
       itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
-          isAdmin: user?.isAdmin ?? false),
+          isAdmin: user?.isAdmin ?? false, unreadAlerts: unread),
     );
   }
 }
