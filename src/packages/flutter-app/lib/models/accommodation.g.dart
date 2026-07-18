@@ -18,6 +18,8 @@ Accommodation _$AccommodationFromJson(Map<String, dynamic> json) =>
       checkIn: json['check_in'] as String?,
       checkOut: json['check_out'] as String?,
       priceNote: json['price_note'] as String?,
+      auto: json['auto'] as bool? ?? false,
+      autoKey: json['auto_key'] as String?,
     );
 
 Map<String, dynamic> _$AccommodationToJson(Accommodation instance) =>
@@ -32,4 +34,6 @@ Map<String, dynamic> _$AccommodationToJson(Accommodation instance) =>
       'check_in': instance.checkIn,
       'check_out': instance.checkOut,
       'price_note': instance.priceNote,
+      'auto': instance.auto,
+      'auto_key': instance.autoKey,
     };

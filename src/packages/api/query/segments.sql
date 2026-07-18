@@ -4,7 +4,50 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListSegmentsByTrip :many
-SELECT * FROM trip_segments WHERE trip_id = $1 ORDER BY depart_date ASC NULLS LAST, created_at ASC;
+SELECT * FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC;
+
+-- name: ListConfirmedSegmentsByTrip :many
+-- Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
+SELECT * FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC;
+
+-- name: UpsertDraftSegment :execrows
+-- The WHERE guard leaves confirmed (auto=false) and dismissed rows untouched,
+-- so this must be :execrows — a skipped conflict returns no row.
+INSERT INTO trip_segments (trip_id, mode, origin, destination, depart_date, auto, auto_key)
+VALUES ($1, $2, $3, $4, $5, true, $6)
+ON CONFLICT (trip_id, auto_key) WHERE auto_key IS NOT NULL DO UPDATE SET
+    mode        = EXCLUDED.mode,
+    origin      = EXCLUDED.origin,
+    destination = EXCLUDED.destination,
+    depart_date = EXCLUDED.depart_date
+WHERE trip_segments.auto AND NOT trip_segments.dismissed;
+
+-- name: DeleteStaleDraftSegments :execrows
+-- Prunes drafts (and their tombstones) whose itinerary leg no longer exists;
+-- never touches confirmed rows.
+DELETE FROM trip_segments
+WHERE trip_id = $1 AND auto = true AND (auto_key IS NULL OR auto_key <> ALL(@keys::text[]));
+
+-- name: DismissDraftSegment :execrows
+UPDATE trip_segments SET dismissed = true WHERE id = $1 AND trip_id = $2 AND auto = true;
+
+-- name: UpdateSegment :one
+-- Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
+-- Any edit confirms a draft (auto = false), taking it out of sync ownership.
+-- COALESCE means fields can be overwritten but not cleared back to NULL.
+UPDATE trip_segments
+SET mode        = COALESCE(sqlc.narg('mode'), mode),
+    origin      = COALESCE(sqlc.narg('origin'), origin),
+    destination = COALESCE(sqlc.narg('destination'), destination),
+    depart_date = COALESCE(sqlc.narg('depart_date'), depart_date),
+    arrive_date = COALESCE(sqlc.narg('arrive_date'), arrive_date),
+    provider    = COALESCE(sqlc.narg('provider'), provider),
+    url         = COALESCE(sqlc.narg('url'), url),
+    price_note  = COALESCE(sqlc.narg('price_note'), price_note),
+    notes       = COALESCE(sqlc.narg('notes'), notes),
+    auto        = false
+WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND NOT dismissed
+RETURNING *;
 
 -- name: DeleteSegment :execrows
 DELETE FROM trip_segments WHERE id = $1 AND trip_id = $2;

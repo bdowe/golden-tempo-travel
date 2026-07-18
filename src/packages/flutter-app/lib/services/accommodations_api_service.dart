@@ -44,6 +44,20 @@ class AccommodationsApiService {
     throw Exception('Failed to add accommodation (${res.statusCode})');
   }
 
+  /// Partial update; an empty body confirms a suggested draft (auto=false).
+  Future<Accommodation> update(
+      String tripId, String accId, Map<String, dynamic> body) async {
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/accommodations/$accId'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return Accommodation.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Failed to update accommodation (${res.statusCode})');
+  }
+
   Future<void> delete(String tripId, String accId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/accommodations/$accId'),

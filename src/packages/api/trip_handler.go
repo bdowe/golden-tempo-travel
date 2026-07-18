@@ -355,12 +355,24 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
 		return
 	}
-	accommodations, err := q.ListAccommodationsByTrip(r.Context(), trip.ID)
+	// Suggested booking drafts (auto=true) are editor-facing working state;
+	// viewer follows get confirmed rows only, matching the public share view.
+	var accommodations []store.Accommodation
+	var segments []store.TripSegment
+	if row.Access == "viewer" {
+		accommodations, err = q.ListConfirmedAccommodationsByTrip(r.Context(), trip.ID)
+	} else {
+		accommodations, err = q.ListAccommodationsByTrip(r.Context(), trip.ID)
+	}
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load accommodations")
 		return
 	}
-	segments, err := q.ListSegmentsByTrip(r.Context(), trip.ID)
+	if row.Access == "viewer" {
+		segments, err = q.ListConfirmedSegmentsByTrip(r.Context(), trip.ID)
+	} else {
+		segments, err = q.ListSegmentsByTrip(r.Context(), trip.ID)
+	}
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load segments")
 		return

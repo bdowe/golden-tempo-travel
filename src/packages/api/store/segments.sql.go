@@ -15,7 +15,7 @@ import (
 const createSegment = `-- name: CreateSegment :one
 INSERT INTO trip_segments (trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at
+RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed
 `
 
 type CreateSegmentParams struct {
@@ -59,6 +59,9 @@ func (q *Queries) CreateSegment(ctx context.Context, arg CreateSegmentParams) (T
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Auto,
+		&i.AutoKey,
+		&i.Dismissed,
 	)
 	return i, err
 }
@@ -80,8 +83,87 @@ func (q *Queries) DeleteSegment(ctx context.Context, arg DeleteSegmentParams) (i
 	return result.RowsAffected(), nil
 }
 
+const deleteStaleDraftSegments = `-- name: DeleteStaleDraftSegments :execrows
+DELETE FROM trip_segments
+WHERE trip_id = $1 AND auto = true AND (auto_key IS NULL OR auto_key <> ALL($2::text[]))
+`
+
+type DeleteStaleDraftSegmentsParams struct {
+	TripID uuid.UUID `json:"trip_id"`
+	Keys   []string  `json:"keys"`
+}
+
+// Prunes drafts (and their tombstones) whose itinerary leg no longer exists;
+// never touches confirmed rows.
+func (q *Queries) DeleteStaleDraftSegments(ctx context.Context, arg DeleteStaleDraftSegmentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStaleDraftSegments, arg.TripID, arg.Keys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const dismissDraftSegment = `-- name: DismissDraftSegment :execrows
+UPDATE trip_segments SET dismissed = true WHERE id = $1 AND trip_id = $2 AND auto = true
+`
+
+type DismissDraftSegmentParams struct {
+	ID     uuid.UUID `json:"id"`
+	TripID uuid.UUID `json:"trip_id"`
+}
+
+func (q *Queries) DismissDraftSegment(ctx context.Context, arg DismissDraftSegmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, dismissDraftSegment, arg.ID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const listConfirmedSegmentsByTrip = `-- name: ListConfirmedSegmentsByTrip :many
+SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC
+`
+
+// Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
+func (q *Queries) ListConfirmedSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]TripSegment, error) {
+	rows, err := q.db.Query(ctx, listConfirmedSegmentsByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TripSegment
+	for rows.Next() {
+		var i TripSegment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.Mode,
+			&i.Origin,
+			&i.Destination,
+			&i.DepartDate,
+			&i.ArriveDate,
+			&i.Provider,
+			&i.Url,
+			&i.PriceNote,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Auto,
+			&i.AutoKey,
+			&i.Dismissed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSegmentsByTrip = `-- name: ListSegmentsByTrip :many
-SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at FROM trip_segments WHERE trip_id = $1 ORDER BY depart_date ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC
 `
 
 func (q *Queries) ListSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]TripSegment, error) {
@@ -107,6 +189,9 @@ func (q *Queries) ListSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]T
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Auto,
+			&i.AutoKey,
+			&i.Dismissed,
 		); err != nil {
 			return nil, err
 		}
@@ -116,4 +201,110 @@ func (q *Queries) ListSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]T
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSegment = `-- name: UpdateSegment :one
+UPDATE trip_segments
+SET mode        = COALESCE($1, mode),
+    origin      = COALESCE($2, origin),
+    destination = COALESCE($3, destination),
+    depart_date = COALESCE($4, depart_date),
+    arrive_date = COALESCE($5, arrive_date),
+    provider    = COALESCE($6, provider),
+    url         = COALESCE($7, url),
+    price_note  = COALESCE($8, price_note),
+    notes       = COALESCE($9, notes),
+    auto        = false
+WHERE id = $10 AND trip_id = $11 AND NOT dismissed
+RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed
+`
+
+type UpdateSegmentParams struct {
+	Mode        *string     `json:"mode"`
+	Origin      *string     `json:"origin"`
+	Destination *string     `json:"destination"`
+	DepartDate  pgtype.Date `json:"depart_date"`
+	ArriveDate  pgtype.Date `json:"arrive_date"`
+	Provider    *string     `json:"provider"`
+	Url         *string     `json:"url"`
+	PriceNote   *string     `json:"price_note"`
+	Notes       *string     `json:"notes"`
+	ID          uuid.UUID   `json:"id"`
+	TripID      uuid.UUID   `json:"trip_id"`
+}
+
+// Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
+// Any edit confirms a draft (auto = false), taking it out of sync ownership.
+// COALESCE means fields can be overwritten but not cleared back to NULL.
+func (q *Queries) UpdateSegment(ctx context.Context, arg UpdateSegmentParams) (TripSegment, error) {
+	row := q.db.QueryRow(ctx, updateSegment,
+		arg.Mode,
+		arg.Origin,
+		arg.Destination,
+		arg.DepartDate,
+		arg.ArriveDate,
+		arg.Provider,
+		arg.Url,
+		arg.PriceNote,
+		arg.Notes,
+		arg.ID,
+		arg.TripID,
+	)
+	var i TripSegment
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Mode,
+		&i.Origin,
+		&i.Destination,
+		&i.DepartDate,
+		&i.ArriveDate,
+		&i.Provider,
+		&i.Url,
+		&i.PriceNote,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Auto,
+		&i.AutoKey,
+		&i.Dismissed,
+	)
+	return i, err
+}
+
+const upsertDraftSegment = `-- name: UpsertDraftSegment :execrows
+INSERT INTO trip_segments (trip_id, mode, origin, destination, depart_date, auto, auto_key)
+VALUES ($1, $2, $3, $4, $5, true, $6)
+ON CONFLICT (trip_id, auto_key) WHERE auto_key IS NOT NULL DO UPDATE SET
+    mode        = EXCLUDED.mode,
+    origin      = EXCLUDED.origin,
+    destination = EXCLUDED.destination,
+    depart_date = EXCLUDED.depart_date
+WHERE trip_segments.auto AND NOT trip_segments.dismissed
+`
+
+type UpsertDraftSegmentParams struct {
+	TripID      uuid.UUID   `json:"trip_id"`
+	Mode        string      `json:"mode"`
+	Origin      *string     `json:"origin"`
+	Destination *string     `json:"destination"`
+	DepartDate  pgtype.Date `json:"depart_date"`
+	AutoKey     *string     `json:"auto_key"`
+}
+
+// The WHERE guard leaves confirmed (auto=false) and dismissed rows untouched,
+// so this must be :execrows — a skipped conflict returns no row.
+func (q *Queries) UpsertDraftSegment(ctx context.Context, arg UpsertDraftSegmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertDraftSegment,
+		arg.TripID,
+		arg.Mode,
+		arg.Origin,
+		arg.Destination,
+		arg.DepartDate,
+		arg.AutoKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -15,7 +15,7 @@ import (
 const createAccommodation = `-- name: CreateAccommodation :one
 INSERT INTO accommodations (trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at
+RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed
 `
 
 type CreateAccommodationParams struct {
@@ -59,6 +59,9 @@ func (q *Queries) CreateAccommodation(ctx context.Context, arg CreateAccommodati
 		&i.PriceNote,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Auto,
+		&i.AutoKey,
+		&i.Dismissed,
 	)
 	return i, err
 }
@@ -80,8 +83,45 @@ func (q *Queries) DeleteAccommodation(ctx context.Context, arg DeleteAccommodati
 	return result.RowsAffected(), nil
 }
 
+const deleteStaleDraftAccommodations = `-- name: DeleteStaleDraftAccommodations :execrows
+DELETE FROM accommodations
+WHERE trip_id = $1 AND auto = true AND (auto_key IS NULL OR auto_key <> ALL($2::text[]))
+`
+
+type DeleteStaleDraftAccommodationsParams struct {
+	TripID uuid.UUID `json:"trip_id"`
+	Keys   []string  `json:"keys"`
+}
+
+// Prunes drafts (and their tombstones) whose itinerary leg no longer exists;
+// never touches confirmed rows.
+func (q *Queries) DeleteStaleDraftAccommodations(ctx context.Context, arg DeleteStaleDraftAccommodationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStaleDraftAccommodations, arg.TripID, arg.Keys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const dismissDraftAccommodation = `-- name: DismissDraftAccommodation :execrows
+UPDATE accommodations SET dismissed = true WHERE id = $1 AND trip_id = $2 AND auto = true
+`
+
+type DismissDraftAccommodationParams struct {
+	ID     uuid.UUID `json:"id"`
+	TripID uuid.UUID `json:"trip_id"`
+}
+
+func (q *Queries) DismissDraftAccommodation(ctx context.Context, arg DismissDraftAccommodationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, dismissDraftAccommodation, arg.ID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listAccommodationsByTrip = `-- name: ListAccommodationsByTrip :many
-SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at FROM accommodations WHERE trip_id = $1 ORDER BY check_in ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed FROM accommodations WHERE trip_id = $1 AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC
 `
 
 func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID) ([]Accommodation, error) {
@@ -107,6 +147,9 @@ func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID
 			&i.PriceNote,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Auto,
+			&i.AutoKey,
+			&i.Dismissed,
 		); err != nil {
 			return nil, err
 		}
@@ -116,4 +159,152 @@ func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID
 		return nil, err
 	}
 	return items, nil
+}
+
+const listConfirmedAccommodationsByTrip = `-- name: ListConfirmedAccommodationsByTrip :many
+SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed FROM accommodations WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC
+`
+
+// Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
+func (q *Queries) ListConfirmedAccommodationsByTrip(ctx context.Context, tripID uuid.UUID) ([]Accommodation, error) {
+	rows, err := q.db.Query(ctx, listConfirmedAccommodationsByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Accommodation
+	for rows.Next() {
+		var i Accommodation
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.Name,
+			&i.Provider,
+			&i.Url,
+			&i.Address,
+			&i.Latitude,
+			&i.Longitude,
+			&i.CheckIn,
+			&i.CheckOut,
+			&i.PriceNote,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Auto,
+			&i.AutoKey,
+			&i.Dismissed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateAccommodation = `-- name: UpdateAccommodation :one
+UPDATE accommodations
+SET name       = COALESCE($1, name),
+    provider   = COALESCE($2, provider),
+    url        = COALESCE($3, url),
+    address    = COALESCE($4, address),
+    latitude   = COALESCE($5, latitude),
+    longitude  = COALESCE($6, longitude),
+    check_in   = COALESCE($7, check_in),
+    check_out  = COALESCE($8, check_out),
+    price_note = COALESCE($9, price_note),
+    auto       = false
+WHERE id = $10 AND trip_id = $11 AND NOT dismissed
+RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed
+`
+
+type UpdateAccommodationParams struct {
+	Name      *string     `json:"name"`
+	Provider  *string     `json:"provider"`
+	Url       *string     `json:"url"`
+	Address   *string     `json:"address"`
+	Latitude  *float64    `json:"latitude"`
+	Longitude *float64    `json:"longitude"`
+	CheckIn   pgtype.Date `json:"check_in"`
+	CheckOut  pgtype.Date `json:"check_out"`
+	PriceNote *string     `json:"price_note"`
+	ID        uuid.UUID   `json:"id"`
+	TripID    uuid.UUID   `json:"trip_id"`
+}
+
+// Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
+// Any edit confirms a draft (auto = false), taking it out of sync ownership.
+// COALESCE means fields can be overwritten but not cleared back to NULL.
+func (q *Queries) UpdateAccommodation(ctx context.Context, arg UpdateAccommodationParams) (Accommodation, error) {
+	row := q.db.QueryRow(ctx, updateAccommodation,
+		arg.Name,
+		arg.Provider,
+		arg.Url,
+		arg.Address,
+		arg.Latitude,
+		arg.Longitude,
+		arg.CheckIn,
+		arg.CheckOut,
+		arg.PriceNote,
+		arg.ID,
+		arg.TripID,
+	)
+	var i Accommodation
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Name,
+		&i.Provider,
+		&i.Url,
+		&i.Address,
+		&i.Latitude,
+		&i.Longitude,
+		&i.CheckIn,
+		&i.CheckOut,
+		&i.PriceNote,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Auto,
+		&i.AutoKey,
+		&i.Dismissed,
+	)
+	return i, err
+}
+
+const upsertDraftAccommodation = `-- name: UpsertDraftAccommodation :execrows
+INSERT INTO accommodations (trip_id, name, address, check_in, check_out, auto, auto_key)
+VALUES ($1, $2, $3, $4, $5, true, $6)
+ON CONFLICT (trip_id, auto_key) WHERE auto_key IS NOT NULL DO UPDATE SET
+    name      = EXCLUDED.name,
+    address   = EXCLUDED.address,
+    check_in  = EXCLUDED.check_in,
+    check_out = EXCLUDED.check_out
+WHERE accommodations.auto AND NOT accommodations.dismissed
+`
+
+type UpsertDraftAccommodationParams struct {
+	TripID   uuid.UUID   `json:"trip_id"`
+	Name     string      `json:"name"`
+	Address  *string     `json:"address"`
+	CheckIn  pgtype.Date `json:"check_in"`
+	CheckOut pgtype.Date `json:"check_out"`
+	AutoKey  *string     `json:"auto_key"`
+}
+
+// The WHERE guard leaves confirmed (auto=false) and dismissed rows untouched,
+// so this must be :execrows — a skipped conflict returns no row.
+func (q *Queries) UpsertDraftAccommodation(ctx context.Context, arg UpsertDraftAccommodationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertDraftAccommodation,
+		arg.TripID,
+		arg.Name,
+		arg.Address,
+		arg.CheckIn,
+		arg.CheckOut,
+		arg.AutoKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

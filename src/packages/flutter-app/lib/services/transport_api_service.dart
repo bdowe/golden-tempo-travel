@@ -52,6 +52,20 @@ class TransportApiService {
     throw Exception('Failed to add segment (${res.statusCode})');
   }
 
+  /// Partial update; an empty body confirms a suggested draft (auto=false).
+  Future<TripSegment> updateSegment(
+      String tripId, String segmentId, Map<String, dynamic> body) async {
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/segments/$segmentId'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return TripSegment.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Failed to update segment (${res.statusCode})');
+  }
+
   Future<void> deleteSegment(String tripId, String segmentId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/segments/$segmentId'),
