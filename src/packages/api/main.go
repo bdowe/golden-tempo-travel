@@ -782,6 +782,7 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/booking-drafts", authMiddleware(http.HandlerFunc(syncBookingDraftsHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/booking-todos", authMiddleware(http.HandlerFunc(syncBookingTodosHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/booking-todos", authMiddleware(http.HandlerFunc(addBookingTodoHandler))).Methods("POST")
+	api.Handle("/trips/{id}/booking-todos/order", authMiddleware(http.HandlerFunc(reorderBookingTodosHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(patchBookingTodoHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(deleteBookingTodoHandler))).Methods("DELETE")
 
