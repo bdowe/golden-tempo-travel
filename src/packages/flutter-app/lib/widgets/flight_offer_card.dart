@@ -4,7 +4,40 @@ import '../models/flight_offer.dart';
 import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import 'flight_details_sheet.dart';
+import 'status_pill.dart';
 import '../utils/snack.dart';
+
+/// "Saves USD 23 vs next option" for the best-ranked offer on a baggage-aware
+/// search, comparing effective totals (fare + bag fee). Null when there is
+/// nothing honest to claim: bare-fare searches, an unpriceable bag on the best
+/// offer, no comparable alternative (unknown fees and other currencies are
+/// skipped — their totals understate or don't compare), or a saving that would
+/// round to zero.
+String? savingsLabelFor(List<FlightOffer> offers, String? bestOfferId) {
+  FlightOffer? best;
+  for (final o in offers) {
+    if (o.id == bestOfferId) {
+      best = o;
+      break;
+    }
+  }
+  if (best == null || best.baggageStatus == null || best.bagFeeUnknown) {
+    return null;
+  }
+  double? nextBest;
+  for (final o in offers) {
+    if (o.id == best.id || o.bagFeeUnknown || o.currency != best.currency) {
+      continue;
+    }
+    if (nextBest == null || o.displayPrice < nextBest) {
+      nextBest = o.displayPrice;
+    }
+  }
+  if (nextBest == null) return null;
+  final saved = nextBest - best.displayPrice;
+  if (saved < 0.5) return null;
+  return 'Saves ${best.currency} ${saved.toStringAsFixed(0)} vs next option';
+}
 
 /// A single ranked flight offer rendered as a card — airline(s), route, price,
 /// score, duration/stops, and a Book deep-link. Shared by the standalone
@@ -13,7 +46,12 @@ import '../utils/snack.dart';
 class FlightOfferCard extends StatelessWidget {
   final FlightOffer offer;
   final bool isBest;
-  const FlightOfferCard({super.key, required this.offer, this.isBest = false});
+
+  /// Green savings pill next to the BEST MATCH badge; the results list
+  /// computes it via [savingsLabelFor] so the card stays presentational.
+  final String? savingsLabel;
+  const FlightOfferCard(
+      {super.key, required this.offer, this.isBest = false, this.savingsLabel});
 
   /// Baggage badge under the price on baggage-aware searches; null otherwise.
   /// "paid" prices already fold the fee into [FlightOffer.displayPrice] — the
@@ -53,21 +91,35 @@ class FlightOfferCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (isBest)
+              if (isBest || savingsLabel != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: accent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text('BEST MATCH',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (isBest)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: accent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('BEST MATCH',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      if (savingsLabel case final label?)
+                        StatusPill.custom(
+                          label: label,
+                          background: Colors.green.withValues(alpha: 0.15),
+                          foreground: Colors.green.shade800,
+                        ),
+                    ],
                   ),
                 ),
               Row(
