@@ -281,6 +281,7 @@ func TestAlertCheckerRunOnce(t *testing.T) {
 			UserID: u.ID, Origin: "BOS", Destination: "CDG",
 			DepartDate: pgtype.Date{Time: depart, Valid: true},
 			CabinClass: "economy", Adults: 1, TargetPrice: target,
+			Baggage: baggagePersonalItem,
 		})
 		if err != nil {
 			t.Fatalf("seed alert: %v", err)
@@ -347,6 +348,7 @@ func TestAlertCheckerInsertsEvents(t *testing.T) {
 		UserID: userA.ID, Origin: "BOS", Destination: "CDG",
 		DepartDate: pgtype.Date{Time: depart, Valid: true},
 		CabinClass: "economy", Adults: 1, TargetPrice: f64(450),
+		Baggage:          baggagePersonalItem,
 		LastCheckedPrice: f64(498), Currency: &usd,
 		LastCheckedAt: pgTimestamptz(time.Now().Add(-7 * time.Hour)),
 	})
@@ -357,7 +359,7 @@ func TestAlertCheckerInsertsEvents(t *testing.T) {
 	if _, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
 		UserID: userB.ID, Origin: "BOS", Destination: "CDG",
 		DepartDate: pgtype.Date{Time: depart, Valid: true},
-		CabinClass: "economy", Adults: 1,
+		CabinClass: "economy", Adults: 1, Baggage: baggagePersonalItem,
 	}); err != nil {
 		t.Fatalf("seed alert B: %v", err)
 	}
@@ -471,6 +473,7 @@ func TestAlertCheckerFlexFanOut(t *testing.T) {
 		UserID: user.ID, Origin: "BOS", Destination: "CDG",
 		DepartDate: pgtype.Date{Time: depart, Valid: true},
 		CabinClass: "economy", Adults: 1, TargetPrice: f64(450), FlexDays: 1,
+		Baggage: baggagePersonalItem,
 	}); err != nil {
 		t.Fatalf("seed flex alert: %v", err)
 	}
@@ -534,6 +537,7 @@ func TestAlertCheckerFlexRespectsBatchLimit(t *testing.T) {
 		UserID: user.ID, Origin: "BOS", Destination: "CDG",
 		DepartDate: pgtype.Date{Time: depart, Valid: true},
 		CabinClass: "economy", Adults: 1, TargetPrice: f64(450), FlexDays: 1,
+		Baggage: baggagePersonalItem,
 	}); err != nil {
 		t.Fatalf("seed flex alert: %v", err)
 	}

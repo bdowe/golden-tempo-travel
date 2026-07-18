@@ -602,14 +602,17 @@ class _Results extends StatelessWidget {
       );
     }
 
+    final savingsLabel = savingsLabelFor(state.offers, state.bestOfferId);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: state.offers.length,
       itemBuilder: (context, i) {
         final offer = state.offers[i];
+        final isBest = offer.id == state.bestOfferId;
         return FlightOfferCard(
           offer: offer,
-          isBest: offer.id == state.bestOfferId,
+          isBest: isBest,
+          savingsLabel: isBest ? savingsLabel : null,
         );
       },
     );
