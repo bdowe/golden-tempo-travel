@@ -18,6 +18,11 @@ class TripSegment {
   final String? priceNote;
   final String? notes;
 
+  /// The "Booked" checkbox in the bookings hub. defaultValue guards cached
+  /// trip JSON written before the field existed.
+  @JsonKey(defaultValue: false)
+  final bool booked;
+
   /// True for itinerary-derived "Suggested" drafts owned by the booking-drafts
   /// sync; false for user-confirmed rows.
   final bool auto;
@@ -35,9 +40,26 @@ class TripSegment {
     this.url,
     this.priceNote,
     this.notes,
+    this.booked = false,
     this.auto = false,
     this.autoKey,
   });
+
+  TripSegment copyWith({bool? booked}) => TripSegment(
+        id: id,
+        mode: mode,
+        origin: origin,
+        destination: destination,
+        departDate: departDate,
+        arriveDate: arriveDate,
+        provider: provider,
+        url: url,
+        priceNote: priceNote,
+        notes: notes,
+        booked: booked ?? this.booked,
+        auto: auto,
+        autoKey: autoKey,
+      );
 
   factory TripSegment.fromJson(Map<String, dynamic> json) =>
       _$TripSegmentFromJson(json);

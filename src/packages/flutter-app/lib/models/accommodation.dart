@@ -18,6 +18,11 @@ class Accommodation {
   @JsonKey(name: 'price_note')
   final String? priceNote;
 
+  /// The "Booked" checkbox in the bookings hub. defaultValue guards cached
+  /// trip JSON written before the field existed.
+  @JsonKey(defaultValue: false)
+  final bool booked;
+
   /// True for itinerary-derived "Suggested" drafts owned by the booking-drafts
   /// sync; false for user-confirmed rows.
   final bool auto;
@@ -35,9 +40,26 @@ class Accommodation {
     this.checkIn,
     this.checkOut,
     this.priceNote,
+    this.booked = false,
     this.auto = false,
     this.autoKey,
   });
+
+  Accommodation copyWith({bool? booked}) => Accommodation(
+        id: id,
+        name: name,
+        provider: provider,
+        url: url,
+        address: address,
+        latitude: latitude,
+        longitude: longitude,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        priceNote: priceNote,
+        booked: booked ?? this.booked,
+        auto: auto,
+        autoKey: autoKey,
+      );
 
   factory Accommodation.fromJson(Map<String, dynamic> json) =>
       _$AccommodationFromJson(json);

@@ -45,6 +45,7 @@ SET name       = COALESCE(sqlc.narg('name'), name),
     check_in   = COALESCE(sqlc.narg('check_in'), check_in),
     check_out  = COALESCE(sqlc.narg('check_out'), check_out),
     price_note = COALESCE(sqlc.narg('price_note'), price_note),
+    booked     = COALESCE(sqlc.narg('booked'), booked),
     auto       = false
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND NOT dismissed
 RETURNING *;

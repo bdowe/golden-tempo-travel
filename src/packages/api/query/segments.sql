@@ -45,6 +45,7 @@ SET mode        = COALESCE(sqlc.narg('mode'), mode),
     url         = COALESCE(sqlc.narg('url'), url),
     price_note  = COALESCE(sqlc.narg('price_note'), price_note),
     notes       = COALESCE(sqlc.narg('notes'), notes),
+    booked      = COALESCE(sqlc.narg('booked'), booked),
     auto        = false
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND NOT dismissed
 RETURNING *;

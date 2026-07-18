@@ -23,6 +23,7 @@ type AccommodationResponse struct {
 	CheckIn   *string  `json:"check_in,omitempty"`
 	CheckOut  *string  `json:"check_out,omitempty"`
 	PriceNote *string  `json:"price_note,omitempty"`
+	Booked    bool     `json:"booked"`
 	Auto      bool     `json:"auto"`
 	AutoKey   *string  `json:"auto_key,omitempty"`
 }
@@ -37,6 +38,10 @@ type AddAccommodationRequest struct {
 	CheckIn   *string  `json:"check_in"`
 	CheckOut  *string  `json:"check_out"`
 	PriceNote *string  `json:"price_note"`
+
+	// PATCH-only: the "Booked" checkbox on confirmed rows. Ignored on add —
+	// new stays start unbooked.
+	Booked *bool `json:"booked"`
 }
 
 func toAccommodationResponse(a store.Accommodation) AccommodationResponse {
@@ -51,6 +56,7 @@ func toAccommodationResponse(a store.Accommodation) AccommodationResponse {
 		CheckIn:   dateToPtr(a.CheckIn),
 		CheckOut:  dateToPtr(a.CheckOut),
 		PriceNote: a.PriceNote,
+		Booked:    a.Booked,
 		Auto:      a.Auto,
 		AutoKey:   a.AutoKey,
 	}
@@ -164,12 +170,21 @@ func updateAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		CheckIn:   checkIn,
 		CheckOut:  checkOut,
 		PriceNote: req.PriceNote,
+		Booked:    req.Booked,
 		ID:        accID,
 		TripID:    tripID,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "accommodation not found")
 		return
+	}
+	if req.Booked != nil && *req.Booked {
+		user, _ := userFromContext(r.Context())
+		meta := map[string]any{"kind": "stay"}
+		if acc.Provider != nil {
+			meta["provider"] = *acc.Provider
+		}
+		go recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta)
 	}
 	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toAccommodationResponse(acc))

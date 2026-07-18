@@ -1324,6 +1324,27 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// "Booked" checkbox on a confirmed stay. Optimistic like the checklist's
+  /// _setBooked: swap the row in _stays, PATCH {booked}, roll back on error.
+  Future<void> _setStayBooked(Accommodation a, bool booked) async {
+    if (_guardOffline()) return;
+    final prev = _stays;
+    setState(() {
+      _stays = [
+        for (final s in _stays)
+          if (s.id == a.id) s.copyWith(booked: booked) else s,
+      ];
+    });
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .update(widget.tripId, a.id, {'booked': booked});
+    } catch (e) {
+      if (mounted) setState(() => _stays = prev);
+      _showSnack('Update failed: $e');
+    }
+  }
+
   /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
   Future<void> _confirmStay(Accommodation a) async {
     if (_guardOffline()) return;
@@ -1384,6 +1405,26 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       await _load();
     } catch (e) {
       _showSnack('Could not update transport: $e');
+    }
+  }
+
+  /// Mirror of [_setStayBooked] for the transport-segments list.
+  Future<void> _setSegmentBooked(TripSegment seg, bool booked) async {
+    if (_guardOffline()) return;
+    final prev = _segments;
+    setState(() {
+      _segments = [
+        for (final s in _segments)
+          if (s.id == seg.id) s.copyWith(booked: booked) else s,
+      ];
+    });
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .updateSegment(widget.tripId, seg.id, {'booked': booked});
+    } catch (e) {
+      if (mounted) setState(() => _segments = prev);
+      _showSnack('Update failed: $e');
     }
   }
 
@@ -3546,6 +3587,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     onDeleteSegment: _deleteSegment,
                                     onEditSegment: _editSegment,
                                     onConfirmSegment: _confirmSegment,
+                                    onStayBookedChanged: _setStayBooked,
+                                    onSegmentBookedChanged: _setSegmentBooked,
                                     onReorderStays: (_readOnly || _isOffline)
                                         ? null
                                         : _reorderStays,
