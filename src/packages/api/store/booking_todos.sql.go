@@ -211,8 +211,11 @@ SET kind        = COALESCE($1, kind),
     title       = COALESCE($2, title),
     subtitle    = COALESCE($3, subtitle),
     depart_date = COALESCE($4, depart_date),
-    booked      = COALESCE($5, booked)
-WHERE id = $6 AND trip_id = $7 AND auto = false
+    return_date = COALESCE($5, return_date),
+    search_url  = COALESCE($6, search_url),
+    provider    = COALESCE($7, provider),
+    booked      = COALESCE($8, booked)
+WHERE id = $9 AND trip_id = $10 AND auto = false
 RETURNING id, trip_id, kind, todo_key, title, subtitle, provider, search_url, depart_date, return_date, booked, auto, position, created_at, updated_at
 `
 
@@ -221,6 +224,9 @@ type UpdateBookingTodoParams struct {
 	Title      *string     `json:"title"`
 	Subtitle   *string     `json:"subtitle"`
 	DepartDate pgtype.Date `json:"depart_date"`
+	ReturnDate pgtype.Date `json:"return_date"`
+	SearchUrl  *string     `json:"search_url"`
+	Provider   *string     `json:"provider"`
 	Booked     *bool       `json:"booked"`
 	ID         uuid.UUID   `json:"id"`
 	TripID     uuid.UUID   `json:"trip_id"`
@@ -228,14 +234,17 @@ type UpdateBookingTodoParams struct {
 
 // Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
 // auto = false only: auto rows are owned by the client's itinerary sync and
-// would be overwritten on the next sync. COALESCE means subtitle/depart_date
-// can be overwritten but not cleared back to NULL.
+// would be overwritten on the next sync. COALESCE means fields can be
+// overwritten but not cleared back to NULL.
 func (q *Queries) UpdateBookingTodo(ctx context.Context, arg UpdateBookingTodoParams) (BookingTodo, error) {
 	row := q.db.QueryRow(ctx, updateBookingTodo,
 		arg.Kind,
 		arg.Title,
 		arg.Subtitle,
 		arg.DepartDate,
+		arg.ReturnDate,
+		arg.SearchUrl,
+		arg.Provider,
 		arg.Booked,
 		arg.ID,
 		arg.TripID,

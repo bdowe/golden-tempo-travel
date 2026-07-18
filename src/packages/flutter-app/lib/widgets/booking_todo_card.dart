@@ -38,6 +38,7 @@ class BookingTodoCard extends StatelessWidget {
   final BookingTodo todo;
   final ValueChanged<bool> onBookedChanged;
   final VoidCallback? onOpen;
+  final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
   /// Overrides the open-button text (e.g. 'Find flights' when the action opens
@@ -54,6 +55,7 @@ class BookingTodoCard extends StatelessWidget {
     required this.todo,
     required this.onBookedChanged,
     this.onOpen,
+    this.onEdit,
     this.onDelete,
     this.openLabelOverride,
     this.dragHandle,
@@ -92,6 +94,12 @@ class BookingTodoCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onEdit != null)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: 'Edit',
+                    onPressed: onEdit,
+                  ),
                 if (onDelete != null)
                   IconButton(
                     icon: const Icon(Icons.delete_outline),

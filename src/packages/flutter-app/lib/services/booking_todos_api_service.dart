@@ -52,6 +52,22 @@ class BookingTodosApiService {
     throw Exception('Failed to update booking todo (${res.statusCode})');
   }
 
+  /// Partial content update of a custom (non-auto) todo. Same body shape as
+  /// [addTodo]; a destination with no explicit search_url makes the server
+  /// rebuild the search link.
+  Future<BookingTodo> update(
+      String tripId, String todoId, Map<String, dynamic> body) async {
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos/$todoId'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return BookingTodo.fromJson(jsonDecode(res.body));
+    }
+    throw Exception('Failed to update booking todo (${res.statusCode})');
+  }
+
   /// Persists the user's drag order for the residual "Other bookings" list.
   /// Sends only that subset; the server renumbers those rows 0..n-1.
   Future<void> reorderTodos(String tripId, List<String> todoIds) async {

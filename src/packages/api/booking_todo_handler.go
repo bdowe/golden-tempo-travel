@@ -277,8 +277,30 @@ func addBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toBookingTodoResponse(todo))
 }
 
+// PatchBookingTodoRequest is a partial update. Booked-only requests (the
+// original contract) work on any row, including auto ones; content fields
+// apply to custom (auto = false) rows only. destination/origin are never
+// persisted — when a destination is present and no explicit search_url, the
+// search link + provider are rebuilt via bookingSearchURL, like the add path.
 type PatchBookingTodoRequest struct {
-	Booked *bool `json:"booked"`
+	Booked      *bool   `json:"booked"`
+	Kind        *string `json:"kind"`
+	Title       *string `json:"title"`
+	Subtitle    *string `json:"subtitle"`
+	Destination *string `json:"destination"`
+	Origin      *string `json:"origin"`
+	DepartDate  *string `json:"depart_date"`
+	ReturnDate  *string `json:"return_date"`
+	SearchURL   *string `json:"search_url"`
+	Provider    *string `json:"provider"`
+	Guests      int     `json:"guests"`
+	Passengers  int     `json:"passengers"`
+}
+
+func (req *PatchBookingTodoRequest) hasContentEdit() bool {
+	return req.Kind != nil || req.Title != nil || req.Subtitle != nil ||
+		req.Destination != nil || req.DepartDate != nil || req.ReturnDate != nil ||
+		req.SearchURL != nil
 }
 
 func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
@@ -297,20 +319,79 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Booked == nil {
-		writeJSONError(w, http.StatusBadRequest, "booked is required")
-		return
+
+	var todo store.BookingTodo
+	if !req.hasContentEdit() {
+		// Booked-only: must stay on SetBookingTodoBooked — UpdateBookingTodo
+		// excludes auto rows, but the checkbox works on itinerary-derived
+		// todos too.
+		if req.Booked == nil {
+			writeJSONError(w, http.StatusBadRequest, "booked is required")
+			return
+		}
+		todo, err = store.New(dbPool).SetBookingTodoBooked(r.Context(), store.SetBookingTodoBookedParams{
+			ID:     todoID,
+			TripID: tripID,
+			Booked: *req.Booked,
+		})
+	} else {
+		var kind, title *string
+		if req.Kind != nil {
+			k := strings.TrimSpace(*req.Kind)
+			if !allowedBookingKinds[k] {
+				writeJSONError(w, http.StatusBadRequest, "kind must be one of: stay, transport, other")
+				return
+			}
+			kind = &k
+		}
+		if req.Title != nil {
+			t := strings.TrimSpace(*req.Title)
+			if t == "" {
+				writeJSONError(w, http.StatusBadRequest, "title cannot be empty")
+				return
+			}
+			title = &t
+		}
+		depart, derr := parseDateParam(req.DepartDate)
+		if derr != nil {
+			writeJSONError(w, http.StatusBadRequest, "depart_date must be YYYY-MM-DD")
+			return
+		}
+		ret, rerr := parseDateParam(req.ReturnDate)
+		if rerr != nil {
+			writeJSONError(w, http.StatusBadRequest, "return_date must be YYYY-MM-DD")
+			return
+		}
+
+		url := strPtrVal(req.SearchURL)
+		provider := strPtrVal(req.Provider)
+		if strings.TrimSpace(url) == "" && req.Destination != nil {
+			if kind == nil {
+				writeJSONError(w, http.StatusBadRequest, "kind is required when destination is set")
+				return
+			}
+			url, provider = bookingSearchURL(*kind, strPtrVal(req.Destination), req.Origin, req.DepartDate, req.ReturnDate, req.Guests, req.Passengers, req.Provider)
+		}
+
+		todo, err = store.New(dbPool).UpdateBookingTodo(r.Context(), store.UpdateBookingTodoParams{
+			ID:         todoID,
+			TripID:     tripID,
+			Kind:       kind,
+			Title:      title,
+			Subtitle:   req.Subtitle,
+			DepartDate: depart,
+			ReturnDate: ret,
+			SearchUrl:  strPtrOrNil(url),
+			Provider:   strPtrOrNil(provider),
+			Booked:     req.Booked,
+		})
 	}
-	todo, err := store.New(dbPool).SetBookingTodoBooked(r.Context(), store.SetBookingTodoBookedParams{
-		ID:     todoID,
-		TripID: tripID,
-		Booked: *req.Booked,
-	})
 	if err != nil {
+		// Wrong id, wrong trip, or a content edit on an auto row.
 		writeJSONError(w, http.StatusNotFound, "booking todo not found")
 		return
 	}
-	if *req.Booked {
+	if req.Booked != nil && *req.Booked {
 		user, _ := userFromContext(r.Context())
 		meta := map[string]any{"kind": todo.Kind, "todo_key": todo.TodoKey}
 		if todo.Provider != nil {
