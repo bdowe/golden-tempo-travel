@@ -28,6 +28,7 @@ type Accommodation struct {
 	Auto      bool        `json:"auto"`
 	AutoKey   *string     `json:"auto_key"`
 	Dismissed bool        `json:"dismissed"`
+	Position  int32       `json:"position"`
 }
 
 type AlertEvent struct {
@@ -277,6 +278,7 @@ type TripSegment struct {
 	Auto        bool        `json:"auto"`
 	AutoKey     *string     `json:"auto_key"`
 	Dismissed   bool        `json:"dismissed"`
+	Position    int32       `json:"position"`
 }
 
 type TripShare struct {

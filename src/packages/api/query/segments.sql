@@ -4,11 +4,11 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListSegmentsByTrip :many
-SELECT * FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC;
+SELECT * FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC;
 
 -- name: ListConfirmedSegmentsByTrip :many
 -- Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
-SELECT * FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY depart_date ASC NULLS LAST, created_at ASC;
+SELECT * FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC;
 
 -- name: UpsertDraftSegment :execrows
 -- The WHERE guard leaves confirmed (auto=false) and dismissed rows untouched,
@@ -48,6 +48,9 @@ SET mode        = COALESCE(sqlc.narg('mode'), mode),
     auto        = false
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND NOT dismissed
 RETURNING *;
+
+-- name: SetSegmentPosition :exec
+UPDATE trip_segments SET position = $3 WHERE id = $1 AND trip_id = $2;
 
 -- name: DeleteSegment :execrows
 DELETE FROM trip_segments WHERE id = $1 AND trip_id = $2;

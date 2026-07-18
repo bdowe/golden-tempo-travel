@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"travel-route-planner/store"
 )
 
@@ -148,4 +150,123 @@ func syncBookingDraftsHandler(w http.ResponseWriter, r *http.Request) {
 		"accommodations": accResp,
 		"segments":       segResp,
 	})
+}
+
+type ReorderBookingsRequest struct {
+	StayIDs    []string `json:"stay_ids"`
+	SegmentIDs []string `json:"segment_ids"`
+}
+
+// orderedIDSubset parses ids and checks each exists in the trip's row set with
+// no duplicates. ok=false means the client's list is stale (or malformed) and
+// the caller should 409.
+func orderedIDSubset(ids []string, existing map[uuid.UUID]bool) ([]uuid.UUID, bool) {
+	ordered := make([]uuid.UUID, 0, len(ids))
+	seen := make(map[uuid.UUID]bool, len(ids))
+	for _, raw := range ids {
+		id, err := uuid.Parse(raw)
+		if err != nil || !existing[id] || seen[id] {
+			return nil, false
+		}
+		seen[id] = true
+		ordered = append(ordered, id)
+	}
+	return ordered, true
+}
+
+// reorderBookingsHandler reassigns positions 0..n-1 per bookings-hub group
+// (stays, segments) to the submitted ids. A drag sends only the group that
+// moved; the other array stays empty. Subsets are fine: unsubmitted rows keep
+// their position (new rows default to 9999 and sort by date at the tail).
+// Draft (auto) rows are orderable too — the drafts sync upsert never touches
+// position, so the order set here survives every trip load; a drag racing a
+// concurrent prune fails the exists check below and 409s.
+func reorderBookingsHandler(w http.ResponseWriter, r *http.Request) {
+	trip, ok := editableTrip(w, r)
+	if !ok {
+		return
+	}
+	tripID := trip.ID
+	var req ReorderBookingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.StayIDs) == 0 && len(req.SegmentIDs) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "stay_ids or segment_ids is required")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := dbPool.Begin(ctx)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+
+	// Serialize against concurrent syncs/reorders so the stale-set 409 stays
+	// reliable between the reads below and commit.
+	if _, err := q.GetTripForUpdate(ctx, tripID); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+		return
+	}
+	if len(req.StayIDs) > 0 {
+		stays, err := q.ListAccommodationsByTrip(ctx, tripID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not load bookings")
+			return
+		}
+		existing := make(map[uuid.UUID]bool, len(stays))
+		for _, a := range stays {
+			existing[a.ID] = true
+		}
+		ordered, ok := orderedIDSubset(req.StayIDs, existing)
+		if !ok {
+			writeJSONError(w, http.StatusConflict, "bookings list is out of date; reload the trip")
+			return
+		}
+		for pos, id := range ordered {
+			if err := q.SetAccommodationPosition(ctx, store.SetAccommodationPositionParams{
+				ID: id, TripID: tripID, Position: int32(pos),
+			}); err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+				return
+			}
+		}
+	}
+	if len(req.SegmentIDs) > 0 {
+		segments, err := q.ListSegmentsByTrip(ctx, tripID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not load bookings")
+			return
+		}
+		existing := make(map[uuid.UUID]bool, len(segments))
+		for _, s := range segments {
+			existing[s.ID] = true
+		}
+		ordered, ok := orderedIDSubset(req.SegmentIDs, existing)
+		if !ok {
+			writeJSONError(w, http.StatusConflict, "bookings list is out of date; reload the trip")
+			return
+		}
+		for pos, id := range ordered {
+			if err := q.SetSegmentPosition(ctx, store.SetSegmentPositionParams{
+				ID: id, TripID: tripID, Position: int32(pos),
+			}); err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+				return
+			}
+		}
+	}
+	if err := q.TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder bookings")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

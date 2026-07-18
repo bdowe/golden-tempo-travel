@@ -4,11 +4,11 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListAccommodationsByTrip :many
-SELECT * FROM accommodations WHERE trip_id = $1 AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC;
+SELECT * FROM accommodations WHERE trip_id = $1 AND NOT dismissed ORDER BY position ASC, check_in ASC NULLS LAST, created_at ASC;
 
 -- name: ListConfirmedAccommodationsByTrip :many
 -- Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
-SELECT * FROM accommodations WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC;
+SELECT * FROM accommodations WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY position ASC, check_in ASC NULLS LAST, created_at ASC;
 
 -- name: UpsertDraftAccommodation :execrows
 -- The WHERE guard leaves confirmed (auto=false) and dismissed rows untouched,
@@ -48,6 +48,9 @@ SET name       = COALESCE(sqlc.narg('name'), name),
     auto       = false
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND NOT dismissed
 RETURNING *;
+
+-- name: SetAccommodationPosition :exec
+UPDATE accommodations SET position = $3 WHERE id = $1 AND trip_id = $2;
 
 -- name: DeleteAccommodation :execrows
 DELETE FROM accommodations WHERE id = $1 AND trip_id = $2;
