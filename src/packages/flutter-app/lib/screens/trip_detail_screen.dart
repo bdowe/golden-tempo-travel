@@ -1616,7 +1616,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       ThemeData theme, DateTime? tripStart,
       {required bool showTonight}) {
     if (!items.any((it) => it.day != null)) {
-      return [_boxSliver(_buildDayTripWidgets(items, theme))];
+      return _dayTripSectionSlivers(items, theme);
     }
     // Today mode: the header for today's trip day (if any) gets a visible
     // highlight; undated/past/future trips resolve to null and render as-is.
@@ -1673,15 +1673,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           pushPinnedChildren: true,
           children: [
             SliverPinnedHeader(child: header),
-            if (!collapsed)
-              _boxSliver([
-                if (tonight != null) tonight,
-                ..._buildDayTripWidgets(run, theme),
-              ]),
+            if (!collapsed) ...[
+              if (tonight != null) _boxSliver([tonight]),
+              ..._dayTripSectionSlivers(run, theme),
+            ],
           ],
         ));
       } else {
-        slivers.add(_boxSliver(_buildDayTripWidgets(run, theme)));
+        slivers.addAll(_dayTripSectionSlivers(run, theme));
       }
     }
     return slivers;
@@ -2017,46 +2016,128 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   /// Batches consecutive day-trip places (by town) under an indented
   /// "Day trip · <town>" sub-header so nearby towns read as excursions from the
-  /// hub city rather than separate stops. Inserts a within-city travel-time
-  /// connector between adjacent tiles of the same indent run.
-  List<Widget> _buildDayTripWidgets(
+  /// hub city rather than separate stops. Each contiguous batch (hub run or
+  /// day-trip batch) renders as its own [SliverReorderableList] so items can
+  /// be dragged inline within it; the within-city travel connector between
+  /// adjacent tiles is folded into the row below it and travels with it.
+  List<Widget> _dayTripSectionSlivers(
       List<ItineraryItem> items, ThemeData theme) {
-    final widgets = <Widget>[];
-    ItineraryItem? prev;
-    void addTile(ItineraryItem it, double indent) {
-      if (prev != null) {
-        final connector = _travelConnector(prev!, it, indent, theme);
-        if (connector != null) widgets.add(connector);
-      }
-      widgets.add(_itemTile(it, indent, theme));
-      prev = it;
-    }
-
+    final slivers = <Widget>[];
     var i = 0;
     while (i < items.length) {
       final dt = items[i].dayTripFrom?.trim();
       if (dt != null && dt.isNotEmpty) {
         final town = _cityOf(items[i]) ?? 'Day trip';
-        widgets
-            .add(_dayTripSubHeader(town, theme, _dayTripTravelLabel(items[i])));
-        prev = null; // don't draw a connector across the sub-header
+        slivers.add(_boxSliver([
+          _dayTripSubHeader(town, theme, _dayTripTravelLabel(items[i])),
+        ]));
+        final batch = <ItineraryItem>[];
         while (i < items.length) {
           final it = items[i];
           final d = it.dayTripFrom?.trim();
           if (d != null && d.isNotEmpty && _cityOf(it) == town) {
-            addTile(it, 32);
+            batch.add(it);
             i++;
           } else {
             break;
           }
         }
-        prev = null; // leaving the day-trip batch
+        slivers.add(_batchReorderableSliver(batch, 32, theme));
       } else {
-        addTile(items[i], 12);
-        i++;
+        final batch = <ItineraryItem>[];
+        while (i < items.length &&
+            (items[i].dayTripFrom?.trim() ?? '').isEmpty) {
+          batch.add(items[i]);
+          i++;
+        }
+        slivers.add(_batchReorderableSliver(batch, 12, theme));
       }
     }
-    return widgets;
+    return slivers;
+  }
+
+  /// One contiguous batch of item tiles as an inline-draggable sliver. Drag is
+  /// confined to the batch, a subset of _sectionOf's boundary (items rendered
+  /// apart can't be dragged past each other — the menu's "Reorder section"
+  /// sheet still covers the full section). Handles hide under a category
+  /// filter: the rendered rows are then a non-contiguous subset, so batch
+  /// indexes no longer map onto the trip's item order.
+  Widget _batchReorderableSliver(
+      List<ItineraryItem> batch, double indent, ThemeData theme) {
+    final canDrag = !_readOnly &&
+        !_isOffline &&
+        _itemFilter == 'all' &&
+        batch.length > 1;
+    return SliverReorderableList(
+      itemCount: batch.length,
+      // Unlike ReorderableListView, the sliver variant doesn't wrap the
+      // dragged proxy in a Material — without one the lifted ListTile throws.
+      proxyDecorator: (child, index, animation) => Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(8),
+        child: child,
+      ),
+      onReorder: (oldIndex, newIndex) =>
+          _reorderBatchInline(batch, oldIndex, newIndex),
+      itemBuilder: (context, i) {
+        final item = batch[i];
+        final connector = i > 0
+            ? _travelConnector(batch[i - 1], item, indent, theme)
+            : null;
+        return Column(
+          key: ValueKey(item.id),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (connector != null) connector,
+            _itemTile(
+              item,
+              indent,
+              theme,
+              dragHandle: canDrag
+                  ? ReorderableDragStartListener(
+                      index: i,
+                      child: Icon(Icons.drag_indicator,
+                          color: theme.colorScheme.onSurfaceVariant),
+                    )
+                  : null,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Persists an inline drag within one rendered batch. Optimistic: the new
+  /// order is spliced into the trip's item list in place so the drop doesn't
+  /// snap back while the request is in flight; the silent reload then
+  /// refreshes positions and travel connectors (or restores the server order
+  /// after a failure).
+  Future<void> _reorderBatchInline(
+      List<ItineraryItem> batch, int oldIndex, int newIndex) async {
+    if (_guardOffline()) return;
+    final trip = _trip;
+    final items = trip?.items;
+    if (trip == null || items == null) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (newIndex == oldIndex) return;
+    final newOrder = List.of(batch);
+    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    final batchIds = {for (final it in batch) it.id};
+    var next = 0;
+    final newItems = <ItineraryItem>[
+      for (final it in items)
+        if (batchIds.contains(it.id)) newOrder[next++] else it,
+    ];
+    setState(() => items.setAll(0, newItems));
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .reorderItineraryItems(trip.id, [for (final it in newItems) it.id]);
+      await _load(silent: true);
+    } catch (e) {
+      _showSnack('Could not reorder: $e');
+      await _load(silent: true);
+    }
   }
 
   /// A small "↓ 12 min · 4.3 km" row shown between two consecutive itinerary
@@ -2316,7 +2397,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (added != null && added.id == widget.tripId) _refresh();
   }
 
-  Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme) =>
+  Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme,
+          {Widget? dragHandle}) =>
       Padding(
         padding: EdgeInsets.only(left: indentLeft),
         child: ListTile(
@@ -2363,6 +2445,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 onPressed: () => _launch(_mapsUrl(item)),
               ),
               if (!_readOnly) _itemMenu(item),
+              if (dragHandle != null) dragHandle,
             ],
           ),
           selected: _selectedPosition == item.position,
