@@ -36,9 +36,19 @@ ItineraryItem _item(int pos, String name, String address, String category,
       dayTripFrom: dayTripFrom,
     );
 
+/// Item rows now render inside lazy SliverReorderableLists, so rows below the
+/// default 800x600 viewport (plus cache extent) are never built. A tall
+/// viewport keeps the whole itinerary built and findable.
+void _useTallViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
 void main() {
   testWidgets('itinerary groups by locality with dates derived from a stay',
       (WidgetTester tester) async {
+    _useTallViewport(tester);
     final trip = Trip(
       id: 't1',
       title: 'Bahamas',
@@ -90,6 +100,7 @@ void main() {
 
   testWidgets('items with day numbers render Day sub-sections and city dates',
       (WidgetTester tester) async {
+    _useTallViewport(tester);
     final trip = Trip(
       id: 't2',
       title: 'Europe',
