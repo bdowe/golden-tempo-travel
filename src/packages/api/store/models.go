@@ -25,6 +25,9 @@ type Accommodation struct {
 	PriceNote *string     `json:"price_note"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
+	Auto      bool        `json:"auto"`
+	AutoKey   *string     `json:"auto_key"`
+	Dismissed bool        `json:"dismissed"`
 }
 
 type AlertEvent struct {
@@ -271,6 +274,9 @@ type TripSegment struct {
 	Notes       *string     `json:"notes"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+	Auto        bool        `json:"auto"`
+	AutoKey     *string     `json:"auto_key"`
+	Dismissed   bool        `json:"dismissed"`
 }
 
 type TripShare struct {

@@ -169,11 +169,13 @@ func buildSharedTripResponse(ctx context.Context, ownerID uuid.UUID, trip store.
 	if err != nil {
 		return SharedTripResponse{}, err
 	}
-	accommodations, err := q.ListAccommodationsByTrip(ctx, trip.ID)
+	// Confirmed rows only: suggested booking drafts are editor-facing working
+	// state and never leak into the public share view.
+	accommodations, err := q.ListConfirmedAccommodationsByTrip(ctx, trip.ID)
 	if err != nil {
 		return SharedTripResponse{}, err
 	}
-	segments, err := q.ListSegmentsByTrip(ctx, trip.ID)
+	segments, err := q.ListConfirmedSegmentsByTrip(ctx, trip.ID)
 	if err != nil {
 		return SharedTripResponse{}, err
 	}
@@ -223,12 +225,14 @@ func duplicateSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
 		return
 	}
-	accommodations, err := q.ListAccommodationsByTrip(ctx, src.ID)
+	// Confirmed rows only: copying drafts would turn suggestions into
+	// confirmed bookings; the copy's own first sync re-seeds fresh drafts.
+	accommodations, err := q.ListConfirmedAccommodationsByTrip(ctx, src.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load stays")
 		return
 	}
-	segments, err := q.ListSegmentsByTrip(ctx, src.ID)
+	segments, err := q.ListConfirmedSegmentsByTrip(ctx, src.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load segments")
 		return

@@ -19,6 +19,7 @@ import '../providers/accommodations_provider.dart';
 import '../providers/transport_provider.dart';
 import '../providers/trips_provider.dart';
 import '../providers/recent_trip_provider.dart';
+import '../providers/booking_drafts_provider.dart';
 import '../providers/booking_todos_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../providers/api_client_provider.dart';
@@ -95,6 +96,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   int?
       _selectedPosition; // position of the place focused via a map pin / list tap
   List<BookingTodo> _bookingTodos = [];
+  // Sync-owned copies of the trip's stays/segments (drafts + confirmed), like
+  // _bookingTodos: the booking-drafts sync replaces them after each trip load
+  // without rebuilding the immutable Trip.
+  List<Accommodation> _stays = [];
+  List<TripSegment> _segments = [];
   bool _overviewExpanded = false;
   // Collapsed sets (empty => all expanded). Cities keyed by group label; days
   // keyed by "<city>#<day>" since day numbers repeat across cities.
@@ -141,13 +147,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         .toList();
   }
 
+  /// The trip's user-confirmed stays. Suggested drafts (auto=true) are working
+  /// state for the bookings hub only — they must never feed the map, the
+  /// Tonight caption, or (crucially) [_locationGroupRanges]: seeded draft
+  /// dates flowing back into derivation would freeze the derived ranges.
+  List<Accommodation> _confirmedStays(Trip trip) =>
+      (trip.accommodations ?? const <Accommodation>[])
+          .where((a) => !a.auto)
+          .toList();
+
   /// Stays the map should plot for the selected day chip: under All, every
   /// stay; under Day N, only stays covering that night (checkout-exclusive).
   /// A trip without a parseable start date can't map Day N to a calendar
   /// date, so no stay matches (they all still show under All).
   List<Accommodation> _dayFilteredStays(Trip trip) {
     final day = _selectedDay;
-    if (day == null) return trip.accommodations ?? const <Accommodation>[];
+    if (day == null) return _confirmedStays(trip);
     return _staysOnNight(trip, day);
   }
 
@@ -156,7 +171,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Tonight caption. A trip without a parseable start date can't map Day N
   /// to a calendar date, so no stay matches.
   List<Accommodation> _staysOnNight(Trip trip, int day) {
-    final all = trip.accommodations ?? const <Accommodation>[];
+    final all = _confirmedStays(trip);
     final start = DateTime.tryParse(trip.startDate ?? '');
     if (start == null) return const [];
     // Calendar-day arithmetic (constructor normalizes overflow) rather than
@@ -175,8 +190,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// never drift apart.
   bool _mapShown(Trip trip) =>
       _filtered(trip).any((i) => i.latitude != 0 || i.longitude != 0) ||
-      (trip.accommodations ?? const <Accommodation>[])
-          .any(TripMap.stayHasCoords);
+      _confirmedStays(trip).any(TripMap.stayHasCoords);
 
   @override
   void initState() {
@@ -271,6 +285,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         setState(() {
           _trip = trip;
           _bookingTodos = trip.bookingTodos ?? [];
+          _stays = trip.accommodations ?? [];
+          _segments = trip.segments ?? [];
           _offlineSince = null; // live data — leave offline mode if we were in it
           // Today mode fires only from loud loads — never from a silent
           // refresh, which shares this success path (PR #51/#53 invariants).
@@ -290,6 +306,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       _homeAirport = ref.read(preferencesProvider).prefs?.homeAirport;
       if (mounted && (trip.items ?? const []).isNotEmpty) {
         await _syncBookingTodos(trip);
+        await _syncBookingDrafts(trip);
         await _computeTravelTimes(trip);
       }
     } catch (e) {
@@ -303,6 +320,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           setState(() {
             _trip = cached.trip;
             _bookingTodos = cached.trip.bookingTodos ?? [];
+            _stays = cached.trip.accommodations ?? [];
+            _segments = cached.trip.segments ?? [];
             _offlineSince = cached.savedAt;
             _error = null;
             // Opening a live trip while offline is Today mode's prime use
@@ -542,6 +561,108 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     } catch (_) {
       // Non-fatal: keep whatever booking todos came with the trip.
     }
+  }
+
+  /// Pushes the itinerary-derived draft stays/transports for the bookings hub.
+  /// The server upserts them as Suggested (auto) rows — never touching
+  /// confirmed rows or dismissed drafts — prunes drafts whose legs no longer
+  /// exist, and returns the fresh lists.
+  Future<void> _syncBookingDrafts(Trip trip) async {
+    try {
+      final result = await ref
+          .read(bookingDraftsApiServiceProvider)
+          .syncDrafts(trip.id, _deriveBookingDrafts(trip));
+      if (mounted) {
+        setState(() {
+          _stays = result.stays;
+          _segments = result.segments;
+        });
+      }
+    } catch (_) {
+      // Non-fatal: keep whatever stays/segments came with the trip.
+    }
+  }
+
+  /// Builds the booking-drafts payload from the same location-group ranges the
+  /// checklist derives from (same key grammar too, so the two stay in
+  /// lockstep): a stay per city and a transport leg between consecutive
+  /// cities, plus home-airport outbound/return. Legs already covered by a
+  /// confirmed (user-entered) row are skipped so drafts never duplicate real
+  /// bookings.
+  Map<String, dynamic> _deriveBookingDrafts(Trip trip) {
+    final ranges = _locationGroupRanges(trip);
+    final confirmedStays = _confirmedStays(trip);
+    final confirmedSegments = (trip.segments ?? const <TripSegment>[])
+        .where((s) => !s.auto)
+        .toList();
+
+    // A confirmed stay covers a city when it carries the draft's key (it was
+    // confirmed from that draft) or its name/address mentions the city label
+    // (same contains-matching as _accDateRangeFor).
+    bool stayCovered(String key, String label) {
+      final l = label.toLowerCase();
+      for (final a in confirmedStays) {
+        if (a.autoKey == key) return true;
+        for (final field in [a.name, a.address]) {
+          final f = field?.toLowerCase();
+          if (f != null && f.isNotEmpty && (f.contains(l) || l.contains(f))) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    bool transportCovered(String key, String origin, String destination) {
+      final o = origin.toLowerCase();
+      final d = destination.toLowerCase();
+      for (final s in confirmedSegments) {
+        if (s.autoKey == key) return true;
+        if (s.origin?.toLowerCase() == o && s.destination?.toLowerCase() == d) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final stays = <Map<String, dynamic>>[];
+    final transports = <Map<String, dynamic>>[];
+
+    void addLeg(String origin, String destination, DateTime? when) {
+      final key =
+          'transport:${origin.toLowerCase()}>>${destination.toLowerCase()}';
+      if (transportCovered(key, origin, destination)) return;
+      transports.add({
+        'auto_key': key,
+        'mode': _isGreekIsland(origin) && _isGreekIsland(destination)
+            ? 'ferry'
+            : 'flight',
+        'origin': origin,
+        'destination': destination,
+        if (when != null) 'depart_date': _fmt(when),
+      });
+    }
+
+    final home = _homeAirport;
+    final hasHome = home != null && home.isNotEmpty && ranges.isNotEmpty;
+    if (hasHome) addLeg(home, ranges.first.label, ranges.first.start);
+    for (var i = 0; i < ranges.length; i++) {
+      final r = ranges[i];
+      final key = 'stay:${r.label.toLowerCase()}';
+      if (!stayCovered(key, r.label)) {
+        stays.add({
+          'auto_key': key,
+          'name': 'Stay in ${r.label}',
+          'address': r.label,
+          if (r.start != null) 'check_in': _fmt(r.start!),
+          if (r.end != null) 'check_out': _fmt(r.end!),
+        });
+      }
+      if (i < ranges.length - 1) addLeg(r.label, ranges[i + 1].label, r.end);
+    }
+    if (hasHome) addLeg(ranges.last.label, home, ranges.last.end);
+
+    return {'stays': stays, 'transports': transports};
   }
 
   /// Computes per-leg travel times for the itinerary in its existing display
@@ -1103,6 +1224,39 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// Opens the stay sheet prefilled; a save PATCHes the row, which also
+  /// confirms it if it was a Suggested draft.
+  Future<void> _editStay(Accommodation a) async {
+    if (_guardOffline()) return;
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AddStaySheet(initial: a),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .update(widget.tripId, a.id, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not update stay: $e');
+    }
+  }
+
+  /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
+  Future<void> _confirmStay(Accommodation a) async {
+    if (_guardOffline()) return;
+    try {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .update(widget.tripId, a.id, const {});
+      await _load();
+    } catch (e) {
+      _showSnack('Could not keep stay: $e');
+    }
+  }
+
   Future<void> _addSegment() async {
     if (_guardOffline()) return;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
@@ -1130,6 +1284,39 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       await _load();
     } catch (e) {
       _showSnack('Could not remove transport: $e');
+    }
+  }
+
+  /// Opens the transport sheet prefilled; a save PATCHes the row, which also
+  /// confirms it if it was a Suggested draft.
+  Future<void> _editSegment(TripSegment s) async {
+    if (_guardOffline()) return;
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AddSegmentSheet(initial: s),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .updateSegment(widget.tripId, s.id, body);
+      await _load();
+    } catch (e) {
+      _showSnack('Could not update transport: $e');
+    }
+  }
+
+  /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
+  Future<void> _confirmSegment(TripSegment s) async {
+    if (_guardOffline()) return;
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .updateSegment(widget.tripId, s.id, const {});
+      await _load();
+    } catch (e) {
+      _showSnack('Could not keep transport: $e');
     }
   }
 
@@ -2386,7 +2573,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       _locationGroupRanges(Trip trip) {
     final items = trip.items ?? const <ItineraryItem>[];
     if (items.isEmpty) return const [];
-    final stays = trip.accommodations ?? const <Accommodation>[];
+    // Confirmed only: a suggested draft's dates come FROM this derivation, so
+    // letting them back in via _accDateRangeFor would freeze the ranges.
+    final stays = _confirmedStays(trip);
 
     // Canonical locality runs over the full itinerary.
     final groups = <List<ItineraryItem>>[];
@@ -2864,8 +3053,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                             if (i.latitude != 0 || i.longitude != 0) i.day,
                         ],
                         [
-                          for (final a in trip.accommodations ??
-                              const <Accommodation>[])
+                          for (final a in _confirmedStays(trip))
                             if (TripMap.stayHasCoords(a))
                               (checkIn: a.checkIn, checkOut: a.checkOut),
                         ],
@@ -3180,14 +3368,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   const Divider(height: 32),
                                   // Saved stays & transport: what the user has
                                   // actually booked, distinct from the derived
-                                  // checklist above.
+                                  // checklist above — plus Suggested drafts
+                                  // seeded from the itinerary by the sync.
                                   BookingsSection(
                                     trip: trip,
+                                    stays: _stays,
+                                    segments: _segments,
                                     readOnly: _readOnly,
                                     onAddStay: _addStay,
                                     onDeleteStay: _deleteStay,
+                                    onEditStay: _editStay,
+                                    onConfirmStay: _confirmStay,
                                     onAddSegment: _addSegment,
                                     onDeleteSegment: _deleteSegment,
+                                    onEditSegment: _editSegment,
+                                    onConfirmSegment: _confirmSegment,
                                   ),
                                   // Bookings live embedded in their city groups;
                                   // this section appears only when something

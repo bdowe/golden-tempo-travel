@@ -4,29 +4,48 @@ import '../models/trip.dart';
 import '../models/trip_segment.dart';
 import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
+import 'status_pill.dart';
 
 /// "Your bookings" hub in trip detail: the stays and transport segments the
-/// user has actually saved (distinct from the auto-derived booking checklist).
-/// Add/delete call back into the screen, which persists via the existing
+/// user has actually saved (distinct from the auto-derived booking checklist),
+/// plus itinerary-seeded Suggested drafts (auto=true) the user can keep, edit,
+/// or dismiss. Callbacks land in the screen, which persists via the
 /// accommodations/segments endpoints and reloads the trip.
 class BookingsSection extends StatelessWidget {
   final Trip trip;
+
+  /// Sync-owned lists (drafts + confirmed) held by the screen — the booking
+  /// drafts sync replaces them after each load, so they're passed in rather
+  /// than read from the immutable [trip].
+  final List<Accommodation> stays;
+  final List<TripSegment> segments;
   final VoidCallback onAddStay;
   final void Function(Accommodation) onDeleteStay;
+  final void Function(Accommodation) onEditStay;
+  final void Function(Accommodation) onConfirmStay;
   final VoidCallback onAddSegment;
   final void Function(TripSegment) onDeleteSegment;
+  final void Function(TripSegment) onEditSegment;
+  final void Function(TripSegment) onConfirmSegment;
 
   /// Read-only mode (viewer follows): stays and transport render without the
-  /// add buttons and delete icons.
+  /// add buttons and edit/delete icons, and Suggested drafts are hidden
+  /// entirely (the server already withholds them from viewers).
   final bool readOnly;
 
   const BookingsSection({
     super.key,
     required this.trip,
+    required this.stays,
+    required this.segments,
     required this.onAddStay,
     required this.onDeleteStay,
+    required this.onEditStay,
+    required this.onConfirmStay,
     required this.onAddSegment,
     required this.onDeleteSegment,
+    required this.onEditSegment,
+    required this.onConfirmSegment,
     this.readOnly = false,
   });
 
@@ -55,11 +74,51 @@ class BookingsSection extends StatelessWidget {
     );
   }
 
+  Widget _suggestedPill(ThemeData theme) => Padding(
+        padding: const EdgeInsets.only(left: AppSpacing.sm),
+        child: StatusPill.custom(
+          label: 'Suggested',
+          background: theme.colorScheme.secondaryContainer,
+          foreground: theme.colorScheme.onSecondaryContainer,
+        ),
+      );
+
+  /// Trailing actions for a Suggested draft: keep (confirm as-is), edit
+  /// (prefilled sheet), dismiss (tombstoned server-side so it won't re-seed).
+  Widget _draftActions(
+      {required VoidCallback onKeep,
+      required VoidCallback onEdit,
+      required VoidCallback onDismiss}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.check, size: 18),
+          tooltip: 'Keep',
+          onPressed: onKeep,
+        ),
+        IconButton(
+          icon: const Icon(Icons.edit_outlined, size: 18),
+          tooltip: 'Edit',
+          onPressed: onEdit,
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline, size: 18),
+          tooltip: 'Dismiss suggestion',
+          onPressed: onDismiss,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final stays = trip.accommodations ?? const <Accommodation>[];
-    final segments = trip.segments ?? const <TripSegment>[];
+    // Belt and braces: the server withholds drafts from viewers, but a stale
+    // cached copy could still carry them.
+    final visibleStays = readOnly ? stays.where((a) => !a.auto) : stays;
+    final visibleSegments = readOnly ? segments.where((s) => !s.auto) : segments;
+    final draftCardColor = theme.colorScheme.surfaceContainerLow;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,7 +142,7 @@ class BookingsSection extends StatelessWidget {
             ],
           ],
         ),
-        if (stays.isEmpty && segments.isEmpty)
+        if (visibleStays.isEmpty && visibleSegments.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Text(
@@ -93,12 +152,18 @@ class BookingsSection extends StatelessWidget {
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-        for (final a in stays)
+        for (final a in visibleStays)
           Card(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            color: a.auto ? draftCardColor : null,
             child: ListTile(
               leading: const Icon(Icons.hotel_outlined),
-              title: Text(a.name),
+              title: Row(
+                children: [
+                  Flexible(child: Text(a.name)),
+                  if (a.auto) _suggestedPill(theme),
+                ],
+              ),
               subtitle: Text(
                 [
                   if (a.provider != null && a.provider!.isNotEmpty) a.provider,
@@ -107,33 +172,55 @@ class BookingsSection extends StatelessWidget {
                   if (a.address != null && a.address!.isNotEmpty) a.address,
                 ].whereType<String>().join(' · '),
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (a.url != null && a.url!.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      tooltip: 'Open listing',
-                      onPressed: () => _open(context, a.url!,
-                          provider: a.provider, kind: 'stay'),
+              trailing: a.auto && !readOnly
+                  ? _draftActions(
+                      onKeep: () => onConfirmStay(a),
+                      onEdit: () => onEditStay(a),
+                      onDismiss: () => onDeleteStay(a),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (a.url != null && a.url!.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                            tooltip: 'Open listing',
+                            onPressed: () => _open(context, a.url!,
+                                provider: a.provider, kind: 'stay'),
+                          ),
+                        if (!readOnly) ...[
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            tooltip: 'Edit stay',
+                            onPressed: () => onEditStay(a),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            tooltip: 'Remove stay',
+                            onPressed: () => onDeleteStay(a),
+                          ),
+                        ],
+                      ],
                     ),
-                  if (!readOnly)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      tooltip: 'Remove stay',
-                      onPressed: () => onDeleteStay(a),
-                    ),
-                ],
-              ),
             ),
           ),
-        for (final s in segments)
+        for (final s in visibleSegments)
           Card(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            color: s.auto ? draftCardColor : null,
             child: ListTile(
               leading: Icon(_modeIcon(s.mode)),
-              title: Text(
-                [s.origin, s.destination].whereType<String>().join(' → '),
+              title: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      [s.origin, s.destination]
+                          .whereType<String>()
+                          .join(' → '),
+                    ),
+                  ),
+                  if (s.auto) _suggestedPill(theme),
+                ],
               ),
               subtitle: Text(
                 [
@@ -143,24 +230,36 @@ class BookingsSection extends StatelessWidget {
                   if (s.notes != null && s.notes!.isNotEmpty) s.notes,
                 ].whereType<String>().join(' · '),
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (s.url != null && s.url!.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      tooltip: 'Open booking',
-                      onPressed: () => _open(context, s.url!,
-                          provider: s.provider, kind: 'transport'),
+              trailing: s.auto && !readOnly
+                  ? _draftActions(
+                      onKeep: () => onConfirmSegment(s),
+                      onEdit: () => onEditSegment(s),
+                      onDismiss: () => onDeleteSegment(s),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (s.url != null && s.url!.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                            tooltip: 'Open booking',
+                            onPressed: () => _open(context, s.url!,
+                                provider: s.provider, kind: 'transport'),
+                          ),
+                        if (!readOnly) ...[
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            tooltip: 'Edit transport',
+                            onPressed: () => onEditSegment(s),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            tooltip: 'Remove transport',
+                            onPressed: () => onDeleteSegment(s),
+                          ),
+                        ],
+                      ],
                     ),
-                  if (!readOnly)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      tooltip: 'Remove transport',
-                      onPressed: () => onDeleteSegment(s),
-                    ),
-                ],
-              ),
             ),
           ),
       ],
@@ -168,9 +267,12 @@ class BookingsSection extends StatelessWidget {
   }
 }
 
-/// Bottom-sheet form for adding a stay. Pops with the POST body map or null.
+/// Bottom-sheet form for adding or editing a stay. Pops with the POST/PATCH
+/// body map or null. With [initial] set the fields prefill and the labels flip
+/// to editing.
 class AddStaySheet extends StatefulWidget {
-  const AddStaySheet({super.key});
+  final Accommodation? initial;
+  const AddStaySheet({super.key, this.initial});
 
   @override
   State<AddStaySheet> createState() => _AddStaySheetState();
@@ -184,6 +286,21 @@ class _AddStaySheetState extends State<AddStaySheet> {
   final _priceNote = TextEditingController();
   DateTime? _checkIn;
   DateTime? _checkOut;
+
+  @override
+  void initState() {
+    super.initState();
+    final a = widget.initial;
+    if (a != null) {
+      _name.text = a.name;
+      _provider.text = a.provider ?? '';
+      _url.text = a.url ?? '';
+      _address.text = a.address ?? '';
+      _priceNote.text = a.priceNote ?? '';
+      _checkIn = a.checkIn == null ? null : DateTime.tryParse(a.checkIn!);
+      _checkOut = a.checkOut == null ? null : DateTime.tryParse(a.checkOut!);
+    }
+  }
 
   @override
   void dispose() {
@@ -229,6 +346,7 @@ class _AddStaySheetState extends State<AddStaySheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final editing = widget.initial != null;
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.lg,
@@ -241,7 +359,8 @@ class _AddStaySheetState extends State<AddStaySheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Add a stay', style: theme.textTheme.titleMedium),
+            Text(editing ? 'Edit stay' : 'Add a stay',
+                style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _name,
@@ -307,7 +426,10 @@ class _AddStaySheetState extends State<AddStaySheet> {
                   child: const Text('Cancel'),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                FilledButton(onPressed: _save, child: const Text('Add stay')),
+                FilledButton(
+                  onPressed: _save,
+                  child: Text(editing ? 'Save' : 'Add stay'),
+                ),
               ],
             ),
           ],
@@ -317,10 +439,12 @@ class _AddStaySheetState extends State<AddStaySheet> {
   }
 }
 
-/// Bottom-sheet form for adding a transport segment. Pops with the POST body
-/// map or null.
+/// Bottom-sheet form for adding or editing a transport segment. Pops with the
+/// POST/PATCH body map or null. With [initial] set the fields prefill and the
+/// labels flip to editing.
 class AddSegmentSheet extends StatefulWidget {
-  const AddSegmentSheet({super.key});
+  final TripSegment? initial;
+  const AddSegmentSheet({super.key, this.initial});
 
   @override
   State<AddSegmentSheet> createState() => _AddSegmentSheetState();
@@ -334,6 +458,22 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
   final _notes = TextEditingController();
   String _mode = 'flight';
   DateTime? _departDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.initial;
+    if (s != null) {
+      _origin.text = s.origin ?? '';
+      _destination.text = s.destination ?? '';
+      _provider.text = s.provider ?? '';
+      _url.text = s.url ?? '';
+      _notes.text = s.notes ?? '';
+      _mode = s.mode;
+      _departDate =
+          s.departDate == null ? null : DateTime.tryParse(s.departDate!);
+    }
+  }
 
   @override
   void dispose() {
@@ -374,6 +514,7 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final editing = widget.initial != null;
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.lg,
@@ -386,7 +527,8 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Add transport', style: theme.textTheme.titleMedium),
+            Text(editing ? 'Edit transport' : 'Add transport',
+                style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.md),
             Wrap(
               spacing: 8,
@@ -473,7 +615,7 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
                 const SizedBox(width: AppSpacing.sm),
                 FilledButton(
                   onPressed: _save,
-                  child: const Text('Add transport'),
+                  child: Text(editing ? 'Save' : 'Add transport'),
                 ),
               ],
             ),

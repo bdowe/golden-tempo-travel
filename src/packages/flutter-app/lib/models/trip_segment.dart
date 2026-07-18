@@ -18,6 +18,12 @@ class TripSegment {
   final String? priceNote;
   final String? notes;
 
+  /// True for itinerary-derived "Suggested" drafts owned by the booking-drafts
+  /// sync; false for user-confirmed rows.
+  final bool auto;
+  @JsonKey(name: 'auto_key')
+  final String? autoKey;
+
   const TripSegment({
     required this.id,
     required this.mode,
@@ -29,6 +35,8 @@ class TripSegment {
     this.url,
     this.priceNote,
     this.notes,
+    this.auto = false,
+    this.autoKey,
   });
 
   factory TripSegment.fromJson(Map<String, dynamic> json) =>

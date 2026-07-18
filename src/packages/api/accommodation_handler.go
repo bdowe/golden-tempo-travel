@@ -23,6 +23,8 @@ type AccommodationResponse struct {
 	CheckIn   *string  `json:"check_in,omitempty"`
 	CheckOut  *string  `json:"check_out,omitempty"`
 	PriceNote *string  `json:"price_note,omitempty"`
+	Auto      bool     `json:"auto"`
+	AutoKey   *string  `json:"auto_key,omitempty"`
 }
 
 type AddAccommodationRequest struct {
@@ -49,6 +51,8 @@ func toAccommodationResponse(a store.Accommodation) AccommodationResponse {
 		CheckIn:   dateToPtr(a.CheckIn),
 		CheckOut:  dateToPtr(a.CheckOut),
 		PriceNote: a.PriceNote,
+		Auto:      a.Auto,
+		AutoKey:   a.AutoKey,
 	}
 }
 
@@ -121,6 +125,56 @@ func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toAccommodationResponse(acc))
 }
 
+// updateAccommodationHandler partially updates a stay. Any edit — including an
+// empty {} body ("Keep" on a suggested draft) — confirms the row (auto=false),
+// taking it out of the booking-drafts sync's ownership.
+func updateAccommodationHandler(w http.ResponseWriter, r *http.Request) {
+	trip, ok := editableTrip(w, r)
+	if !ok {
+		return
+	}
+	tripID := trip.ID
+	accID, err := uuid.Parse(mux.Vars(r)["accId"])
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "accommodation not found")
+		return
+	}
+	var req AddAccommodationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	checkIn, err := parseDateParam(req.CheckIn)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "check_in must be YYYY-MM-DD")
+		return
+	}
+	checkOut, err := parseDateParam(req.CheckOut)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "check_out must be YYYY-MM-DD")
+		return
+	}
+	acc, err := store.New(dbPool).UpdateAccommodation(r.Context(), store.UpdateAccommodationParams{
+		Name:      strPtrOrNil(strings.TrimSpace(req.Name)),
+		Provider:  req.Provider,
+		Url:       req.URL,
+		Address:   req.Address,
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		CheckIn:   checkIn,
+		CheckOut:  checkOut,
+		PriceNote: req.PriceNote,
+		ID:        accID,
+		TripID:    tripID,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "accommodation not found")
+		return
+	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
+	writeJSON(w, http.StatusOK, toAccommodationResponse(acc))
+}
+
 func deleteAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 	trip, ok := editableTrip(w, r)
 	if !ok {
@@ -132,7 +186,21 @@ func deleteAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "accommodation not found")
 		return
 	}
-	rows, err := store.New(dbPool).DeleteAccommodation(r.Context(),
+	q := store.New(dbPool)
+	// Deleting a suggested draft tombstones it (dismissed=true, key kept) so
+	// the itinerary sync can't re-seed it. No TouchTrip on that path —
+	// dismissing a suggestion isn't a content edit worth stamping.
+	dismissed, err := q.DismissDraftAccommodation(r.Context(),
+		store.DismissDraftAccommodationParams{ID: accID, TripID: tripID})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not delete accommodation")
+		return
+	}
+	if dismissed > 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	rows, err := q.DeleteAccommodation(r.Context(),
 		store.DeleteAccommodationParams{ID: accID, TripID: tripID})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not delete accommodation")

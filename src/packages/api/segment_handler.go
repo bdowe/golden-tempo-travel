@@ -27,6 +27,8 @@ type SegmentResponse struct {
 	URL         *string `json:"url,omitempty"`
 	PriceNote   *string `json:"price_note,omitempty"`
 	Notes       *string `json:"notes,omitempty"`
+	Auto        bool    `json:"auto"`
+	AutoKey     *string `json:"auto_key,omitempty"`
 }
 
 type AddSegmentRequest struct {
@@ -53,6 +55,8 @@ func toSegmentResponse(s store.TripSegment) SegmentResponse {
 		URL:         s.Url,
 		PriceNote:   s.PriceNote,
 		Notes:       s.Notes,
+		Auto:        s.Auto,
+		AutoKey:     s.AutoKey,
 	}
 }
 
@@ -129,6 +133,65 @@ func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toSegmentResponse(seg))
 }
 
+// updateSegmentHandler partially updates a segment. Any edit — including an
+// empty {} body ("Keep" on a suggested draft) — confirms the row (auto=false),
+// taking it out of the booking-drafts sync's ownership.
+func updateSegmentHandler(w http.ResponseWriter, r *http.Request) {
+	trip, ok := editableTrip(w, r)
+	if !ok {
+		return
+	}
+	tripID := trip.ID
+	segID, err := uuid.Parse(mux.Vars(r)["segmentId"])
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "segment not found")
+		return
+	}
+	var req AddSegmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode != "" && !allowedSegmentModes[mode] {
+		writeJSONError(w, http.StatusBadRequest, "mode must be one of: flight, train, bus, car, ferry, other")
+		return
+	}
+	depart, err := parseDateParam(req.DepartDate)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "depart_date must be YYYY-MM-DD")
+		return
+	}
+	arrive, err := parseDateParam(req.ArriveDate)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "arrive_date must be YYYY-MM-DD")
+		return
+	}
+	if depart.Valid && arrive.Valid && arrive.Time.Before(depart.Time) {
+		writeJSONError(w, http.StatusBadRequest, "arrive_date must not be before depart_date")
+		return
+	}
+	seg, err := store.New(dbPool).UpdateSegment(r.Context(), store.UpdateSegmentParams{
+		Mode:        strPtrOrNil(mode),
+		Origin:      req.Origin,
+		Destination: req.Destination,
+		DepartDate:  depart,
+		ArriveDate:  arrive,
+		Provider:    req.Provider,
+		Url:         req.URL,
+		PriceNote:   req.PriceNote,
+		Notes:       req.Notes,
+		ID:          segID,
+		TripID:      tripID,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "segment not found")
+		return
+	}
+	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
+	writeJSON(w, http.StatusOK, toSegmentResponse(seg))
+}
+
 func deleteSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	trip, ok := editableTrip(w, r)
 	if !ok {
@@ -140,7 +203,21 @@ func deleteSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "segment not found")
 		return
 	}
-	rows, err := store.New(dbPool).DeleteSegment(r.Context(),
+	q := store.New(dbPool)
+	// Deleting a suggested draft tombstones it (dismissed=true, key kept) so
+	// the itinerary sync can't re-seed it. No TouchTrip on that path —
+	// dismissing a suggestion isn't a content edit worth stamping.
+	dismissed, err := q.DismissDraftSegment(r.Context(),
+		store.DismissDraftSegmentParams{ID: segID, TripID: tripID})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not delete segment")
+		return
+	}
+	if dismissed > 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	rows, err := q.DeleteSegment(r.Context(),
 		store.DeleteSegmentParams{ID: segID, TripID: tripID})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not delete segment")
