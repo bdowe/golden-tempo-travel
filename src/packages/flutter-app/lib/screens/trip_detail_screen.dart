@@ -960,6 +960,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (added == true) await _load();
   }
 
+  Future<void> _editTodo(BookingTodo todo) async {
+    if (_guardOffline()) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          _AddBookingTodoDialog(tripId: widget.tripId, existing: todo),
+    );
+    if (changed == true) await _load();
+  }
+
   /// [day] preselects the dialog's Day dropdown (e.g. from the map's
   /// empty-day CTA, where the user is already looking at a specific day).
   Future<void> _addPlace({int? day}) async {
@@ -3472,6 +3482,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                                     .containsKey(todo.todoKey)
                                                 ? 'Find flights'
                                                 : null,
+                                            onEdit: todo.auto
+                                                ? null
+                                                : () => _editTodo(todo),
                                             onDelete: todo.auto
                                                 ? null
                                                 : () => _deleteTodo(todo),
@@ -3684,11 +3697,18 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   }
 }
 
-/// Adds a custom booking TODO. A destination (and optional dates) lets the
-/// server build the search link; a pasted link overrides it.
+/// Adds or edits a custom booking TODO. A destination (and optional dates)
+/// lets the server build the search link; a pasted link overrides it.
 class _AddBookingTodoDialog extends ConsumerStatefulWidget {
   final String tripId;
-  const _AddBookingTodoDialog({required this.tripId});
+
+  /// When set, the dialog edits this todo (PATCH) instead of adding one.
+  /// Destination/origin aren't persisted server-side, so they open blank:
+  /// re-entering a destination makes the server rebuild the search link,
+  /// otherwise the existing link is kept.
+  final BookingTodo? existing;
+
+  const _AddBookingTodoDialog({required this.tripId, this.existing});
 
   @override
   ConsumerState<_AddBookingTodoDialog> createState() =>
@@ -3700,19 +3720,30 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
   final _title = TextEditingController();
   final _destination = TextEditingController();
   final _origin = TextEditingController();
-  final _departDate = TextEditingController();
-  final _returnDate = TextEditingController();
+  DateTime? _departDate;
+  DateTime? _returnDate;
   final _url = TextEditingController();
   bool _saving = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    if (e != null) {
+      _kind = e.kind;
+      _title.text = e.title;
+      _url.text = e.searchUrl ?? '';
+      _departDate = DateTime.tryParse(e.departDate ?? '');
+      _returnDate = DateTime.tryParse(e.returnDate ?? '');
+    }
+  }
 
   @override
   void dispose() {
     _title.dispose();
     _destination.dispose();
     _origin.dispose();
-    _departDate.dispose();
-    _returnDate.dispose();
     _url.dispose();
     super.dispose();
   }
@@ -3720,6 +3751,27 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
   String? _nn(String s) {
     final t = s.trim();
     return t.isEmpty ? null : t;
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate(bool isDepart) async {
+    final now = DateTime.now();
+    final first = now.subtract(const Duration(days: 365));
+    final last = now.add(const Duration(days: 365 * 2));
+    var initial = (isDepart ? _departDate : _returnDate) ?? now;
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+    );
+    if (picked != null) {
+      setState(() => isDepart ? _departDate = picked : _returnDate = picked);
+    }
   }
 
   Future<void> _save() async {
@@ -3733,22 +3785,43 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
     });
     try {
       final isTransport = _kind == 'transport';
-      await ref.read(bookingTodosApiServiceProvider).addTodo(widget.tripId, {
+      final isEdit = widget.existing != null;
+      // Note: PATCH is a COALESCE partial update, so an omitted date can't
+      // clear a previously saved one — it just keeps the old value.
+      final body = <String, dynamic>{
         'kind': _kind,
         'title': _title.text.trim(),
         if (_nn(_destination.text) != null)
           'destination': _nn(_destination.text),
         if (isTransport && _nn(_origin.text) != null)
           'origin': _nn(_origin.text),
-        if (_nn(_departDate.text) != null) 'depart_date': _nn(_departDate.text),
-        if (!isTransport && _nn(_returnDate.text) != null)
-          'return_date': _nn(_returnDate.text),
-        if (_nn(_url.text) != null) 'search_url': _nn(_url.text),
-        if (_kind == 'stay') 'provider': 'airbnb',
-        if (isTransport) 'provider': 'google_flights',
+        if (_departDate != null) 'depart_date': _fmt(_departDate!),
+        if (!isTransport && _returnDate != null)
+          'return_date': _fmt(_returnDate!),
+        // On edit the field is prefilled with the stored link; sending it
+        // back unchanged would override a destination-driven rebuild (an
+        // explicit search_url wins server-side), so omit it unless the user
+        // actually changed it — COALESCE keeps the stored one.
+        if (_nn(_url.text) != null &&
+            (!isEdit || _nn(_url.text) != widget.existing!.searchUrl))
+          'search_url': _nn(_url.text),
+        // The provider is only a preference for the server's link builder; on
+        // edit, sending it without a destination would overwrite the stored
+        // provider while the old link stays — so only send it when a link is
+        // (re)built from a destination.
+        if (!isEdit || _nn(_destination.text) != null) ...{
+          if (_kind == 'stay') 'provider': 'airbnb',
+          if (isTransport) 'provider': 'google_flights',
+        },
         'guests': 1,
         'passengers': 1,
-      });
+      };
+      final svc = ref.read(bookingTodosApiServiceProvider);
+      if (isEdit) {
+        await svc.update(widget.tripId, widget.existing!.id, body);
+      } else {
+        await svc.addTodo(widget.tripId, body);
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       setState(() {
@@ -3758,11 +3831,38 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
     }
   }
 
+  /// A picker-backed date row: tap to pick, with a clear button when set
+  /// (both dates are optional).
+  Widget _dateField(String label, bool isDepart) {
+    final value = isDepart ? _departDate : _returnDate;
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.event, size: 18),
+            label: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(value == null ? label : '$label: ${_fmt(value)}'),
+            ),
+            onPressed: () => _pickDate(isDepart),
+          ),
+        ),
+        if (value != null)
+          IconButton(
+            icon: const Icon(Icons.clear, size: 18),
+            tooltip: 'Clear date',
+            onPressed: () => setState(() =>
+                isDepart ? _departDate = null : _returnDate = null),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isTransport = _kind == 'transport';
     return AlertDialog(
-      title: const Text('Add a booking'),
+      title: Text(widget.existing == null ? 'Add a booking' : 'Edit booking'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3777,29 +3877,31 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
               ],
               onChanged: (v) => setState(() => _kind = v ?? 'stay'),
             ),
+            const SizedBox(height: AppSpacing.md),
             TextField(
                 controller: _title,
                 decoration: const InputDecoration(labelText: 'Title')),
-            if (isTransport)
+            const SizedBox(height: AppSpacing.md),
+            if (isTransport) ...[
               TextField(
                   controller: _origin,
                   decoration:
                       const InputDecoration(labelText: 'Origin (optional)')),
+              const SizedBox(height: AppSpacing.md),
+            ],
             TextField(
                 controller: _destination,
                 decoration:
                     const InputDecoration(labelText: 'Destination (optional)')),
-            TextField(
-                controller: _departDate,
-                decoration: InputDecoration(
-                    labelText: isTransport
-                        ? 'Depart date (YYYY-MM-DD)'
-                        : 'Check-in (YYYY-MM-DD)')),
-            if (!isTransport)
-              TextField(
-                  controller: _returnDate,
-                  decoration: const InputDecoration(
-                      labelText: 'Check-out (YYYY-MM-DD)')),
+            const SizedBox(height: AppSpacing.md),
+            _dateField(
+                isTransport ? 'Depart date (optional)' : 'Check-in (optional)',
+                true),
+            if (!isTransport) ...[
+              const SizedBox(height: AppSpacing.sm),
+              _dateField('Check-out (optional)', false),
+            ],
+            const SizedBox(height: AppSpacing.md),
             TextField(
                 controller: _url,
                 decoration: const InputDecoration(

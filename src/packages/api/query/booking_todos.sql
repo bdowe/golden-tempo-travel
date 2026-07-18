@@ -30,13 +30,16 @@ UPDATE booking_todos SET booked = $3 WHERE id = $1 AND trip_id = $2 RETURNING *;
 -- name: UpdateBookingTodo :one
 -- Partial update (COALESCE sqlc.narg idiom, see query/trips.sql UpdateTrip).
 -- auto = false only: auto rows are owned by the client's itinerary sync and
--- would be overwritten on the next sync. COALESCE means subtitle/depart_date
--- can be overwritten but not cleared back to NULL.
+-- would be overwritten on the next sync. COALESCE means fields can be
+-- overwritten but not cleared back to NULL.
 UPDATE booking_todos
 SET kind        = COALESCE(sqlc.narg('kind'), kind),
     title       = COALESCE(sqlc.narg('title'), title),
     subtitle    = COALESCE(sqlc.narg('subtitle'), subtitle),
     depart_date = COALESCE(sqlc.narg('depart_date'), depart_date),
+    return_date = COALESCE(sqlc.narg('return_date'), return_date),
+    search_url  = COALESCE(sqlc.narg('search_url'), search_url),
+    provider    = COALESCE(sqlc.narg('provider'), provider),
     booked      = COALESCE(sqlc.narg('booked'), booked)
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND auto = false
 RETURNING *;

@@ -121,13 +121,16 @@ class _IngestPaneState extends ConsumerState<_IngestPane> {
               TextField(
                   controller: name,
                   decoration: const InputDecoration(labelText: 'Name *')),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                   controller: credibility,
                   decoration: const InputDecoration(
                       labelText: 'Credibility (chef, 20yr resident…)')),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                   controller: photo,
                   decoration: const InputDecoration(labelText: 'Photo URL')),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                   controller: consent,
                   decoration: const InputDecoration(
