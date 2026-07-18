@@ -27,6 +27,7 @@ type SegmentResponse struct {
 	URL         *string `json:"url,omitempty"`
 	PriceNote   *string `json:"price_note,omitempty"`
 	Notes       *string `json:"notes,omitempty"`
+	Booked      bool    `json:"booked"`
 	Auto        bool    `json:"auto"`
 	AutoKey     *string `json:"auto_key,omitempty"`
 }
@@ -41,6 +42,10 @@ type AddSegmentRequest struct {
 	URL         *string `json:"url"`
 	PriceNote   *string `json:"price_note"`
 	Notes       *string `json:"notes"`
+
+	// PATCH-only: the "Booked" checkbox on confirmed rows. Ignored on add —
+	// new segments start unbooked.
+	Booked *bool `json:"booked"`
 }
 
 func toSegmentResponse(s store.TripSegment) SegmentResponse {
@@ -55,6 +60,7 @@ func toSegmentResponse(s store.TripSegment) SegmentResponse {
 		URL:         s.Url,
 		PriceNote:   s.PriceNote,
 		Notes:       s.Notes,
+		Booked:      s.Booked,
 		Auto:        s.Auto,
 		AutoKey:     s.AutoKey,
 	}
@@ -181,12 +187,21 @@ func updateSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		Url:         req.URL,
 		PriceNote:   req.PriceNote,
 		Notes:       req.Notes,
+		Booked:      req.Booked,
 		ID:          segID,
 		TripID:      tripID,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "segment not found")
 		return
+	}
+	if req.Booked != nil && *req.Booked {
+		user, _ := userFromContext(r.Context())
+		meta := map[string]any{"kind": "transport", "mode": seg.Mode}
+		if seg.Provider != nil {
+			meta["provider"] = *seg.Provider
+		}
+		go recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta)
 	}
 	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toSegmentResponse(seg))

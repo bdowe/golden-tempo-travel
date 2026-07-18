@@ -17,6 +17,7 @@ TripSegment _$TripSegmentFromJson(Map<String, dynamic> json) => TripSegment(
       url: json['url'] as String?,
       priceNote: json['price_note'] as String?,
       notes: json['notes'] as String?,
+      booked: json['booked'] as bool? ?? false,
       auto: json['auto'] as bool? ?? false,
       autoKey: json['auto_key'] as String?,
     );
@@ -33,6 +34,7 @@ Map<String, dynamic> _$TripSegmentToJson(TripSegment instance) =>
       'url': instance.url,
       'price_note': instance.priceNote,
       'notes': instance.notes,
+      'booked': instance.booked,
       'auto': instance.auto,
       'auto_key': instance.autoKey,
     };

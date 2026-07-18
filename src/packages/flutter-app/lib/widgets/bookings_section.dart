@@ -28,6 +28,13 @@ class BookingsSection extends StatelessWidget {
   final void Function(TripSegment) onEditSegment;
   final void Function(TripSegment) onConfirmSegment;
 
+  /// "Booked" checkbox toggles on confirmed rows (drafts keep their
+  /// keep/edit/dismiss actions instead — checking a suggestion would silently
+  /// confirm it). Null disables the checkboxes (offline), like the reorder
+  /// callbacks; in read-only mode they render disabled but still show state.
+  final void Function(Accommodation, bool)? onStayBookedChanged;
+  final void Function(TripSegment, bool)? onSegmentBookedChanged;
+
   /// Drag-reorder callbacks, `ReorderableListView.onReorder`-shaped. Null
   /// disables reordering for that group (viewer follows, offline). Indexes
   /// refer to [stays]/[segments] directly — when reordering is enabled the
@@ -53,6 +60,8 @@ class BookingsSection extends StatelessWidget {
     required this.onDeleteSegment,
     required this.onEditSegment,
     required this.onConfirmSegment,
+    this.onStayBookedChanged,
+    this.onSegmentBookedChanged,
     this.onReorderStays,
     this.onReorderSegments,
     this.readOnly = false,
@@ -121,6 +130,26 @@ class BookingsSection extends StatelessWidget {
       ],
     );
   }
+
+  /// Compact "Booked" checkbox for confirmed rows, shrunk to sit in the
+  /// trailing icon row (same treatment as BookingTodoRow's). A null
+  /// [onChanged] renders it disabled but still showing state.
+  Widget _bookedCheckbox(
+          {required bool value, required void Function(bool)? onChanged}) =>
+      Checkbox(
+        value: value,
+        onChanged: onChanged == null ? null : (v) => onChanged(v ?? false),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
+
+  /// Muted + struck-through once booked, mirroring the checklist rows.
+  TextStyle? _bookedTitleStyle(ThemeData theme, bool booked) => booked
+      ? TextStyle(
+          color: theme.colorScheme.onSurfaceVariant,
+          decoration: TextDecoration.lineThrough,
+        )
+      : null;
 
   Widget _dragHandle(ThemeData theme, int index) =>
       ReorderableDragStartListener(
@@ -202,7 +231,10 @@ class BookingsSection extends StatelessWidget {
                   leading: const Icon(Icons.hotel_outlined),
                   title: Row(
                     children: [
-                      Flexible(child: Text(a.name)),
+                      Flexible(
+                        child: Text(a.name,
+                            style: _bookedTitleStyle(theme, a.booked)),
+                      ),
                       if (a.auto) _suggestedPill(theme),
                     ],
                   ),
@@ -246,6 +278,13 @@ class BookingsSection extends StatelessWidget {
                                 onPressed: () => onDeleteStay(a),
                               ),
                             ],
+                            _bookedCheckbox(
+                              value: a.booked,
+                              onChanged:
+                                  (readOnly || onStayBookedChanged == null)
+                                      ? null
+                                      : (v) => onStayBookedChanged!(a, v),
+                            ),
                             if (canDragStays) _dragHandle(theme, i),
                           ],
                         ),
@@ -277,6 +316,7 @@ class BookingsSection extends StatelessWidget {
                           [s.origin, s.destination]
                               .whereType<String>()
                               .join(' → '),
+                          style: _bookedTitleStyle(theme, s.booked),
                         ),
                       ),
                       if (s.auto) _suggestedPill(theme),
@@ -322,6 +362,13 @@ class BookingsSection extends StatelessWidget {
                                 onPressed: () => onDeleteSegment(s),
                               ),
                             ],
+                            _bookedCheckbox(
+                              value: s.booked,
+                              onChanged:
+                                  (readOnly || onSegmentBookedChanged == null)
+                                      ? null
+                                      : (v) => onSegmentBookedChanged!(s, v),
+                            ),
                             if (canDragSegments) _dragHandle(theme, i),
                           ],
                         ),

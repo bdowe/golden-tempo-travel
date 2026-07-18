@@ -15,7 +15,7 @@ import (
 const createSegment = `-- name: CreateSegment :one
 INSERT INTO trip_segments (trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position
+RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position, booked
 `
 
 type CreateSegmentParams struct {
@@ -63,6 +63,7 @@ func (q *Queries) CreateSegment(ctx context.Context, arg CreateSegmentParams) (T
 		&i.AutoKey,
 		&i.Dismissed,
 		&i.Position,
+		&i.Booked,
 	)
 	return i, err
 }
@@ -122,7 +123,7 @@ func (q *Queries) DismissDraftSegment(ctx context.Context, arg DismissDraftSegme
 }
 
 const listConfirmedSegmentsByTrip = `-- name: ListConfirmedSegmentsByTrip :many
-SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position, booked FROM trip_segments WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC
 `
 
 // Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
@@ -153,6 +154,7 @@ func (q *Queries) ListConfirmedSegmentsByTrip(ctx context.Context, tripID uuid.U
 			&i.AutoKey,
 			&i.Dismissed,
 			&i.Position,
+			&i.Booked,
 		); err != nil {
 			return nil, err
 		}
@@ -165,7 +167,7 @@ func (q *Queries) ListConfirmedSegmentsByTrip(ctx context.Context, tripID uuid.U
 }
 
 const listSegmentsByTrip = `-- name: ListSegmentsByTrip :many
-SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position, booked FROM trip_segments WHERE trip_id = $1 AND NOT dismissed ORDER BY position ASC, depart_date ASC NULLS LAST, created_at ASC
 `
 
 func (q *Queries) ListSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]TripSegment, error) {
@@ -195,6 +197,7 @@ func (q *Queries) ListSegmentsByTrip(ctx context.Context, tripID uuid.UUID) ([]T
 			&i.AutoKey,
 			&i.Dismissed,
 			&i.Position,
+			&i.Booked,
 		); err != nil {
 			return nil, err
 		}
@@ -232,9 +235,10 @@ SET mode        = COALESCE($1, mode),
     url         = COALESCE($7, url),
     price_note  = COALESCE($8, price_note),
     notes       = COALESCE($9, notes),
+    booked      = COALESCE($10, booked),
     auto        = false
-WHERE id = $10 AND trip_id = $11 AND NOT dismissed
-RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position
+WHERE id = $11 AND trip_id = $12 AND NOT dismissed
+RETURNING id, trip_id, mode, origin, destination, depart_date, arrive_date, provider, url, price_note, notes, created_at, updated_at, auto, auto_key, dismissed, position, booked
 `
 
 type UpdateSegmentParams struct {
@@ -247,6 +251,7 @@ type UpdateSegmentParams struct {
 	Url         *string     `json:"url"`
 	PriceNote   *string     `json:"price_note"`
 	Notes       *string     `json:"notes"`
+	Booked      *bool       `json:"booked"`
 	ID          uuid.UUID   `json:"id"`
 	TripID      uuid.UUID   `json:"trip_id"`
 }
@@ -265,6 +270,7 @@ func (q *Queries) UpdateSegment(ctx context.Context, arg UpdateSegmentParams) (T
 		arg.Url,
 		arg.PriceNote,
 		arg.Notes,
+		arg.Booked,
 		arg.ID,
 		arg.TripID,
 	)
@@ -287,6 +293,7 @@ func (q *Queries) UpdateSegment(ctx context.Context, arg UpdateSegmentParams) (T
 		&i.AutoKey,
 		&i.Dismissed,
 		&i.Position,
+		&i.Booked,
 	)
 	return i, err
 }

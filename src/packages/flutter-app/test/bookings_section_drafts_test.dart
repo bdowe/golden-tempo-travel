@@ -55,6 +55,7 @@ BookingsSection _section({
   void Function(Accommodation)? onEditStay,
   void Function(Accommodation)? onDeleteStay,
   void Function(int, int)? onReorderStays,
+  void Function(Accommodation, bool)? onStayBookedChanged,
 }) =>
     BookingsSection(
       trip: _trip(),
@@ -70,6 +71,7 @@ BookingsSection _section({
       onEditSegment: (_) {},
       onConfirmSegment: (_) {},
       onReorderStays: onReorderStays,
+      onStayBookedChanged: onStayBookedChanged,
     );
 
 void main() {
@@ -140,6 +142,51 @@ void main() {
     expect(find.text('Save'), findsOneWidget);
     expect(find.text('Stay in Lisbon'), findsOneWidget);
     expect(find.text('2026-09-01 → 2026-09-04'), findsOneWidget);
+  });
+
+  testWidgets('Booked checkbox: confirmed rows only, toggles, strikes title',
+      (tester) async {
+    Accommodation? toggled;
+    bool? toggledTo;
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [_draftStay, _confirmedStay],
+      segments: const [],
+      onStayBookedChanged: (a, v) {
+        toggled = a;
+        toggledTo = v;
+      },
+    )));
+
+    // Only the confirmed stay has a checkbox — drafts keep keep/edit/dismiss.
+    expect(find.byType(Checkbox), findsOneWidget);
+    await tester.tap(find.byType(Checkbox));
+    expect(toggled?.id, 'a2');
+    expect(toggledTo, isTrue);
+
+    // A booked row renders muted + struck through.
+    await tester.pumpWidget(_wrap(_section(
+      stays: [_confirmedStay.copyWith(booked: true)],
+      segments: const [],
+    )));
+    final title = tester.widget<Text>(find.text('Casa do Brian'));
+    expect(title.style?.decoration, TextDecoration.lineThrough);
+    expect(
+      tester.widget<Checkbox>(find.byType(Checkbox)).value,
+      isTrue,
+    );
+  });
+
+  testWidgets('read-only mode shows booked state but disables the checkbox',
+      (tester) async {
+    await tester.pumpWidget(_wrap(_section(
+      stays: [_confirmedStay.copyWith(booked: true)],
+      segments: const [],
+      readOnly: true,
+      onStayBookedChanged: (_, __) => fail('read-only checkbox toggled'),
+    )));
+    final box = tester.widget<Checkbox>(find.byType(Checkbox));
+    expect(box.value, isTrue);
+    expect(box.onChanged, isNull);
   });
 
   testWidgets('drag handles render for editors but never in read-only mode',
