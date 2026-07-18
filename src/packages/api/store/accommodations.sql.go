@@ -15,7 +15,7 @@ import (
 const createAccommodation = `-- name: CreateAccommodation :one
 INSERT INTO accommodations (trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed
+RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed, position
 `
 
 type CreateAccommodationParams struct {
@@ -62,6 +62,7 @@ func (q *Queries) CreateAccommodation(ctx context.Context, arg CreateAccommodati
 		&i.Auto,
 		&i.AutoKey,
 		&i.Dismissed,
+		&i.Position,
 	)
 	return i, err
 }
@@ -121,7 +122,7 @@ func (q *Queries) DismissDraftAccommodation(ctx context.Context, arg DismissDraf
 }
 
 const listAccommodationsByTrip = `-- name: ListAccommodationsByTrip :many
-SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed FROM accommodations WHERE trip_id = $1 AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed, position FROM accommodations WHERE trip_id = $1 AND NOT dismissed ORDER BY position ASC, check_in ASC NULLS LAST, created_at ASC
 `
 
 func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID) ([]Accommodation, error) {
@@ -150,6 +151,7 @@ func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID
 			&i.Auto,
 			&i.AutoKey,
 			&i.Dismissed,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +164,7 @@ func (q *Queries) ListAccommodationsByTrip(ctx context.Context, tripID uuid.UUID
 }
 
 const listConfirmedAccommodationsByTrip = `-- name: ListConfirmedAccommodationsByTrip :many
-SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed FROM accommodations WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY check_in ASC NULLS LAST, created_at ASC
+SELECT id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed, position FROM accommodations WHERE trip_id = $1 AND auto = false AND NOT dismissed ORDER BY position ASC, check_in ASC NULLS LAST, created_at ASC
 `
 
 // Viewer/share/duplicate surface: drafts (auto=true) are editor-only.
@@ -192,6 +194,7 @@ func (q *Queries) ListConfirmedAccommodationsByTrip(ctx context.Context, tripID 
 			&i.Auto,
 			&i.AutoKey,
 			&i.Dismissed,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -201,6 +204,21 @@ func (q *Queries) ListConfirmedAccommodationsByTrip(ctx context.Context, tripID 
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAccommodationPosition = `-- name: SetAccommodationPosition :exec
+UPDATE accommodations SET position = $3 WHERE id = $1 AND trip_id = $2
+`
+
+type SetAccommodationPositionParams struct {
+	ID       uuid.UUID `json:"id"`
+	TripID   uuid.UUID `json:"trip_id"`
+	Position int32     `json:"position"`
+}
+
+func (q *Queries) SetAccommodationPosition(ctx context.Context, arg SetAccommodationPositionParams) error {
+	_, err := q.db.Exec(ctx, setAccommodationPosition, arg.ID, arg.TripID, arg.Position)
+	return err
 }
 
 const updateAccommodation = `-- name: UpdateAccommodation :one
@@ -216,7 +234,7 @@ SET name       = COALESCE($1, name),
     price_note = COALESCE($9, price_note),
     auto       = false
 WHERE id = $10 AND trip_id = $11 AND NOT dismissed
-RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed
+RETURNING id, trip_id, name, provider, url, address, latitude, longitude, check_in, check_out, price_note, created_at, updated_at, auto, auto_key, dismissed, position
 `
 
 type UpdateAccommodationParams struct {
@@ -268,6 +286,7 @@ func (q *Queries) UpdateAccommodation(ctx context.Context, arg UpdateAccommodati
 		&i.Auto,
 		&i.AutoKey,
 		&i.Dismissed,
+		&i.Position,
 	)
 	return i, err
 }

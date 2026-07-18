@@ -295,20 +295,36 @@ func duplicateSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, a := range accommodations {
-		if _, err := qtx.CreateAccommodation(ctx, store.CreateAccommodationParams{
+		copied, err := qtx.CreateAccommodation(ctx, store.CreateAccommodationParams{
 			TripID: copyTrip.ID, Name: a.Name, Provider: a.Provider, Url: a.Url,
 			Address: a.Address, Latitude: a.Latitude, Longitude: a.Longitude,
 			CheckIn: a.CheckIn, CheckOut: a.CheckOut, PriceNote: a.PriceNote,
+		})
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not copy trip")
+			return
+		}
+		// Create doesn't take position (inserts default to the 9999 tail) —
+		// carry the source's manual bookings-hub order onto the copy.
+		if err := qtx.SetAccommodationPosition(ctx, store.SetAccommodationPositionParams{
+			ID: copied.ID, TripID: copyTrip.ID, Position: a.Position,
 		}); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "could not copy trip")
 			return
 		}
 	}
 	for _, s := range segments {
-		if _, err := qtx.CreateSegment(ctx, store.CreateSegmentParams{
+		copied, err := qtx.CreateSegment(ctx, store.CreateSegmentParams{
 			TripID: copyTrip.ID, Mode: s.Mode, Origin: s.Origin, Destination: s.Destination,
 			DepartDate: s.DepartDate, ArriveDate: s.ArriveDate, Provider: s.Provider,
 			Url: s.Url, PriceNote: s.PriceNote, Notes: s.Notes,
+		})
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not copy trip")
+			return
+		}
+		if err := qtx.SetSegmentPosition(ctx, store.SetSegmentPositionParams{
+			ID: copied.ID, TripID: copyTrip.ID, Position: s.Position,
 		}); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "could not copy trip")
 			return

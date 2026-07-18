@@ -54,6 +54,7 @@ BookingsSection _section({
   void Function(Accommodation)? onConfirmStay,
   void Function(Accommodation)? onEditStay,
   void Function(Accommodation)? onDeleteStay,
+  void Function(int, int)? onReorderStays,
 }) =>
     BookingsSection(
       trip: _trip(),
@@ -68,6 +69,7 @@ BookingsSection _section({
       onDeleteSegment: (_) {},
       onEditSegment: (_) {},
       onConfirmSegment: (_) {},
+      onReorderStays: onReorderStays,
     );
 
 void main() {
@@ -138,5 +140,23 @@ void main() {
     expect(find.text('Save'), findsOneWidget);
     expect(find.text('Stay in Lisbon'), findsOneWidget);
     expect(find.text('2026-09-01 → 2026-09-04'), findsOneWidget);
+  });
+
+  testWidgets('drag handles render for editors but never in read-only mode',
+      (tester) async {
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [_draftStay, _confirmedStay],
+      segments: const [],
+      onReorderStays: (_, __) {},
+    )));
+    expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2));
+
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [_draftStay, _confirmedStay],
+      segments: const [],
+      readOnly: true,
+      onReorderStays: (_, __) {},
+    )));
+    expect(find.byIcon(Icons.drag_indicator), findsNothing);
   });
 }

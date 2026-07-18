@@ -936,6 +936,46 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// Persists a drag-reorder of the saved-stays list in the bookings hub.
+  /// Optimistic: display order is _stays list order; the drafts sync never
+  /// rewrites positions, so the order set here sticks across reloads.
+  Future<void> _reorderStays(int oldIndex, int newIndex) async {
+    if (_guardOffline()) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (newIndex == oldIndex) return;
+    final prev = _stays;
+    final newOrder = List.of(_stays);
+    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    setState(() => _stays = newOrder);
+    try {
+      await ref.read(bookingDraftsApiServiceProvider).reorderBookings(
+          widget.tripId,
+          stayIds: [for (final a in newOrder) a.id]);
+    } catch (e) {
+      if (mounted) setState(() => _stays = prev);
+      _showSnack('Could not reorder: $e');
+    }
+  }
+
+  /// Mirror of [_reorderStays] for the transport-segments list.
+  Future<void> _reorderSegments(int oldIndex, int newIndex) async {
+    if (_guardOffline()) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (newIndex == oldIndex) return;
+    final prev = _segments;
+    final newOrder = List.of(_segments);
+    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    setState(() => _segments = newOrder);
+    try {
+      await ref.read(bookingDraftsApiServiceProvider).reorderBookings(
+          widget.tripId,
+          segmentIds: [for (final s in newOrder) s.id]);
+    } catch (e) {
+      if (mounted) setState(() => _segments = prev);
+      _showSnack('Could not reorder: $e');
+    }
+  }
+
   Future<void> _deleteTodo(BookingTodo todo) async {
     if (_guardOffline()) return;
     try {
@@ -3423,6 +3463,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     onDeleteSegment: _deleteSegment,
                                     onEditSegment: _editSegment,
                                     onConfirmSegment: _confirmSegment,
+                                    onReorderStays: (_readOnly || _isOffline)
+                                        ? null
+                                        : _reorderStays,
+                                    onReorderSegments: (_readOnly || _isOffline)
+                                        ? null
+                                        : _reorderSegments,
                                   ),
                                   // Bookings live embedded in their city groups;
                                   // this section appears only when something

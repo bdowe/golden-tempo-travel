@@ -36,4 +36,22 @@ class BookingDraftsApiService {
     }
     throw Exception('Failed to sync booking drafts (${res.statusCode})');
   }
+
+  /// Persists the user's drag order for one bookings-hub group. Sends only
+  /// the group that moved; the server renumbers those rows 0..n-1 and leaves
+  /// the other group alone.
+  Future<void> reorderBookings(String tripId,
+      {List<String>? stayIds, List<String>? segmentIds}) async {
+    final res = await apiClient.httpClient.put(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/bookings/order'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode({
+        if (stayIds != null) 'stay_ids': stayIds,
+        if (segmentIds != null) 'segment_ids': segmentIds,
+      }),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to reorder bookings (${res.statusCode})');
+    }
+  }
 }

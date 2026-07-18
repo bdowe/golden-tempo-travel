@@ -28,6 +28,13 @@ class BookingsSection extends StatelessWidget {
   final void Function(TripSegment) onEditSegment;
   final void Function(TripSegment) onConfirmSegment;
 
+  /// Drag-reorder callbacks, `ReorderableListView.onReorder`-shaped. Null
+  /// disables reordering for that group (viewer follows, offline). Indexes
+  /// refer to [stays]/[segments] directly — when reordering is enabled the
+  /// widget is not read-only, so the visible list IS the passed-in list.
+  final void Function(int oldIndex, int newIndex)? onReorderStays;
+  final void Function(int oldIndex, int newIndex)? onReorderSegments;
+
   /// Read-only mode (viewer follows): stays and transport render without the
   /// add buttons and edit/delete icons, and Suggested drafts are hidden
   /// entirely (the server already withholds them from viewers).
@@ -46,6 +53,8 @@ class BookingsSection extends StatelessWidget {
     required this.onDeleteSegment,
     required this.onEditSegment,
     required this.onConfirmSegment,
+    this.onReorderStays,
+    this.onReorderSegments,
     this.readOnly = false,
   });
 
@@ -88,7 +97,8 @@ class BookingsSection extends StatelessWidget {
   Widget _draftActions(
       {required VoidCallback onKeep,
       required VoidCallback onEdit,
-      required VoidCallback onDismiss}) {
+      required VoidCallback onDismiss,
+      Widget? dragHandle}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -107,18 +117,36 @@ class BookingsSection extends StatelessWidget {
           tooltip: 'Dismiss suggestion',
           onPressed: onDismiss,
         ),
+        if (dragHandle != null) dragHandle,
       ],
     );
   }
+
+  Widget _dragHandle(ThemeData theme, int index) =>
+      ReorderableDragStartListener(
+        index: index,
+        child: Padding(
+          padding: const EdgeInsets.only(left: AppSpacing.sm),
+          child: Icon(Icons.drag_indicator,
+              color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // Belt and braces: the server withholds drafts from viewers, but a stale
     // cached copy could still carry them.
-    final visibleStays = readOnly ? stays.where((a) => !a.auto) : stays;
-    final visibleSegments = readOnly ? segments.where((s) => !s.auto) : segments;
+    final visibleStays = (readOnly ? stays.where((a) => !a.auto) : stays)
+        .toList(growable: false);
+    final visibleSegments =
+        (readOnly ? segments.where((s) => !s.auto) : segments)
+            .toList(growable: false);
     final draftCardColor = theme.colorScheme.surfaceContainerLow;
+    final canDragStays =
+        onReorderStays != null && !readOnly && visibleStays.length > 1;
+    final canDragSegments =
+        onReorderSegments != null && !readOnly && visibleSegments.length > 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -152,115 +180,154 @@ class BookingsSection extends StatelessWidget {
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-        for (final a in visibleStays)
-          Card(
-            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            color: a.auto ? draftCardColor : null,
-            child: ListTile(
-              leading: const Icon(Icons.hotel_outlined),
-              title: Row(
-                children: [
-                  Flexible(child: Text(a.name)),
-                  if (a.auto) _suggestedPill(theme),
-                ],
-              ),
-              subtitle: Text(
-                [
-                  if (a.provider != null && a.provider!.isNotEmpty) a.provider,
-                  if (a.checkIn != null && a.checkOut != null)
-                    '${a.checkIn} → ${a.checkOut}',
-                  if (a.address != null && a.address!.isNotEmpty) a.address,
-                ].whereType<String>().join(' · '),
-              ),
-              trailing: a.auto && !readOnly
-                  ? _draftActions(
-                      onKeep: () => onConfirmStay(a),
-                      onEdit: () => onEditStay(a),
-                      onDismiss: () => onDeleteStay(a),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (a.url != null && a.url!.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.open_in_new, size: 18),
-                            tooltip: 'Open listing',
-                            onPressed: () => _open(context, a.url!,
-                                provider: a.provider, kind: 'stay'),
-                          ),
-                        if (!readOnly) ...[
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            tooltip: 'Edit stay',
-                            onPressed: () => onEditStay(a),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            tooltip: 'Remove stay',
-                            onPressed: () => onDeleteStay(a),
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
-          ),
-        for (final s in visibleSegments)
-          Card(
-            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            color: s.auto ? draftCardColor : null,
-            child: ListTile(
-              leading: Icon(_modeIcon(s.mode)),
-              title: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      [s.origin, s.destination]
-                          .whereType<String>()
-                          .join(' → '),
-                    ),
+        // Only built when non-empty: ReorderableListView is itself a scroll
+        // view, and a pair of always-present empty ones would pollute the
+        // page's scrollable tree (and every find.byType(CustomScrollView)).
+        if (visibleStays.isNotEmpty)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            buildDefaultDragHandles: false,
+            itemCount: visibleStays.length,
+            onReorder: (oldIndex, newIndex) =>
+                onReorderStays?.call(oldIndex, newIndex),
+            itemBuilder: (context, i) {
+              final a = visibleStays[i];
+              return Card(
+                key: ValueKey(a.id),
+                margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                color: a.auto ? draftCardColor : null,
+                child: ListTile(
+                  leading: const Icon(Icons.hotel_outlined),
+                  title: Row(
+                    children: [
+                      Flexible(child: Text(a.name)),
+                      if (a.auto) _suggestedPill(theme),
+                    ],
                   ),
-                  if (s.auto) _suggestedPill(theme),
-                ],
-              ),
-              subtitle: Text(
-                [
-                  s.mode,
-                  if (s.departDate != null) s.departDate,
-                  if (s.provider != null && s.provider!.isNotEmpty) s.provider,
-                  if (s.notes != null && s.notes!.isNotEmpty) s.notes,
-                ].whereType<String>().join(' · '),
-              ),
-              trailing: s.auto && !readOnly
-                  ? _draftActions(
-                      onKeep: () => onConfirmSegment(s),
-                      onEdit: () => onEditSegment(s),
-                      onDismiss: () => onDeleteSegment(s),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (s.url != null && s.url!.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.open_in_new, size: 18),
-                            tooltip: 'Open booking',
-                            onPressed: () => _open(context, s.url!,
-                                provider: s.provider, kind: 'transport'),
-                          ),
-                        if (!readOnly) ...[
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            tooltip: 'Edit transport',
-                            onPressed: () => onEditSegment(s),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            tooltip: 'Remove transport',
-                            onPressed: () => onDeleteSegment(s),
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
+                  subtitle: Text(
+                    [
+                      if (a.provider != null && a.provider!.isNotEmpty)
+                        a.provider,
+                      if (a.checkIn != null && a.checkOut != null)
+                        '${a.checkIn} → ${a.checkOut}',
+                      if (a.address != null && a.address!.isNotEmpty) a.address,
+                    ].whereType<String>().join(' · '),
+                  ),
+                  trailing: a.auto && !readOnly
+                      ? _draftActions(
+                          onKeep: () => onConfirmStay(a),
+                          onEdit: () => onEditStay(a),
+                          onDismiss: () => onDeleteStay(a),
+                          dragHandle:
+                              canDragStays ? _dragHandle(theme, i) : null,
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (a.url != null && a.url!.isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.open_in_new, size: 18),
+                                tooltip: 'Open listing',
+                                onPressed: () => _open(context, a.url!,
+                                    provider: a.provider, kind: 'stay'),
+                              ),
+                            if (!readOnly) ...[
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                tooltip: 'Edit stay',
+                                onPressed: () => onEditStay(a),
+                              ),
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.delete_outline, size: 18),
+                                tooltip: 'Remove stay',
+                                onPressed: () => onDeleteStay(a),
+                              ),
+                            ],
+                            if (canDragStays) _dragHandle(theme, i),
+                          ],
+                        ),
+                ),
+              );
+            },
+          ),
+        if (visibleSegments.isNotEmpty)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            buildDefaultDragHandles: false,
+            itemCount: visibleSegments.length,
+            onReorder: (oldIndex, newIndex) =>
+                onReorderSegments?.call(oldIndex, newIndex),
+            itemBuilder: (context, i) {
+              final s = visibleSegments[i];
+              return Card(
+                key: ValueKey(s.id),
+                margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                color: s.auto ? draftCardColor : null,
+                child: ListTile(
+                  leading: Icon(_modeIcon(s.mode)),
+                  title: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          [s.origin, s.destination]
+                              .whereType<String>()
+                              .join(' → '),
+                        ),
+                      ),
+                      if (s.auto) _suggestedPill(theme),
+                    ],
+                  ),
+                  subtitle: Text(
+                    [
+                      s.mode,
+                      if (s.departDate != null) s.departDate,
+                      if (s.provider != null && s.provider!.isNotEmpty)
+                        s.provider,
+                      if (s.notes != null && s.notes!.isNotEmpty) s.notes,
+                    ].whereType<String>().join(' · '),
+                  ),
+                  trailing: s.auto && !readOnly
+                      ? _draftActions(
+                          onKeep: () => onConfirmSegment(s),
+                          onEdit: () => onEditSegment(s),
+                          onDismiss: () => onDeleteSegment(s),
+                          dragHandle:
+                              canDragSegments ? _dragHandle(theme, i) : null,
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (s.url != null && s.url!.isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.open_in_new, size: 18),
+                                tooltip: 'Open booking',
+                                onPressed: () => _open(context, s.url!,
+                                    provider: s.provider, kind: 'transport'),
+                              ),
+                            if (!readOnly) ...[
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                tooltip: 'Edit transport',
+                                onPressed: () => onEditSegment(s),
+                              ),
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.delete_outline, size: 18),
+                                tooltip: 'Remove transport',
+                                onPressed: () => onDeleteSegment(s),
+                              ),
+                            ],
+                            if (canDragSegments) _dragHandle(theme, i),
+                          ],
+                        ),
+                ),
+              );
+            },
           ),
       ],
     );
