@@ -906,6 +906,36 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// Persists a drag-reorder of the residual "Other bookings" cards.
+  /// Optimistic: residual display order derives from _bookingTodos list order
+  /// (see _groupedBookings), so move the residual entries to the tail in their
+  /// new order — grouped todos are slot-matched by key, so nothing else shifts.
+  Future<void> _reorderResidual(
+      List<BookingTodo> residual, int oldIndex, int newIndex) async {
+    if (_guardOffline()) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (newIndex == oldIndex) return;
+    final newOrder = List.of(residual);
+    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    final residualIds = {for (final t in residual) t.id};
+    final prev = _bookingTodos;
+    setState(() {
+      _bookingTodos = [
+        for (final t in _bookingTodos)
+          if (!residualIds.contains(t.id)) t,
+        ...newOrder,
+      ];
+    });
+    try {
+      await ref
+          .read(bookingTodosApiServiceProvider)
+          .reorderTodos(widget.tripId, [for (final t in newOrder) t.id]);
+    } catch (e) {
+      if (mounted) setState(() => _bookingTodos = prev);
+      _showSnack('Could not reorder: $e');
+    }
+  }
+
   Future<void> _deleteTodo(BookingTodo todo) async {
     if (_guardOffline()) return;
     try {
@@ -3414,24 +3444,51 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                       ],
                                     ),
                                     const SizedBox(height: 8),
-                                    for (final todo in grouped.residual)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 4),
-                                        child: BookingTodoCard(
-                                          todo: todo,
-                                          onBookedChanged: (v) =>
-                                              _setBooked(todo, v),
-                                          onOpen: _openCallbackFor(todo),
-                                          openLabelOverride: _flightLegs
-                                                  .containsKey(todo.todoKey)
-                                              ? 'Find flights'
-                                              : null,
-                                          onDelete: todo.auto
-                                              ? null
-                                              : () => _deleteTodo(todo),
-                                        ),
-                                      ),
+                                    ReorderableListView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      padding: EdgeInsets.zero,
+                                      buildDefaultDragHandles: false,
+                                      itemCount: grouped.residual.length,
+                                      onReorder: (oldIndex, newIndex) =>
+                                          _reorderResidual(grouped.residual,
+                                              oldIndex, newIndex),
+                                      itemBuilder: (context, i) {
+                                        final todo = grouped.residual[i];
+                                        final canDrag = !_readOnly &&
+                                            !_isOffline &&
+                                            grouped.residual.length > 1;
+                                        return Padding(
+                                          key: ValueKey(todo.id),
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 4),
+                                          child: BookingTodoCard(
+                                            todo: todo,
+                                            onBookedChanged: (v) =>
+                                                _setBooked(todo, v),
+                                            onOpen: _openCallbackFor(todo),
+                                            openLabelOverride: _flightLegs
+                                                    .containsKey(todo.todoKey)
+                                                ? 'Find flights'
+                                                : null,
+                                            onDelete: todo.auto
+                                                ? null
+                                                : () => _deleteTodo(todo),
+                                            dragHandle: canDrag
+                                                ? ReorderableDragStartListener(
+                                                    index: i,
+                                                    child: Icon(
+                                                      Icons.drag_indicator,
+                                                      color: theme.colorScheme
+                                                          .onSurfaceVariant,
+                                                    ),
+                                                  )
+                                                : null,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ],
                               ),

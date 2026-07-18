@@ -52,6 +52,19 @@ class BookingTodosApiService {
     throw Exception('Failed to update booking todo (${res.statusCode})');
   }
 
+  /// Persists the user's drag order for the residual "Other bookings" list.
+  /// Sends only that subset; the server renumbers those rows 0..n-1.
+  Future<void> reorderTodos(String tripId, List<String> todoIds) async {
+    final res = await apiClient.httpClient.put(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos/order'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode({'todo_ids': todoIds}),
+    );
+    if (res.statusCode != 204) {
+      throw Exception('Failed to reorder booking todos (${res.statusCode})');
+    }
+  }
+
   Future<void> delete(String tripId, String todoId) async {
     final res = await apiClient.httpClient.delete(
       Uri.parse('${apiClient.baseUrl}/trips/$tripId/booking-todos/$todoId'),

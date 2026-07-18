@@ -44,6 +44,11 @@ class BookingTodoCard extends StatelessWidget {
   /// the in-app flight search instead of an external provider link).
   final String? openLabelOverride;
 
+  /// Optional drag affordance (e.g. a ReorderableDragStartListener-wrapped
+  /// drag_indicator) rendered at the end of the title row. The card stays
+  /// index-agnostic — the list that owns the ordering builds the listener.
+  final Widget? dragHandle;
+
   const BookingTodoCard({
     super.key,
     required this.todo,
@@ -51,6 +56,7 @@ class BookingTodoCard extends StatelessWidget {
     this.onOpen,
     this.onDelete,
     this.openLabelOverride,
+    this.dragHandle,
   });
 
   IconData get _icon => _kindIcon(todo);
@@ -92,6 +98,7 @@ class BookingTodoCard extends StatelessWidget {
                     tooltip: 'Remove',
                     onPressed: onDelete,
                   ),
+                if (dragHandle != null) dragHandle!,
               ],
             ),
             Row(

@@ -190,6 +190,21 @@ func (q *Queries) SetBookingTodoBooked(ctx context.Context, arg SetBookingTodoBo
 	return i, err
 }
 
+const setBookingTodoPosition = `-- name: SetBookingTodoPosition :exec
+UPDATE booking_todos SET position = $3 WHERE id = $1 AND trip_id = $2
+`
+
+type SetBookingTodoPositionParams struct {
+	ID       uuid.UUID `json:"id"`
+	TripID   uuid.UUID `json:"trip_id"`
+	Position int32     `json:"position"`
+}
+
+func (q *Queries) SetBookingTodoPosition(ctx context.Context, arg SetBookingTodoPositionParams) error {
+	_, err := q.db.Exec(ctx, setBookingTodoPosition, arg.ID, arg.TripID, arg.Position)
+	return err
+}
+
 const updateBookingTodo = `-- name: UpdateBookingTodo :one
 UPDATE booking_todos
 SET kind        = COALESCE($1, kind),

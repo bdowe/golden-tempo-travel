@@ -322,6 +322,87 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toBookingTodoResponse(todo))
 }
 
+type ReorderBookingTodosRequest struct {
+	TodoIDs []string `json:"todo_ids"`
+}
+
+// reorderBookingTodosHandler reassigns positions 0..n-1 to the submitted todo
+// ids — a subset of the trip's todos, not a full permutation. The client only
+// sends its draggable residual ("Other bookings") list: city-grouped todos
+// render slot-matched by todo_key regardless of position, and their positions
+// are re-upserted from the derived payload on every sync anyway. Residual rows
+// are durably custom (auto = false), which sync never rewrites, so the order
+// set here sticks.
+func reorderBookingTodosHandler(w http.ResponseWriter, r *http.Request) {
+	trip, ok := editableTrip(w, r)
+	if !ok {
+		return
+	}
+	tripID := trip.ID
+	var req ReorderBookingTodosRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.TodoIDs) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "todo_ids is required")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := dbPool.Begin(ctx)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder booking todos")
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := store.New(tx)
+
+	// Serialize against concurrent syncs/reorders so the stale-set 409 below
+	// stays reliable between this read and commit.
+	if _, err := q.GetTripForUpdate(ctx, tripID); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder booking todos")
+		return
+	}
+	todos, err := q.ListBookingTodosByTrip(ctx, tripID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not load booking todos")
+		return
+	}
+	existing := make(map[uuid.UUID]bool, len(todos))
+	for _, t := range todos {
+		existing[t.ID] = true
+	}
+	ordered := make([]uuid.UUID, 0, len(req.TodoIDs))
+	seen := make(map[uuid.UUID]bool, len(req.TodoIDs))
+	for _, raw := range req.TodoIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil || !existing[id] || seen[id] {
+			writeJSONError(w, http.StatusConflict, "booking list is out of date; reload the trip")
+			return
+		}
+		seen[id] = true
+		ordered = append(ordered, id)
+	}
+	for pos, id := range ordered {
+		if err := q.SetBookingTodoPosition(ctx, store.SetBookingTodoPositionParams{
+			ID: id, TripID: tripID, Position: int32(pos),
+		}); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "could not reorder booking todos")
+			return
+		}
+	}
+	if err := q.TouchTrip(ctx, touchedBy(tripID, r)); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder booking todos")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not reorder booking todos")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func deleteBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 	trip, ok := editableTrip(w, r)
 	if !ok {

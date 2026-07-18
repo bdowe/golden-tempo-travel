@@ -41,6 +41,9 @@ SET kind        = COALESCE(sqlc.narg('kind'), kind),
 WHERE id = sqlc.arg('id') AND trip_id = sqlc.arg('trip_id') AND auto = false
 RETURNING *;
 
+-- name: SetBookingTodoPosition :exec
+UPDATE booking_todos SET position = $3 WHERE id = $1 AND trip_id = $2;
+
 -- name: DeleteBookingTodoNonAuto :execrows
 DELETE FROM booking_todos WHERE id = $1 AND trip_id = $2 AND auto = false;
 
