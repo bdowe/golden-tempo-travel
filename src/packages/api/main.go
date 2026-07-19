@@ -610,6 +610,10 @@ func main() {
 	// degraded mode or without a Duffel token.
 	startAlertChecker(ctx)
 
+	// Background re-engagement checkers (Wave 16): trip reminders + weekly
+	// planning nudge; no-op in degraded mode.
+	startReengagementChecker(ctx)
+
 	startServer(buildRouter())
 }
 
