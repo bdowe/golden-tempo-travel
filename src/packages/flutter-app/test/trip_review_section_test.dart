@@ -1,0 +1,179 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:travel_route_planner/models/trip_finding.dart';
+import 'package:travel_route_planner/services/api_client.dart';
+import 'package:travel_route_planner/services/trip_review_api_service.dart';
+import 'package:travel_route_planner/providers/trip_review_provider.dart';
+import 'package:travel_route_planner/widgets/trip_review_section.dart';
+import 'package:travel_route_planner/widgets/empty_state.dart';
+
+/// A fake that returns a fixed list and records the checkHours values it was
+/// asked for, so tests can assert the opt-in extra check re-fetches.
+class _FakeTripReviewApiService extends TripReviewApiService {
+  final List<TripFinding> findings;
+  final List<bool> checkHoursCalls = [];
+
+  _FakeTripReviewApiService(this.findings)
+      : super(ApiClient(baseUrl: 'http://test'));
+
+  @override
+  Future<List<TripFinding>> getReview(String tripId,
+      {bool checkHours = false}) async {
+    checkHoursCalls.add(checkHours);
+    return List.of(findings);
+  }
+}
+
+TripFinding _f(String severity, String category, String message,
+        {int? day, String? itemId}) =>
+    TripFinding(
+      severity: severity,
+      category: category,
+      message: message,
+      tripId: 't1',
+      day: day,
+      itemId: itemId,
+    );
+
+Future<_FakeTripReviewApiService> _pump(
+  WidgetTester tester,
+  List<TripFinding> findings, {
+  bool isOffline = false,
+  void Function(int day)? onScrollToDay,
+  int? Function(String itemId)? dayForItem,
+}) async {
+  final fake = _FakeTripReviewApiService(findings);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        tripReviewApiServiceProvider.overrideWithValue(fake),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TripReviewSection(
+              tripId: 't1',
+              isOffline: isOffline,
+              onScrollToDay: onScrollToDay,
+              dayForItem: dayForItem,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return fake;
+}
+
+void main() {
+  testWidgets(
+      'renders findings ordered worst-first with severity chips + count pill',
+      (tester) async {
+    await _pump(tester, [
+      _f('info', 'packing', 'Consider a rain jacket'),
+      _f('critical', 'dates', 'Trip has no dates set'),
+      _f('warn', 'lodging', 'No lodging on day 2'),
+    ]);
+
+    expect(find.text('Trip health'), findsOneWidget);
+    // Count pill.
+    expect(find.text('3 to review'), findsOneWidget);
+    // Severity chips.
+    expect(find.text('Critical'), findsOneWidget);
+    expect(find.text('Warning'), findsOneWidget);
+    expect(find.text('Info'), findsOneWidget);
+    // Messages present.
+    expect(find.text('Trip has no dates set'), findsOneWidget);
+
+    // Worst-first ordering: critical message sits above the info message.
+    final critical = tester.getTopLeft(find.text('Trip has no dates set')).dy;
+    final info = tester.getTopLeft(find.text('Consider a rain jacket')).dy;
+    expect(critical, lessThan(info));
+  });
+
+  testWidgets('empty findings shows the positive "Looks good" empty state',
+      (tester) async {
+    await _pump(tester, []);
+
+    expect(find.byType(EmptyState), findsOneWidget);
+    expect(find.text('Looks good'), findsOneWidget);
+    expect(find.text('3 to review'), findsNothing);
+  });
+
+  testWidgets('tapping a finding with a day invokes the scroll callback',
+      (tester) async {
+    int? scrolledTo;
+    await _pump(
+      tester,
+      [_f('warn', 'unscheduled', 'Nothing planned on day 3', day: 3)],
+      onScrollToDay: (day) => scrolledTo = day,
+    );
+
+    await tester.tap(find.text('Nothing planned on day 3'));
+    await tester.pumpAndSettle();
+
+    expect(scrolledTo, 3);
+  });
+
+  testWidgets('tapping an item-only finding resolves its day via dayForItem',
+      (tester) async {
+    int? scrolledTo;
+    await _pump(
+      tester,
+      [_f('warn', 'transit', 'Long gap before this stop', itemId: 'item-x')],
+      onScrollToDay: (day) => scrolledTo = day,
+      dayForItem: (id) => id == 'item-x' ? 5 : null,
+    );
+
+    await tester.tap(find.text('Long gap before this stop'));
+    await tester.pumpAndSettle();
+
+    expect(scrolledTo, 5);
+  });
+
+  testWidgets('a finding with no anchor does not crash on tap', (tester) async {
+    var scrollCount = 0;
+    await _pump(
+      tester,
+      [_f('info', 'budget', 'Budget looks tight')],
+      onScrollToDay: (_) => scrollCount++,
+    );
+
+    // Not tappable (no day/item) — the message renders and nothing scrolls.
+    await tester.tap(find.text('Budget looks tight'));
+    await tester.pumpAndSettle();
+    expect(scrollCount, 0);
+  });
+
+  testWidgets('check-hours button triggers a checkHours=true refetch',
+      (tester) async {
+    final fake = await _pump(tester, [_f('info', 'packing', 'Bring sunscreen')]);
+
+    // Initial load is hours-off.
+    expect(fake.checkHoursCalls, contains(false));
+    expect(fake.checkHoursCalls, isNot(contains(true)));
+
+    await tester.tap(find.text('Also check opening hours'));
+    await tester.pumpAndSettle();
+
+    // Flipping the flag re-fetches with checkHours=true.
+    expect(fake.checkHoursCalls, contains(true));
+  });
+
+  testWidgets('offline disables the check-hours action', (tester) async {
+    final fake = await _pump(
+      tester,
+      [_f('info', 'packing', 'Bring sunscreen')],
+      isOffline: true,
+    );
+
+    await tester.tap(find.text('Also check opening hours'));
+    await tester.pumpAndSettle();
+
+    // Button is disabled offline — no extra fetch.
+    expect(fake.checkHoursCalls, isNot(contains(true)));
+  });
+}
