@@ -216,6 +216,14 @@ type PriceAlert struct {
 	Baggage           string             `json:"baggage"`
 }
 
+type ReminderSend struct {
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"user_id"`
+	TripLineageKey string    `json:"trip_lineage_key"`
+	Kind           string    `json:"kind"`
+	SentAt         time.Time `json:"sent_at"`
+}
+
 type Session struct {
 	ID        string    `json:"id"`
 	UserID    uuid.UUID `json:"user_id"`
@@ -337,15 +345,16 @@ type TripShare struct {
 }
 
 type User struct {
-	ID              uuid.UUID          `json:"id"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
-	Email           string             `json:"email"`
-	PasswordHash    *string            `json:"password_hash"`
-	DisplayName     *string            `json:"display_name"`
-	IsAdmin         bool               `json:"is_admin"`
-	OnboardedAt     pgtype.Timestamptz `json:"onboarded_at"`
-	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
-	RemindersOptOut bool               `json:"reminders_opt_out"`
-	NudgesOptOut    bool               `json:"nudges_opt_out"`
+	ID                uuid.UUID          `json:"id"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	Email             string             `json:"email"`
+	PasswordHash      *string            `json:"password_hash"`
+	DisplayName       *string            `json:"display_name"`
+	IsAdmin           bool               `json:"is_admin"`
+	OnboardedAt       pgtype.Timestamptz `json:"onboarded_at"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	RemindersOptOut   bool               `json:"reminders_opt_out"`
+	NudgesOptOut      bool               `json:"nudges_opt_out"`
+	LastWeeklyNudgeAt pgtype.Timestamptz `json:"last_weekly_nudge_at"`
 }
