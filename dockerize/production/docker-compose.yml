@@ -1,14 +1,19 @@
 # Production stack for https://goldentempotravel.com — same topology as
 # dockerize/deployment/docker-compose.yml, but runs prebuilt images from
-# GHCR (no build:) and terminates TLS on the gateway (:80 + :443) behind
-# Cloudflare. All nginx config and certs are volume-mounted, never baked,
-# so a config change is `docker compose up -d --force-recreate gateway`,
-# not an image rebuild.
+# GHCR (no build:) and reaches the internet exclusively through a
+# Cloudflare Tunnel (the cloudflared service below dials OUT to Cloudflare;
+# nothing here publishes a host port, and the host needs no inbound
+# firewall openings at all). TLS terminates at the Cloudflare edge; the
+# tunnel leg is encrypted by cloudflared itself, so the gateway serves
+# plain :80 on the private compose network only. All nginx config is
+# volume-mounted, never baked, so a config change is
+# `docker compose up -d --force-recreate gateway`, not an image rebuild.
 #
-# Runs from /opt/goldentempo/ on the VPS with a .env file next to it
-# (copy .env.sample in this directory and fill it in). Compose reads that
-# same .env automatically for ${...} interpolation, so POSTGRES_PASSWORD /
-# IMAGE_TAG below and the api's env_file all come from one file.
+# Runs from /opt/goldentempo/ on the production host with a .env file next
+# to it (copy .env.sample in this directory and fill it in). Compose reads
+# that same .env automatically for ${...} interpolation, so
+# POSTGRES_PASSWORD / IMAGE_TAG / TUNNEL_TOKEN below and the api's
+# env_file all come from one file.
 services:
   chrome:
     image: chromedp/headless-shell:latest
@@ -90,28 +95,41 @@ services:
 
   gateway:
     image: ghcr.io/bdowe/goldentempo-gateway:${IMAGE_TAG:-latest}
-    ports:
-      - "80:80"
-      - "443:443"
+    # No ports: on purpose — the only way in is the cloudflared service on
+    # the private compose network. Publishing 80/443 here would bypass the
+    # tunnel AND the real-IP trust model in nginx/cloudflare-realip.conf.
     volumes:
       # prod.conf replaces the baked-in :80 localhost server; the shared
       # location snippet + $share_prerender map stay from the image.
       - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/cloudflare-realip.conf:/etc/nginx/conf.d/cloudflare-realip.conf:ro
-      # Cloudflare Origin CA cert + key (origin.crt / origin.key).
-      - /etc/goldentempo/certs:/etc/goldentempo/certs:ro
     depends_on:
       - api
     healthcheck:
-      # :80 is a wholesale 301 to https://goldentempotravel.com, so probe :443
-      # directly; the apex server is default_server, so "localhost" lands
-      # there. --no-check-certificate: the Origin CA cert isn't in the
-      # container's trust store (it's only trusted by Cloudflare).
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://localhost/health"]
+      # The apex server is default_server on :80, so "localhost" lands there.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+    networks:
+      - travel-planner-network
+
+  # Outbound-only connector to the Cloudflare edge. The tunnel's public
+  # hostnames (configured in the Zero Trust dashboard) route
+  # goldentempotravel.com → http://gateway:80 and ssh.goldentempotravel.com →
+  # ssh://172.28.0.1:22 (the host, via the pinned bridge gateway address;
+  # ufw must allow 22 from 172.28.0.0/16) for CI deploys. cloudflared sets
+  # CF-Connecting-IP
+  # on every proxied request, which nginx/cloudflare-realip.conf restores as
+  # the client address — see that file for why the compose subnet below is
+  # the trusted range.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:?TUNNEL_TOKEN must be set}
+    depends_on:
+      - gateway
     restart: unless-stopped
     networks:
       - travel-planner-network
@@ -122,3 +140,9 @@ volumes:
 networks:
   travel-planner-network:
     driver: bridge
+    # Pinned so nginx/cloudflare-realip.conf can trust exactly this range
+    # (the cloudflared container is the only possible client of gateway:80).
+    # Change the subnet there if you change it here.
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

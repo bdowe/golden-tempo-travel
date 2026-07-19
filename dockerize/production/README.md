@@ -1,28 +1,44 @@
 # Production stack — goldentempotravel.com
 
-Runs the prebuilt GHCR images on a VPS behind **Cloudflare** (proxied DNS,
-SSL mode **Full (strict)**). The gateway terminates TLS with a **Cloudflare
-Origin CA** certificate and restores the real client IP from
-`CF-Connecting-IP` so the API's per-IP rate limiter sees end users, not
-Cloudflare edge IPs.
+Runs the prebuilt GHCR images (multi-arch: amd64 + arm64) on a home
+**Raspberry Pi** reached exclusively through a **Cloudflare Tunnel**: the
+`cloudflared` service dials out to the Cloudflare edge, so the host
+publishes no ports, forwards nothing on the router, and never exposes its
+home IP. TLS terminates at the edge; nginx restores the real client IP
+from `CF-Connecting-IP` so the API's per-IP rate limiter sees end users,
+not the tunnel connector.
 
 ## Server layout
 
 ```
 /opt/goldentempo/
 ├── docker-compose.yml        # this directory's compose file
-├── .env                      # secrets — copy .env.sample and fill in (chmod 600)
+├── .env                      # secrets incl. TUNNEL_TOKEN — copy .env.sample, fill in (chmod 600)
 ├── .image_tag                # IMAGE_TAG=<sha> of the live deploy (written by CI)
 ├── backup.sh                 # nightly pg_dump + prune + optional rclone off-site copy
 ├── nginx/
-│   ├── prod.conf             # TLS server blocks (mounted over conf.d/default.conf)
-│   └── cloudflare-realip.conf# CF ranges + real_ip_header (mounted into conf.d/)
+│   ├── prod.conf             # :80 server blocks (mounted over conf.d/default.conf)
+│   └── cloudflare-realip.conf# compose-subnet trust + real_ip_header (mounted into conf.d/)
 └── backups/                  # backup.sh output (gzipped pg_dump custom format)
-
-/etc/goldentempo/certs/
-├── origin.crt                # Cloudflare Origin CA certificate (goldentempotravel.com + *.goldentempotravel.com)
-└── origin.key                # its private key (chmod 600, root-owned)
 ```
+
+## Cloudflare Tunnel
+
+One tunnel (Zero Trust → Networks → Tunnels), token in `.env` as
+`TUNNEL_TOKEN`, with three public hostnames:
+
+| Hostname | Service | Purpose |
+|----------|---------|---------|
+| `goldentempotravel.com` | `http://gateway:80` | the site |
+| `www.goldentempotravel.com` | `http://gateway:80` | nginx 301s it to the apex |
+| `ssh.goldentempotravel.com` | `ssh://172.28.0.1:22` | CI deploys (host sshd via the pinned bridge gateway IP) |
+
+The SSH hostname sits behind a Cloudflare **Access** application with a
+**service token**; CI authenticates with it (`CF_ACCESS_*` secrets) and
+then does normal SSH-key auth on top. The host firewall needs
+`ufw allow from 172.28.0.0/16 to any port 22` (tunnel→sshd) and no
+inbound 80/443 rules at all. Enable **Always Use HTTPS** at the edge —
+the origin serves plain :80 and never sees an http URL a user typed.
 
 ## Environment / secrets
 
@@ -47,17 +63,16 @@ host; it exists only on the private compose network.
 
 - `/etc/nginx/snippets/app-locations.conf` — the shared location set
   (API proxy, SPA, share-preview rewrite, static caching, legal pages),
-  used verbatim by both the deployment `:80` server and the production
-  `:443` server;
+  used verbatim by both the deployment and production `:80` servers;
 - `/etc/nginx/conf.d/share-prerender-map.conf` — the `$share_prerender`
   bot-UA `map` (must live at `http` scope);
 - `/etc/nginx/conf.d/default.conf` — the local `:80` server shell.
 
 The production compose then **mounts** `nginx/prod.conf` *over*
 `conf.d/default.conf` (replacing the `:80 localhost` shell with the
-`:80→301` + `:443 ssl` servers), mounts `nginx/cloudflare-realip.conf` into
-`conf.d/`, and mounts `/etc/goldentempo/certs` read-only. Editing a conf on
-the host therefore needs only a gateway restart, not an image rebuild:
+apex + www→apex servers) and mounts `nginx/cloudflare-realip.conf` into
+`conf.d/`. Editing a conf on the host therefore needs only a gateway
+restart, not an image rebuild:
 
 ```bash
 docker compose exec gateway nginx -t && docker compose exec gateway nginx -s reload
@@ -65,19 +80,19 @@ docker compose exec gateway nginx -t && docker compose exec gateway nginx -s rel
 
 ## Client-IP chain (rate limiting correctness)
 
-1. Cloudflare edge connects to nginx `:443` and sets `CF-Connecting-IP`.
-2. `cloudflare-realip.conf`: the peer IP is in Cloudflare's published
-   ranges, so the realip module rewrites `$remote_addr` to the header's
-   value (the end user). Non-Cloudflare peers keep their socket IP and the
-   header is ignored — unspoofable.
+1. The Cloudflare edge terminates TLS and hands the request to this host's
+   `cloudflared` connector, which proxies it to nginx `:80` with
+   `CF-Connecting-IP` set to the end user's IP.
+2. `cloudflare-realip.conf`: the peer is the cloudflared container on the
+   pinned compose subnet (`172.28.0.0/16`), so the realip module rewrites
+   `$remote_addr` to the header's value. Unspoofable because the gateway
+   publishes no host ports — that subnet is the only possible traffic
+   source, and everything on it is ours.
 3. The shared `/api/` proxy block sends
    `X-Forwarded-For: $remote_addr` — **replace, not append** — a single
    trusted value.
 4. The Go rate limiter (`src/packages/api/ratelimit.go` `clientIP()`) takes
    the rightmost `X-Forwarded-For` entry → the real user IP.
-
-When Cloudflare publishes new ranges, refresh `cloudflare-realip.conf`
-from <https://www.cloudflare.com/ips/> and reload the gateway.
 
 ## Deploy / rollback
 
@@ -86,9 +101,14 @@ both images to GHCR (`:latest` and `:<sha>`) and the CI `deploy` job
 rsyncs this directory to `/opt/goldentempo/` and restarts the stack with
 `IMAGE_TAG=<sha>`. It also writes the live tag to
 `/opt/goldentempo/.image_tag` so manual restarts don't fall back to
-`:latest`. (Until the `DEPLOY_HOST` / `DEPLOY_SSH_KEY` /
-`DEPLOY_KNOWN_HOSTS` secrets exist, the deploy job self-skips with a
-notice.)
+`:latest`. CI reaches the Pi through the tunnel's SSH hostname via
+`cloudflared access ssh` + an Access service token. (Until the
+`DEPLOY_HOST` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` /
+`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` secrets exist, the
+deploy job self-skips with a notice. `DEPLOY_HOST` is the SSH hostname —
+`ssh.goldentempotravel.com` — and `DEPLOY_KNOWN_HOSTS` entries must use
+that same name: on the Pi,
+`for f in /etc/ssh/ssh_host_*_key.pub; do awk '{print "ssh.goldentempotravel.com", $1, $2}' "$f"; done`.)
 
 **Rollback** = re-deploy an older image: GitHub → Actions → CI →
 *Run workflow* on `main` with `image_tag` set to the git SHA of a previous

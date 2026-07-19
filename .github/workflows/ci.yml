@@ -216,19 +216,26 @@ jobs:
     env:
       IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || github.sha }}
     steps:
-      # The DEPLOY_* secrets arrive with Track B step 3 (server provisioning).
-      # Until then this job self-skips with a notice instead of failing, so
-      # main CI stays green. Delete this gate once the secrets exist, if you
-      # want missing config to be loud.
+      # The production host is a Raspberry Pi behind a Cloudflare Tunnel, so
+      # there is no publicly routable SSH port: every ssh/rsync below goes
+      # through `cloudflared access ssh` against the tunnel's SSH hostname
+      # (DEPLOY_HOST, e.g. ssh.goldentempotravel.com), authenticated by a
+      # Cloudflare Access service token (CF_ACCESS_*) on top of the normal
+      # SSH keypair. Until all five secrets exist this job self-skips with a
+      # notice instead of failing, so main CI stays green. Delete this gate
+      # once the secrets exist, if you want missing config to be loud.
       - name: Check deploy secrets
         id: gate
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
-            echo "::notice::deploy secrets not configured — skipping deploy (Track B step 3)"
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ] \
+             || [ -z "$CF_ACCESS_CLIENT_ID" ] || [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo "::notice::deploy secrets not configured — skipping deploy (launch runbook step 3)"
             echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -247,25 +254,42 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
-      - name: Add server to known_hosts
+      # cloudflared provides the transport: ssh can't reach the Pi directly,
+      # so a ProxyCommand pipes each connection through the tunnel's SSH
+      # hostname, authorized by the Access service token (the
+      # TUNNEL_SERVICE_TOKEN_* env vars cloudflared reads).
+      - name: Install cloudflared and configure SSH via Cloudflare Access
         if: steps.gate.outputs.configured == 'true'
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          sudo curl -fsSL \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+            -o /usr/local/bin/cloudflared
+          sudo chmod +x /usr/local/bin/cloudflared
+          cloudflared --version
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName ${DEPLOY_HOST}
+            User deploy
+            ProxyCommand cloudflared access ssh --hostname %h
+          EOF
+          chmod 600 ~/.ssh/config
 
       # Everything under dockerize/production/ that's in git (compose, nginx
       # confs, README). No --delete: /opt/goldentempo/ also holds the .env,
-      # .image_tag, and backups/ that must never be touched from CI. Certs
-      # live outside the tree in /etc/goldentempo/certs.
+      # .image_tag, and backups/ that must never be touched from CI.
       - name: Sync production stack files
         if: steps.gate.outputs.configured == 'true'
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-        run: rsync -rtvz dockerize/production/ "deploy@${DEPLOY_HOST}:/opt/goldentempo/"
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: rsync -rtvz dockerize/production/ "deploy-target:/opt/goldentempo/"
 
       # .image_tag records what's live so manual server-side restarts can
       # reuse it (see dockerize/production/README.md) instead of silently
@@ -273,9 +297,10 @@ jobs:
       - name: Pull images and restart stack
         if: steps.gate.outputs.configured == 'true'
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
-          ssh "deploy@${DEPLOY_HOST}" "set -eu
+          ssh deploy-target "set -eu
             cd /opt/goldentempo
             printf 'IMAGE_TAG=%s\n' '${IMAGE_TAG}' > .image_tag
             export IMAGE_TAG='${IMAGE_TAG}'
