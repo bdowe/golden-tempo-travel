@@ -57,7 +57,7 @@ func exportSigningSecret() []byte {
 func signExportToken(secret []byte, tripID uuid.UUID, exp time.Time) string {
 	payload := tripID.String() + "|" + strconv.FormatInt(exp.Unix(), 10)
 	sig := hmacSign(secret, payload)
-	enc := base64.RawURLEncoding
+	enc := base64.RawURLEncoding.Strict()
 	return enc.EncodeToString([]byte(payload)) + "." + enc.EncodeToString(sig)
 }
 
@@ -70,7 +70,7 @@ func verifyExportTokenWith(secret []byte, token string, now time.Time) (uuid.UUI
 	if len(parts) != 2 {
 		return uuid.UUID{}, false
 	}
-	enc := base64.RawURLEncoding
+	enc := base64.RawURLEncoding.Strict()
 	payloadBytes, err := enc.DecodeString(parts[0])
 	if err != nil {
 		return uuid.UUID{}, false
