@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -22,7 +23,7 @@ import (
 // Finding is one flagged issue. Day/ItemID follow ItineraryItemResponse's
 // nullable-pointer + omitempty convention: absent when the finding isn't tied
 // to a specific day or entity. Severity is info|warn|critical; Category is one
-// of dates|unscheduled|packing|lodging|transit|budget|bookings.
+// of dates|unscheduled|packing|lodging|transit|budget|bookings|weather|hours.
 type Finding struct {
 	Severity string  `json:"severity"`
 	Category string  `json:"category"`
@@ -34,17 +35,28 @@ type Finding struct {
 
 // reviewOptions carries inputs that don't live on exportData. Budget is the
 // pre-computed BudgetResponse (nil when there's no budget row) so checkBudget
-// stays a pure reader. CheckHours is accepted now but unused in PR1 — PR3
-// wires the operating-hours check behind it.
+// stays a pure reader. CheckHours opts the trip into the (billable, live
+// Google) operating-hours check — off by default so a plain review never
+// spends.
 type reviewOptions struct {
 	CheckHours bool
 	Budget     *BudgetResponse
 }
 
+// reviewDeps carries the live-lookup services the enrichment checks need. Both
+// are nil-safe: a nil service makes its check a silent no-op (that's how the
+// pure unit tests and the deterministic-order test run without a network).
+type reviewDeps struct {
+	Weather *WeatherService
+	Places  *GooglePlacesService
+}
+
 // reviewTrip runs every deterministic check over the loaded trip data and
 // returns the findings in a stable order (by day, then severity, then
-// category) so the output is reproducible for a given trip snapshot.
-func reviewTrip(data exportData, opts reviewOptions) []Finding {
+// category) so the output is reproducible for a given trip snapshot. The
+// weather/place-hours checks are best-effort live lookups threaded through
+// deps; any provider error skips silently so the review never fails.
+func reviewTrip(ctx context.Context, data exportData, opts reviewOptions, deps reviewDeps) []Finding {
 	findings := make([]Finding, 0)
 	findings = append(findings, checkDates(data)...)
 	findings = append(findings, checkUnscheduled(data)...)
@@ -53,6 +65,10 @@ func reviewTrip(data exportData, opts reviewOptions) []Finding {
 	findings = append(findings, checkTransit(data)...)
 	findings = append(findings, checkBudget(data, opts.Budget)...)
 	findings = append(findings, checkBookings(data)...)
+	findings = append(findings, checkWeather(ctx, data, deps.Weather)...)
+	if opts.CheckHours {
+		findings = append(findings, checkHours(ctx, data, deps.Places)...)
+	}
 
 	severityRank := map[string]int{"critical": 0, "warn": 1, "info": 2}
 	sort.SliceStable(findings, func(i, j int) bool {
@@ -320,12 +336,15 @@ func checkBudget(d exportData, budget *BudgetResponse) []Finding {
 }
 
 // checkBookings flags each unbooked accommodation and segment at info level —
-// a gentle "don't forget to confirm", never critical.
+// a gentle "don't forget to confirm", never critical. Auto rows are system-
+// generated "Suggested" drafts that track the itinerary, not commitments the
+// traveler made, so they're skipped: nagging "confirm your booking" for a
+// suggestion the traveler never chose is noise.
 func checkBookings(d exportData) []Finding {
 	tripID := d.Trip.ID.String()
 	var out []Finding
 	for _, a := range d.Accommodations {
-		if a.Booked {
+		if a.Booked || a.Auto {
 			continue
 		}
 		id := a.ID.String()
@@ -335,13 +354,225 @@ func checkBookings(d exportData) []Finding {
 		})
 	}
 	for _, s := range d.Segments {
-		if s.Booked {
+		if s.Booked || s.Auto {
 			continue
 		}
 		id := s.ID.String()
 		out = append(out, Finding{
 			Severity: "info", Category: "bookings", TripID: tripID, ItemID: &id,
 			Message: fmt.Sprintf("Confirm your booking for %s.", segmentRoute(s)),
+		})
+	}
+	return out
+}
+
+// --- live-lookup enrichment checks (PR3) --------------------------------------
+
+// Weather advisory thresholds. Rain is split by report kind: a forecast carries
+// a precipitation probability (flag at ≥60%), while last year's archive gives
+// only a mm total (flag at ≥5mm, a solidly wet day). Temperature extremes flag
+// off the day's high/low. All weather findings are info-level advice.
+const (
+	rainProbPct     = 60
+	rainHistoricMM  = 5.0
+	hotThresholdC   = 34.0
+	coldThresholdC  = 0.0
+	maxHoursLookups = 30 // cap billable Google detail calls per review
+)
+
+// checkWeather adds advisory findings for rainy or temperature-extreme trip
+// days, one GetTripWeather lookup per distinct city (keyless, TTL-cached).
+// Best-effort: a nil service, an undated trip, or any provider error/empty
+// result skips silently — weather never fails or blocks a review.
+func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []Finding {
+	if weather == nil || !d.Trip.StartDate.Valid {
+		return nil
+	}
+	tripID := d.Trip.ID.String()
+
+	// Per city, the distinct trip days present (with their calendar dates) and
+	// whether each has an outdoor plan the rain would actually spoil.
+	type dayInfo struct {
+		date    time.Time
+		outdoor bool
+	}
+	cityDays := map[string]map[int]*dayInfo{}
+	var order []string // deterministic city iteration
+	for _, it := range d.Items {
+		city := strings.TrimSpace(strPtrVal(it.City))
+		if city == "" || it.Day == nil {
+			continue
+		}
+		date, ok := itemStartDate(d.Trip, it)
+		if !ok {
+			continue
+		}
+		days, seen := cityDays[city]
+		if !seen {
+			days = map[int]*dayInfo{}
+			cityDays[city] = days
+			order = append(order, city)
+		}
+		day := int(*it.Day)
+		di := days[day]
+		if di == nil {
+			di = &dayInfo{date: date}
+			days[day] = di
+		}
+		if isOutdoorItem(it) {
+			di.outdoor = true
+		}
+	}
+
+	var out []Finding
+	for _, city := range order {
+		days := cityDays[city]
+		var first, last time.Time
+		for _, di := range days {
+			if first.IsZero() || di.date.Before(first) {
+				first = di.date
+			}
+			if di.date.After(last) {
+				last = di.date
+			}
+		}
+		report, err := weather.GetTripWeather(ctx, city, first.Format(dateLayout), last.Format(dateLayout))
+		if err != nil || len(report.Days) == 0 {
+			continue // best-effort
+		}
+		// Index the report by day. A forecast carries real (this-year) dates —
+		// match exact. The archive fallback carries LAST year's dates for the
+		// same days, so match on month-day only (MM-DD suffix).
+		historical := report.Kind == "historical"
+		byKey := make(map[string]WeatherDay, len(report.Days))
+		for _, wd := range report.Days {
+			byKey[weatherDayKey(wd.Date, historical)] = wd
+		}
+		for day, di := range days {
+			var lookup string
+			if historical {
+				lookup = di.date.Format("01-02")
+			} else {
+				lookup = di.date.Format(dateLayout)
+			}
+			wd, ok := byKey[lookup]
+			if !ok {
+				continue
+			}
+			dd := day
+			if di.outdoor && weatherDayRainy(wd) {
+				out = append(out, Finding{
+					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
+					Message: fmt.Sprintf("Rain likely on Day %d (%s) — pack an umbrella.", day, city),
+				})
+			}
+			switch {
+			case wd.TempMaxC >= hotThresholdC:
+				out = append(out, Finding{
+					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
+					Message: fmt.Sprintf("Day %d (%s) could be very hot (%.0f°C) — plan for the heat.", day, city, wd.TempMaxC),
+				})
+			case wd.TempMinC <= coldThresholdC:
+				out = append(out, Finding{
+					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
+					Message: fmt.Sprintf("Day %d (%s) could be very cold (%.0f°C) — pack warm layers.", day, city, wd.TempMinC),
+				})
+			}
+		}
+	}
+	return out
+}
+
+// weatherDayKey normalizes a report day's date to the map key used to align it
+// with a trip day: the full YYYY-MM-DD for a forecast, or the MM-DD suffix for
+// the archive (whose dates are last year's for the same calendar days).
+func weatherDayKey(date string, historical bool) string {
+	if historical && len(date) >= 10 {
+		return date[5:]
+	}
+	return date
+}
+
+// weatherDayRainy reports a meaningfully wet day: a high forecast probability,
+// or (archive, no probability) a solid rainfall total.
+func weatherDayRainy(wd WeatherDay) bool {
+	if wd.PrecipPct != nil {
+		return *wd.PrecipPct >= rainProbPct
+	}
+	return wd.PrecipMM >= rainHistoricMM
+}
+
+// indoorCategories are the item categories rain doesn't disrupt; everything
+// else (attractions, parks, tours, or an untagged item) counts as outdoor for
+// the umbrella advisory.
+var indoorCategories = map[string]bool{
+	"restaurant":  true,
+	"coffee_shop": true,
+	"cafe":        true,
+	"museum":      true,
+	"shopping":    true,
+	"bar":         true,
+}
+
+func isOutdoorItem(it store.ItineraryItem) bool {
+	cat := strings.ToLower(strings.TrimSpace(strPtrVal(it.Category)))
+	return !indoorCategories[cat]
+}
+
+// checkHours flags saved places that may be closed on the trip day they're
+// scheduled. Opt-in (billable Google detail calls): for each item with a
+// place_id and a resolvable trip-day weekday, it fetches 24h-cached place
+// details, converts the opening hours, and warns when the place is closed that
+// weekday. Bounded to maxHoursLookups upstream fetches per review. Best-effort:
+// a nil service, a Places error, or unresolvable hours skips that item.
+func checkHours(ctx context.Context, d exportData, places *GooglePlacesService) []Finding {
+	if places == nil {
+		return nil
+	}
+	tripID := d.Trip.ID.String()
+	th := &TimeHelper{}
+	var out []Finding
+	lookups := 0
+	for _, it := range d.Items {
+		placeID := strings.TrimSpace(strPtrVal(it.PlaceID))
+		if placeID == "" {
+			continue
+		}
+		date, ok := itemStartDate(d.Trip, it)
+		if !ok {
+			continue // no trip-day weekday to check against
+		}
+		if lookups >= maxHoursLookups {
+			ctxLog(ctx).Info("trip review hours check hit lookup cap",
+				"trip_id", tripID, "cap", maxHoursLookups)
+			break
+		}
+		lookups++
+		details, err := places.GetPlaceDetails(placeID)
+		if err != nil || details == nil || details.OpeningHours == nil {
+			continue // best-effort
+		}
+		hours := ConvertGoogleHoursToOperatingHours(details.OpeningHours)
+		if hours == nil {
+			continue
+		}
+		weekday := date.Weekday()
+		hoursStr := strings.TrimSpace(th.getHoursForDay(hours, weekday))
+		if hoursStr == "" {
+			continue // no hours known for that weekday → don't guess
+		}
+		// Only flag a weekday Google explicitly marks "closed" — the reliable
+		// all-day-closed signal. We deliberately don't probe a clock time:
+		// ConvertGoogleHoursToOperatingHours is lossy on AM/PM, so an
+		// evening-only venue must not read as "closed".
+		if _, _, _, _, isClosed, perr := th.parseOperatingHours(hoursStr); perr != nil || !isClosed {
+			continue
+		}
+		day := int(*it.Day)
+		id := it.ID.String()
+		out = append(out, Finding{
+			Severity: "warn", Category: "hours", TripID: tripID, Day: &day, ItemID: &id,
+			Message: fmt.Sprintf("%s may be closed on %s (Day %d).", it.Name, weekday.String(), day),
 		})
 	}
 	return out
