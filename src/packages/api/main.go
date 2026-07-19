@@ -14,6 +14,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Response represents a standard API response
@@ -82,9 +83,10 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if !pingDB(r.Context()) {
 		status = "degraded"
 		httpStatus = http.StatusServiceUnavailable
-		if dbPool == nil {
+		switch {
+		case dbPool == nil && !dbConfigured:
 			database = "not configured"
-		} else {
+		default:
 			database = "unreachable"
 		}
 	}
@@ -619,11 +621,31 @@ func main() {
 	// Connect to the database. Missing/unreachable DB -> degraded mode (the API
 	// still serves stateless endpoints). A migration failure on a reachable DB is
 	// a real error -> exit non-zero.
+	//
+	// The initial connect RETRIES for a bounded window rather than giving up on
+	// the first failure: after a host power cycle Docker's restart policy starts
+	// this container and Postgres concurrently (depends_on ordering only applies
+	// to `compose up`), so the first attempts routinely lose the race. Without
+	// the retry the API would sit in degraded mode forever on a box that heals
+	// itself seconds later — on the self-hosted Pi that means every power blip
+	// silently killed persistence until someone restarted the container.
 	switch {
 	case dbURL == "":
 		log.Println("WARNING: DATABASE_URL not set - starting without a database; persistence features unavailable")
 	default:
-		pool, err := initDB(ctx, dbURL)
+		dbConfigured = true
+		const dbBootRetryWindow = 90 * time.Second
+		deadline := time.Now().Add(dbBootRetryWindow)
+		var pool *pgxpool.Pool
+		var err error
+		for {
+			pool, err = initDB(ctx, dbURL)
+			if err == nil || time.Now().After(deadline) {
+				break
+			}
+			log.Printf("database not ready (%v) - retrying for up to %s", err, time.Until(deadline).Round(time.Second))
+			time.Sleep(5 * time.Second)
+		}
 		if err != nil {
 			log.Printf("WARNING: database unreachable (%v) - starting in degraded mode; persistence features unavailable", err)
 			break
