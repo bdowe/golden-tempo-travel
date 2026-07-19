@@ -67,7 +67,7 @@ func (q *Queries) DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) er
 const getSessionWithUser = `-- name: GetSessionWithUser :one
 SELECT
     sessions.id, sessions.user_id, sessions.expires_at, sessions.created_at,
-    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin, users.onboarded_at, users.email_verified_at
+    users.id, users.created_at, users.updated_at, users.email, users.password_hash, users.display_name, users.is_admin, users.onboarded_at, users.email_verified_at, users.reminders_opt_out, users.nudges_opt_out
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.id = $1
@@ -95,6 +95,8 @@ func (q *Queries) GetSessionWithUser(ctx context.Context, id string) (GetSession
 		&i.User.IsAdmin,
 		&i.User.OnboardedAt,
 		&i.User.EmailVerifiedAt,
+		&i.User.RemindersOptOut,
+		&i.User.NudgesOptOut,
 	)
 	return i, err
 }

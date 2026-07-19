@@ -34,6 +34,11 @@ type UserResponse struct {
 	IsAdmin         bool      `json:"is_admin"`
 	NeedsOnboarding bool      `json:"needs_onboarding"`
 	CreatedAt       time.Time `json:"created_at"`
+	// Email preferences are expressed to the client as opt-INs (receiving = on)
+	// so the account-settings switches read naturally; they invert the stored
+	// opt-out columns.
+	RemindersEnabled bool `json:"reminders_enabled"`
+	NudgesEnabled    bool `json:"nudges_enabled"`
 }
 
 type AuthResponse struct {
@@ -53,6 +58,9 @@ func toUserResponse(u store.User) UserResponse {
 		IsAdmin:         u.IsAdmin,
 		NeedsOnboarding: !u.OnboardedAt.Valid,
 		CreatedAt:       u.CreatedAt,
+		// Opt-out false => still receiving => enabled true.
+		RemindersEnabled: !u.RemindersOptOut,
+		NudgesEnabled:    !u.NudgesOptOut,
 	}
 }
 

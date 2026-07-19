@@ -47,6 +47,41 @@ func patchAccountHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toUserResponse(updated))
 }
 
+// patchEmailPreferencesHandler updates the signed-in user's email opt-outs. The
+// client speaks opt-IN ("enabled"): switch ON = receiving = opt_out false. Both
+// fields are optional pointers so the UI can toggle one stream at a time; a body
+// touching neither is a no-op that still returns the current user.
+func patchEmailPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	if dbPool == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	var req struct {
+		RemindersEnabled *bool `json:"reminders_enabled"`
+		NudgesEnabled    *bool `json:"nudges_enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	params := store.SetUserEmailOptOutParams{ID: user.ID}
+	if req.RemindersEnabled != nil {
+		optOut := !*req.RemindersEnabled
+		params.RemindersOptOut = &optOut
+	}
+	if req.NudgesEnabled != nil {
+		optOut := !*req.NudgesEnabled
+		params.NudgesOptOut = &optOut
+	}
+	updated, err := store.New(dbPool).SetUserEmailOptOut(r.Context(), params)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not update email preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserResponse(updated))
+}
+
 func changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	if dbPool == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")

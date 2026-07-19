@@ -13,6 +13,8 @@ UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(
       isAdmin: json['is_admin'] as bool? ?? false,
       needsOnboarding: json['needs_onboarding'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
+      remindersEnabled: json['reminders_enabled'] as bool? ?? true,
+      nudgesEnabled: json['nudges_enabled'] as bool? ?? true,
     );
 
 Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
@@ -22,6 +24,8 @@ Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
       'is_admin': instance.isAdmin,
       'needs_onboarding': instance.needsOnboarding,
       'created_at': instance.createdAt.toIso8601String(),
+      'reminders_enabled': instance.remindersEnabled,
+      'nudges_enabled': instance.nudgesEnabled,
     };
 
 AuthResponse _$AuthResponseFromJson(Map<String, dynamic> json) => AuthResponse(

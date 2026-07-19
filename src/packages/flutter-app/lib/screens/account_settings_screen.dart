@@ -84,6 +84,20 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
         _snack('Password changed — other devices were signed out');
       });
 
+  Future<void> _setReminders(bool enabled) => _run(() async {
+        final user = await ref
+            .read(accountApiServiceProvider)
+            .updateEmailPreferences(remindersEnabled: enabled);
+        ref.read(authProvider.notifier).setUser(user);
+      });
+
+  Future<void> _setNudges(bool enabled) => _run(() async {
+        final user = await ref
+            .read(accountApiServiceProvider)
+            .updateEmailPreferences(nudgesEnabled: enabled);
+        ref.read(authProvider.notifier).setUser(user);
+      });
+
   Future<void> _logoutAll() => _run(() async {
         await ref.read(accountApiServiceProvider).logoutAll();
         // Our own session died too; sign out locally and let AuthGate route.
@@ -220,6 +234,25 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                 label: const Text('Sign out everywhere'),
                 onPressed: _busy ? null : _logoutAll,
               ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            const SectionHeader(title: 'Email preferences'),
+            const SizedBox(height: AppSpacing.sm),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Trip reminders'),
+              subtitle: const Text(
+                  'Nudges about upcoming trips and things left to book.'),
+              value: user?.remindersEnabled ?? true,
+              onChanged: _busy ? null : (v) => _setReminders(v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Weekly planning ideas'),
+              subtitle: const Text(
+                  'A weekly email with destination ideas and inspiration.'),
+              value: user?.nudgesEnabled ?? true,
+              onChanged: _busy ? null : (v) => _setNudges(v),
             ),
             const SizedBox(height: AppSpacing.xl),
             const SectionHeader(title: 'Legal'),

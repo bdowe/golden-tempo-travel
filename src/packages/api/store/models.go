@@ -336,4 +336,6 @@ type User struct {
 	IsAdmin         bool               `json:"is_admin"`
 	OnboardedAt     pgtype.Timestamptz `json:"onboarded_at"`
 	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
+	RemindersOptOut bool               `json:"reminders_opt_out"`
+	NudgesOptOut    bool               `json:"nudges_opt_out"`
 }

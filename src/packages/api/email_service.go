@@ -45,27 +45,66 @@ func (s *EmailService) Configured() bool {
 	return s.Host != "" && s.From != ""
 }
 
-// Send delivers a plain-text email. In degraded mode it logs the message
-// (minus nothing — these are our own transactional bodies) and reports
-// success so callers never surface delivery as a user-facing error.
+// Send delivers a plain-text transactional email (verify/reset). Left untouched
+// by the marketing plumbing — transactional mail is never unsubscribable.
 func (s *EmailService) Send(to, subject, body string) error {
-	if !s.Configured() {
-		log.Printf("email (not sent, SMTP unconfigured) to=%s subject=%q body=%q", to, subject, body)
+	return s.SendWithHeaders(to, subject, body, nil)
+}
+
+// SendMarketing delivers a plain-text marketing email (reminders, weekly nudge)
+// carrying the RFC 8058 one-click unsubscribe headers built from unsubscribeURL.
+// The URL must be the public /api/v1/unsubscribe/<token> capability link. The
+// List-Unsubscribe-Post header opts the message into one-click: a supporting
+// mail client can POST that URL directly, no page visit, honoring the opt-out.
+func (s *EmailService) SendMarketing(to, subject, body, unsubscribeURL string) error {
+	return s.SendWithHeaders(to, subject, body, listUnsubscribeHeaders(unsubscribeURL))
+}
+
+// listUnsubscribeHeaders returns the ordered List-Unsubscribe + -Post header
+// lines for a one-click unsubscribe URL, or nil when the URL is empty. Pure and
+// deterministic (ordered slice, not a map) so header construction unit-tests
+// cleanly. RFC 8058 requires both headers together for one-click to be honored.
+func listUnsubscribeHeaders(unsubscribeURL string) []string {
+	if strings.TrimSpace(unsubscribeURL) == "" {
 		return nil
 	}
-	msg := strings.Join([]string{
-		"From: " + s.From,
-		"To: " + to,
-		"Subject: " + subject,
-		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=utf-8",
-		"",
-		body,
-	}, "\r\n")
+	return []string{
+		"List-Unsubscribe: <" + unsubscribeURL + ">",
+		"List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+	}
+}
+
+// SendWithHeaders delivers a plain-text email with optional extra header lines
+// (each "Key: value", CRLF is added by the framer). In degraded mode it logs the
+// message and reports success so callers never surface delivery as a
+// user-facing error.
+func (s *EmailService) SendWithHeaders(to, subject, body string, extraHeaders []string) error {
+	if !s.Configured() {
+		log.Printf("email (not sent, SMTP unconfigured) to=%s subject=%q headers=%v body=%q", to, subject, extraHeaders, body)
+		return nil
+	}
+	msg := buildEmailMessage(s.From, to, subject, body, extraHeaders)
 
 	var auth smtp.Auth
 	if s.Username != "" {
 		auth = smtp.PlainAuth("", s.Username, s.Password, s.Host)
 	}
 	return smtp.SendMail(s.Host+":"+s.Port, auth, s.From, []string{to}, []byte(msg))
+}
+
+// buildEmailMessage frames the RFC 5322 message (CRLF-delimited). Pure so the
+// header block — including any List-Unsubscribe lines — is unit-testable without
+// an SMTP server. extraHeaders sit after the fixed headers, before the blank
+// line that separates headers from the body.
+func buildEmailMessage(from, to, subject, body string, extraHeaders []string) string {
+	lines := []string{
+		"From: " + from,
+		"To: " + to,
+		"Subject: " + subject,
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain; charset=utf-8",
+	}
+	lines = append(lines, extraHeaders...)
+	lines = append(lines, "", body)
+	return strings.Join(lines, "\r\n")
 }
