@@ -849,6 +849,7 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/budget/expenses", authMiddleware(http.HandlerFunc(addExpenseHandler))).Methods("POST")
 	api.Handle("/trips/{id}/budget/expenses/{expenseId}", authMiddleware(http.HandlerFunc(patchExpenseHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/budget/expenses/{expenseId}", authMiddleware(http.HandlerFunc(deleteExpenseHandler))).Methods("DELETE")
+	api.Handle("/trips/{id}/review", authMiddleware(http.HandlerFunc(getTripReviewHandler))).Methods("GET")
 
 	// Local-source content — curation is admin-only (authMiddleware + adminMiddleware).
 	api.Handle("/admin/local/sources", admin(listLocalSourcesHandler)).Methods("GET")
