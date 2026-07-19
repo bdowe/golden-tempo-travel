@@ -5,7 +5,7 @@
 # hits) and asserts each step, colored PASS/FAIL, non-zero exit on any failure.
 # Built to run TWICE against the same code: as a rehearsal against the local dev
 # stack, and as the go/no-go sanity check against production the moment DNS flips
-# to https://goldentempo.co. Pure bash + curl + jq, cloning the api_call idiom
+# to https://goldentempotravel.com. Pure bash + curl + jq, cloning the api_call idiom
 # from scripts/seed_local_content.sh.
 #
 # It registers a THROWAWAY user (unique email), exercises the traveler journey

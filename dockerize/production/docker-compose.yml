@@ -1,4 +1,4 @@
-# Production stack for https://goldentempo.co — same topology as
+# Production stack for https://goldentempotravel.com — same topology as
 # dockerize/deployment/docker-compose.yml, but runs prebuilt images from
 # GHCR (no build:) and terminates TLS on the gateway (:80 + :443) behind
 # Cloudflare. All nginx config and certs are volume-mounted, never baked,
@@ -103,7 +103,7 @@ services:
     depends_on:
       - api
     healthcheck:
-      # :80 is a wholesale 301 to https://goldentempo.co, so probe :443
+      # :80 is a wholesale 301 to https://goldentempotravel.com, so probe :443
       # directly; the apex server is default_server, so "localhost" lands
       # there. --no-check-certificate: the Origin CA cert isn't in the
       # container's trust store (it's only trusted by Cloudflare).
