@@ -1486,6 +1486,38 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// Mints an owner-private export token and opens the printable view (which
+  /// the browser's print dialog turns into a PDF). Export needs the network,
+  /// so it's gated on !_isOffline like the rest of the share menu.
+  Future<void> _openPrintExport() => _openExport(print: true);
+
+  /// Mints an export token and opens the calendar (.ics) download — the trip's
+  /// days as calendar events.
+  Future<void> _openCalendarExport() => _openExport(print: false);
+
+  Future<void> _openExport({required bool print}) async {
+    if (_trip == null || _isOffline) return;
+    try {
+      final service = ref.read(tripsApiServiceProvider);
+      final token = await service.mintExportToken(widget.tripId);
+      if (!mounted) return;
+      final base = service.apiClient.baseUrl;
+      final url =
+          print ? exportPrintUrl(base, token) : exportIcsUrl(base, token);
+      await trackedLaunchUrl(
+        context,
+        url,
+        provider: 'export',
+        surface: print ? 'print' : 'calendar',
+        tripId: widget.tripId,
+      );
+    } catch (e) {
+      _showSnack(print
+          ? 'Could not open the printable view: $e'
+          : 'Could not export the calendar: $e');
+    }
+  }
+
   Future<void> _revokeLink() async {
     try {
       await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
@@ -3260,6 +3292,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 'copy' => _shareLink(),
                 'invite' => _inviteCoPlanner(),
                 'manage' => _manageCoPlanners(),
+                'print' => _openPrintExport(),
+                'calendar' => _openCalendarExport(),
                 _ => _revokeLink(),
               },
               itemBuilder: (context) => [
@@ -3275,6 +3309,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                         : 'Copy invite link (can edit)')),
                 const PopupMenuItem(
                     value: 'manage', child: Text('Manage access')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                    value: 'print', child: Text('Print / Save as PDF')),
+                const PopupMenuItem(
+                    value: 'calendar', child: Text('Add to calendar')),
+                const PopupMenuDivider(),
                 const PopupMenuItem(
                     value: 'revoke', child: Text('Turn off sharing')),
               ],
