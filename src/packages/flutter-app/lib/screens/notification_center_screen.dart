@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/alert_event.dart';
 import '../providers/alerts_provider.dart';
 import '../theme/spacing.dart';
+import '../utils/money_format.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/offline_banner.dart' show relativeTime;
 import '../widgets/page_container.dart';
@@ -93,10 +94,9 @@ class _EventTile extends StatelessWidget {
   const _EventTile({required this.event});
 
   String _dropLine() {
-    final cur = event.currency.isEmpty ? '' : '${event.currency} ';
-    final now = '$cur${event.price.toStringAsFixed(0)}';
+    final now = formatMoney(event.price, event.currency);
     if (event.previousPrice != null) {
-      return '$now, down from $cur${event.previousPrice!.toStringAsFixed(0)}';
+      return '$now, down from ${formatMoney(event.previousPrice!, event.currency)}';
     }
     return now;
   }

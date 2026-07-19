@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/alerts_provider.dart';
 import '../theme/spacing.dart';
+import '../utils/money_format.dart';
 import '../utils/snack.dart';
 
 /// Bottom sheet that turns the current flight search into a price alert
@@ -137,7 +138,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
-                'Best price now: $cur ${widget.currentPrice!.toStringAsFixed(0)}',
+                'Best price now: ${formatMoney(widget.currentPrice!, cur)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
