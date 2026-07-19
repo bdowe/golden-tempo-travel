@@ -25,6 +25,8 @@ import '../providers/preferences_provider.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/events_provider.dart';
+import '../providers/weather_provider.dart';
+import '../models/weather.dart';
 import '../providers/ferries_provider.dart';
 import '../providers/local_provider.dart';
 import '../providers/shared_with_me_provider.dart';
@@ -1655,9 +1657,26 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// items with no day fall back to flat day-trip batching with no day headers.
   List<Widget> _buildGroupItemSlivers(String cityKey, List<ItineraryItem> items,
       ThemeData theme, DateTime? tripStart,
-      {required bool showTonight}) {
+      {required bool showTonight, ({DateTime? start, DateTime? end})? range}) {
     if (!items.any((it) => it.day != null)) {
       return _dayTripSectionSlivers(items, theme);
+    }
+    // Per-day weather (specs/weather-in-itinerary): one report per city group
+    // for its date window — one API call per city per trip view, cached by the
+    // family provider. Best-effort: valueOrNull stays null until it resolves
+    // (and forever on failure), so nothing renders and the pinned-scroll math
+    // is untouched. 'Other places' has no real city to geocode.
+    WeatherReport? weatherReport;
+    if (cityKey != 'Other places' &&
+        range?.start != null &&
+        range?.end != null) {
+      weatherReport = ref
+          .watch(weatherByCityProvider(WeatherQuery(
+            city: cityKey,
+            startDate: _fmt(range!.start!),
+            endDate: _fmt(range.end!),
+          )))
+          .valueOrNull;
     }
     // Today mode: the header for today's trip day (if any) gets a visible
     // highlight; undated/past/future trips resolve to null and render as-is.
@@ -1710,11 +1729,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         final tonight = (showTonight && day == todayDay && trip != null)
             ? _tonightCaption(theme, _staysOnNight(trip, day))
             : null;
+        // Weather chip for this day, if the report covers its date. Historical
+        // reports carry last year's month-day, so we match on month-day.
+        Widget? weatherChip;
+        if (weatherReport != null && tripStart != null) {
+          final md = _fmt(tripStart.add(Duration(days: day - 1))).substring(5);
+          final wd = weatherReport.dayFor(md);
+          if (wd != null) {
+            weatherChip =
+                _weatherChip(theme, wd, weatherReport.isHistorical);
+          }
+        }
         slivers.add(MultiSliver(
           pushPinnedChildren: true,
           children: [
             SliverPinnedHeader(child: header),
             if (!collapsed) ...[
+              if (weatherChip != null) _boxSliver([weatherChip]),
               if (tonight != null) _boxSliver([tonight]),
               ..._dayTripSectionSlivers(run, theme),
             ],
@@ -2363,6 +2394,73 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         ),
       ),
     );
+  }
+
+  /// Per-day weather chip (specs/weather-in-itinerary): hi/lo temp + a
+  /// condition glyph derived from rain, rendered as a non-pinned content row
+  /// under the day header (same indent/typography as [_tonightCaption]).
+  /// Forecast days append the rain chance; historical reports (trip beyond the
+  /// 16-day horizon) are labeled "typical", never "forecast".
+  Widget _weatherChip(ThemeData theme, WeatherDay day, bool historical) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final (icon, iconColor) = _weatherGlyph(theme, day);
+    final hi = day.tempMaxC.round();
+    final lo = day.tempMinC.round();
+    final parts = <String>['$hi° / $lo°'];
+    if (!historical &&
+        day.precipProbability != null &&
+        day.precipProbability! >= 20) {
+      parts.add('${day.precipProbability}% rain');
+    }
+    return Padding(
+      // Matches the Tonight caption indent (20 left, 6 top) so the chip reads
+      // as a sub-row of the day header.
+      padding: const EdgeInsets.fromLTRB(20, 6, 16, 0),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: iconColor),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              parts.join('  ·  '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ),
+          if (historical) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'typical for these dates',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: muted,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Condition glyph + color from precipitation. Forecast days key off the rain
+  /// probability (%), historical days off observed rainfall (mm): sunny below
+  /// the light threshold, cloud in between, umbrella above the wet threshold.
+  (IconData, Color) _weatherGlyph(ThemeData theme, WeatherDay day) {
+    final scheme = theme.colorScheme;
+    final pct = day.precipProbability;
+    if (pct != null) {
+      if (pct >= 60) return (Icons.umbrella, scheme.primary);
+      if (pct >= 30) return (Icons.cloud, scheme.onSurfaceVariant);
+      return (Icons.wb_sunny, Colors.amber.shade700);
+    }
+    if (day.precipMm >= 5) return (Icons.umbrella, scheme.primary);
+    if (day.precipMm >= 1) return (Icons.cloud, scheme.onSurfaceVariant);
+    return (Icons.wb_sunny, Colors.amber.shade700);
   }
 
   /// "Tonight: <stay>" caption for today's day section (specs/happening-now
@@ -3537,7 +3635,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                             theme,
                                             tripStart,
                                             showTonight: group.label ==
-                                                firstTodayGroupLabel),
+                                                firstTodayGroupLabel,
+                                            range: groupRanges[group.label]),
                                         // Curated local recommendations for this
                                         // city — the "legit info you can't
                                         // google" surface. Leads the events

@@ -1,0 +1,161 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:travel_route_planner/models/trip.dart';
+import 'package:travel_route_planner/models/itinerary_item.dart';
+import 'package:travel_route_planner/models/weather.dart';
+import 'package:travel_route_planner/services/api_client.dart';
+import 'package:travel_route_planner/services/trips_api_service.dart';
+import 'package:travel_route_planner/services/weather_api_service.dart';
+import 'package:travel_route_planner/providers/trips_provider.dart';
+import 'package:travel_route_planner/providers/weather_provider.dart';
+import 'package:travel_route_planner/screens/trip_detail_screen.dart';
+
+/// Weather in the itinerary (specs/weather-in-itinerary): a dated day renders a
+/// per-day weather chip under its day header; historical reports read "typical";
+/// an undated trip renders none. Dates are relative to now so the day headers
+/// carry real dates the fake weather report can match on month-day.
+
+class _FakeTripsApiService extends TripsApiService {
+  final Trip trip;
+  _FakeTripsApiService(this.trip) : super(ApiClient(baseUrl: 'http://test'));
+
+  @override
+  Future<Trip> getTrip(String id) async => trip;
+}
+
+/// Returns a fixed report for every lookup, so the day chips are deterministic.
+class _FakeWeatherApiService extends WeatherApiService {
+  final WeatherReport report;
+  _FakeWeatherApiService(this.report)
+      : super(ApiClient(baseUrl: 'http://test'));
+
+  @override
+  Future<WeatherReport> getTripWeather(String city, String startDate,
+          {String? endDate}) async =>
+      report;
+}
+
+String _iso(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+ItineraryItem _item(int pos, String name, int day) => ItineraryItem(
+      id: 'i$pos',
+      position: pos,
+      name: name,
+      address: '$name street, Paris',
+      latitude: 0,
+      longitude: 0,
+      category: 'attraction',
+      day: day,
+      city: 'Paris',
+    );
+
+Trip _twoDayTrip(DateTime start) => Trip(
+      id: 't1',
+      title: 'Weather Trip',
+      status: 'planned',
+      createdAt: '2026-06-01',
+      updatedAt: '2026-06-01',
+      startDate: _iso(start),
+      endDate: _iso(start.add(const Duration(days: 1))),
+      items: [
+        _item(0, 'Louvre', 1),
+        _item(1, 'Orsay', 2),
+      ],
+    );
+
+Future<void> _pump(
+    WidgetTester tester, Trip trip, WeatherReport report) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        tripsApiServiceProvider
+            .overrideWithValue(_FakeTripsApiService(trip)),
+        weatherApiServiceProvider
+            .overrideWithValue(_FakeWeatherApiService(report)),
+      ],
+      child: const MaterialApp(home: TripDetailScreen(tripId: 't1')),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  final start = DateTime.now();
+  // Month-day keys the two trip days map to.
+  final md1 = _iso(start).substring(5);
+  final md2 = _iso(start.add(const Duration(days: 1))).substring(5);
+
+  testWidgets('a dated day renders a forecast weather chip under the header',
+      (tester) async {
+    final report = WeatherReport(
+      location: 'Paris, France',
+      kind: 'forecast',
+      days: [
+        WeatherDay(
+            date: '2000-$md1', tempMinC: 16, tempMaxC: 24, precipProbability: 70),
+        WeatherDay(
+            date: '2000-$md2', tempMinC: 15, tempMaxC: 22, precipProbability: 10),
+      ],
+    );
+    await _pump(tester, _twoDayTrip(start), report);
+
+    // Hi/lo temps rendered (rounded) for both days. Day 1 folds the rain
+    // chance into the same Text, so match on substring.
+    expect(find.textContaining('24° / 16°'), findsOneWidget);
+    expect(find.text('22° / 15°'), findsOneWidget);
+    // The rainy day surfaces its chance; the umbrella glyph appears.
+    expect(find.textContaining('70% rain'), findsOneWidget);
+    expect(find.byIcon(Icons.umbrella), findsWidgets);
+    // Forecast, so no "typical" affordance.
+    expect(find.textContaining('typical'), findsNothing);
+  });
+
+  testWidgets('a historical report labels the chip "typical", not a forecast',
+      (tester) async {
+    final report = WeatherReport(
+      location: 'Paris, France',
+      kind: 'historical',
+      days: [
+        WeatherDay(date: '2000-$md1', tempMinC: 18, tempMaxC: 27, precipMm: 0),
+        WeatherDay(date: '2000-$md2', tempMinC: 17, tempMaxC: 26, precipMm: 0),
+      ],
+    );
+    await _pump(tester, _twoDayTrip(start), report);
+
+    expect(find.text('27° / 18°'), findsOneWidget);
+    expect(find.textContaining('typical for these dates'), findsWidgets);
+    // Historical never shows a rain-chance percentage.
+    expect(find.textContaining('% rain'), findsNothing);
+  });
+
+  testWidgets('an undated trip renders no weather chip', (tester) async {
+    final undated = Trip(
+      id: 't1',
+      title: 'Undated',
+      status: 'planned',
+      createdAt: '2026-06-01',
+      updatedAt: '2026-06-01',
+      items: [
+        _item(0, 'Louvre', 1),
+        _item(1, 'Orsay', 2),
+      ],
+    );
+    final report = WeatherReport(
+      location: 'Paris, France',
+      kind: 'forecast',
+      days: [
+        WeatherDay(
+            date: '2000-$md1', tempMinC: 16, tempMaxC: 24, precipProbability: 10),
+      ],
+    );
+    await _pump(tester, undated, report);
+
+    expect(find.textContaining('° / '), findsNothing);
+    expect(find.text('Day 1'), findsOneWidget); // plain header, no dates
+  });
+}
