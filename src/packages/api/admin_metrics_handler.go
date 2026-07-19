@@ -6,7 +6,7 @@ package main
 //
 //	GET /admin/metrics/timeseries?days=   — daily buckets for the Trends tab
 //	GET /admin/metrics/totals             — all-time domain-table counts
-//	GET /admin/metrics/activity?limit=&before= — event tail, keyset-paginated
+//	GET /admin/metrics/activity?limit=&before=&exclude_admins= — event tail, keyset-paginated
 //	GET /admin/metrics/users?limit=&offset=    — per-user activity aggregates
 //
 // Deliberately NOT folded into MetricsResponse: totals is not window-scoped,
@@ -144,7 +144,7 @@ type activityResponse struct {
 	NextBefore string `json:"next_before,omitempty"`
 }
 
-// adminActivityHandler is GET /admin/metrics/activity?limit=&before=.
+// adminActivityHandler is GET /admin/metrics/activity?limit=&before=&exclude_admins=.
 func adminActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if dbPool == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
@@ -161,9 +161,14 @@ func adminActivityHandler(w http.ResponseWriter, r *http.Request) {
 		before = t
 	}
 
+	// exclude_admins=true drops the operator's own activity so the funnel/feed
+	// reflects real users; default false keeps the existing behavior.
+	excludeAdmins := r.URL.Query().Get("exclude_admins") == "true"
+
 	rows, err := store.New(dbPool).RecentAnalyticsEvents(r.Context(), store.RecentAnalyticsEventsParams{
-		Before:    before,
-		PageLimit: int32(limit),
+		Before:        before,
+		ExcludeAdmins: excludeAdmins,
+		PageLimit:     int32(limit),
 	})
 	if err != nil {
 		log.Printf("admin activity: %v", err)

@@ -438,6 +438,44 @@ func TestAdminActivity(t *testing.T) {
 	}
 }
 
+// TestAdminActivityExcludeAdmins asserts exclude_admins=true drops rows from
+// admin users (the operator's own clicks) while keeping normal-user and
+// anonymous rows, and that the default omits the filter (backward compatible).
+func TestAdminActivityExcludeAdmins(t *testing.T) {
+	resetDB(t)
+	admin, adminToken := createTestUser(t, "excl-admin@example.com")
+	makeAdmin(t, admin.ID)
+	user, _ := createTestUser(t, "excl-user@example.com")
+
+	now := time.Now()
+	insertEvent(t, user.ID, "user_registered", now.Add(-3*time.Minute), "")
+	insertAnonymousEvent(t, "booking_link_clicked", now.Add(-2*time.Minute), "")
+	insertEvent(t, admin.ID, "trip_created", now.Add(-1*time.Minute), "")
+
+	// Default (exclude_admins absent) returns all three, admin's included.
+	body := decode(t, doJSON(t, "GET", "/api/v1/admin/metrics/activity?limit=50", adminToken, nil))
+	events, _ := body["events"].([]any)
+	if len(events) != 3 {
+		t.Fatalf("default events = %d, want 3 (admin row included)", len(events))
+	}
+
+	// exclude_admins=true drops only the admin's row; user + anonymous survive.
+	body = decode(t, doJSON(t, "GET", "/api/v1/admin/metrics/activity?limit=50&exclude_admins=true", adminToken, nil))
+	events, _ = body["events"].([]any)
+	if len(events) != 2 {
+		t.Fatalf("exclude_admins events = %d, want 2 (admin row omitted)", len(events))
+	}
+	for _, e := range events {
+		ev := e.(map[string]any)
+		if ev["user_is_admin"] == true {
+			t.Errorf("exclude_admins returned an admin row: %v", ev["event_type"])
+		}
+		if ev["event_type"] == "trip_created" {
+			t.Errorf("admin's trip_created row leaked into exclude_admins result")
+		}
+	}
+}
+
 // TestAdminUsers asserts the per-user aggregates (lineage-deduped trips, token
 // sums with the plan_session_completed filter, cost estimate), the
 // last_event_at DESC NULLS LAST ordering, and offset paging.
