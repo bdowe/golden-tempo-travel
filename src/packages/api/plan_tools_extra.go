@@ -164,9 +164,54 @@ var addPackingItemTool = anthropic.ToolParam{
 
 var reviewTripTool = anthropic.ToolParam{
 	Name:        "review_trip",
-	Description: anthropic.String("Run an automated health check on the trip currently open in this conversation. It flags real problems in the saved plan — unscheduled items, nights with no lodging, missing transport between cities, over-budget spend, unconfirmed bookings, likely rain on outdoor days, and temperature extremes — all derived from the saved trip plus a live weather lookup (nothing invented). Use it when the traveler asks whether their trip is ready or what they're missing, or proactively before wrapping up. After reviewing, offer to fix issues with update_itinerary_section, add_booking_todo, or add_packing_item. No arguments — it reviews the open trip."),
+	Description: anthropic.String("Run an automated health check on the trip currently open in this conversation. It flags real problems in the saved plan — unscheduled items, nights with no lodging, missing transport between cities, over-budget spend, unconfirmed bookings, likely rain on outdoor days, and temperature extremes — all derived from the saved trip plus a live weather lookup (nothing invented). Each flagged issue carries a compact [fix: ...] hint naming the tool to fix it. Use it when the traveler asks whether their trip is ready or what they're missing, or proactively before wrapping up. After reviewing, offer to fix issues: add a stay with add_accommodation, add a leg with add_transport_segment, move a scheduled place with move_itinerary_item, or use update_itinerary_section / add_booking_todo / add_packing_item. No arguments — it reviews the open trip."),
 	InputSchema: anthropic.ToolInputSchemaParam{
 		Properties: map[string]any{},
+	},
+}
+
+var addAccommodationTool = anthropic.ToolParam{
+	Name:        "add_accommodation",
+	Description: anthropic.String("Add a place to stay to the trip open in this conversation — use it to fix a 'no lodging booked' review finding, or whenever the traveler settles on where they're sleeping. Copy the check_in/check_out from the review finding's [fix: ...] hint when acting on one. The stay starts unbooked (a booking to-do). Only works when a saved trip is open in this conversation."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"name":       map[string]any{"type": "string", "description": "The place/hotel/rental name, e.g. 'Hotel Grande Bretagne'"},
+			"check_in":   map[string]any{"type": "string", "description": "Optional YYYY-MM-DD check-in date"},
+			"check_out":  map[string]any{"type": "string", "description": "Optional YYYY-MM-DD check-out date"},
+			"address":    map[string]any{"type": "string", "description": "Optional street address or area"},
+			"url":        map[string]any{"type": "string", "description": "Optional booking or listing URL"},
+			"price_note": map[string]any{"type": "string", "description": "Optional short price note, e.g. '~€180/night'"},
+		},
+		Required: []string{"name"},
+	},
+}
+
+var addTransportSegmentTool = anthropic.ToolParam{
+	Name:        "add_transport_segment",
+	Description: anthropic.String("Add a transport leg (ferry/flight/train/bus/car) between two places to the trip open in this conversation — use it to fix a 'no transport booked from X to Y' review finding (copy its origin/destination/mode/date from the [fix: ...] hint), or whenever the traveler settles a leg. The segment starts unbooked. Only works when a saved trip is open in this conversation."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"mode":        map[string]any{"type": "string", "enum": []string{"flight", "train", "bus", "car", "ferry", "other"}, "description": "How the traveler moves between the two places"},
+			"origin":      map[string]any{"type": "string", "description": "Departure place, e.g. 'Athens' or 'Santorini'"},
+			"destination": map[string]any{"type": "string", "description": "Arrival place, e.g. 'Naxos'"},
+			"depart_date": map[string]any{"type": "string", "description": "Optional YYYY-MM-DD departure date"},
+			"provider":    map[string]any{"type": "string", "description": "Optional operator/carrier, e.g. 'Blue Star Ferries'"},
+			"url":         map[string]any{"type": "string", "description": "Optional booking URL"},
+		},
+		Required: []string{"mode"},
+	},
+}
+
+var moveItineraryItemTool = anthropic.ToolParam{
+	Name:        "move_itinerary_item",
+	Description: anthropic.String("Reschedule a single already-saved itinerary place to a different day (and optionally a different time of day) on the trip open in this conversation — use it to fix an over-packed-day or 'may be closed' review finding (copy the item_id and target day from the [fix: ...] hint). This moves ONE place; to rebuild a whole day use update_itinerary_section instead. Only works when a saved trip is open in this conversation."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"item_id":     map[string]any{"type": "string", "description": "The itinerary item's id (the item_id from a review finding, or from get_trip)"},
+			"day":         map[string]any{"type": "integer", "description": "The 1-based trip day to move the place to"},
+			"time_of_day": map[string]any{"type": "string", "enum": []string{"morning", "afternoon", "evening"}, "description": "Optional new time of day"},
+		},
+		Required: []string{"item_id", "day"},
 	},
 }
 
@@ -231,11 +276,67 @@ func formatReviewFindings(findings []Finding) string {
 		}
 		fmt.Fprintf(&b, "%s:\n", grp.header)
 		for _, f := range fs {
-			b.WriteString("- " + f.Message + "\n")
+			b.WriteString("- " + f.Message + reviewFindingTail(f) + "\n")
 		}
 	}
-	b.WriteString("Summarize these for the traveler in plain language and offer to fix them — you can update the itinerary, add booking to-dos, or add packing items.")
+	b.WriteString("The [fix: ...] hints tell you exactly how to act on each issue: " +
+		"add_accommodation for a lodging gap (use its check_in/check_out), " +
+		"add_transport_segment for a transit gap (use its origin/destination/mode), " +
+		"move_itinerary_item for an over-packed or closed-venue day (use item_id + target_day). " +
+		"You can also update_itinerary_section, add booking to-dos, or add packing items. " +
+		"Summarize the findings for the traveler in plain language and offer to fix them.")
 	return b.String()
+}
+
+// reviewFindingTail renders a compact, machine-readable [fix: ...] hint from a
+// finding's structured fields so the model can map each issue straight to the
+// tool that resolves it, without re-parsing the prose Message. Empty when the
+// finding carries no actionable metadata.
+func reviewFindingTail(f Finding) string {
+	var parts []string
+	add := func(k, v string) {
+		if v != "" {
+			parts = append(parts, k+"="+v)
+		}
+	}
+	add("category", f.Category)
+	if f.ItemID != nil {
+		add("item_id", *f.ItemID)
+	}
+	if fx := f.Fix; fx != nil {
+		add("fix", fx.Action)
+		if fx.EntityType != nil {
+			add("entity_type", *fx.EntityType)
+		}
+		if fx.Origin != nil {
+			add("origin", *fx.Origin)
+		}
+		if fx.Destination != nil {
+			add("destination", *fx.Destination)
+		}
+		if fx.Mode != nil {
+			add("mode", *fx.Mode)
+		}
+		if fx.CheckIn != nil {
+			add("check_in", *fx.CheckIn)
+		}
+		if fx.CheckOut != nil {
+			add("check_out", *fx.CheckOut)
+		}
+		if fx.Date != nil {
+			add("date", *fx.Date)
+		}
+		if fx.City != nil {
+			add("city", *fx.City)
+		}
+		if fx.TargetDay != nil {
+			add("target_day", fmt.Sprintf("%d", *fx.TargetDay))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " [fix: " + strings.Join(parts, " ") + "]"
 }
 
 func runAddPackingItemTool(s *planSession, input json.RawMessage) (string, bool) {
@@ -272,6 +373,167 @@ func runAddPackingItemTool(s *planSession, input json.RawMessage) (string, bool)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
 	go recordEvent(s.uid, "agent_packing_item_added", &tid, map[string]any{"category": item.Category})
 	return fmt.Sprintf("Added %q to the trip's packing & prep checklist. Keep going for the other items; the traveler will see the list on the trip page.", item.Title), false
+}
+
+// checkBoundTripSession is the guard ladder for the trip-acting tools that
+// operate on the conversation's OPEN trip (add_accommodation,
+// add_transport_segment, move_itinerary_item): signed-in, persistence up, a
+// trip is bound, and the caller may edit it (owner or editor-collaborator).
+// Unlike the booking-todo tools it takes no trip_id — the target is always the
+// bound trip.
+func checkBoundTripSession(s *planSession) (uuid.UUID, string, bool) {
+	if !s.authed {
+		return uuid.Nil, "The traveler isn't signed in, so there's no saved trip to change. Give the advice in your reply instead.", true
+	}
+	if dbPool == nil {
+		return uuid.Nil, "Saved trips are unavailable right now (persistence offline).", true
+	}
+	if s.boundTripID == nil {
+		return uuid.Nil, "No trip is open in this conversation to change. Ask the traveler to open one of their saved trips, then try again.", true
+	}
+	tid := *s.boundTripID
+	if _, err := store.New(dbPool).GetEditableTripByID(s.ctx, store.GetEditableTripByIDParams{ID: tid, UserID: s.uid}); err != nil {
+		return uuid.Nil, "That trip can't be edited by this traveler.", true
+	}
+	return tid, "", false
+}
+
+func runAddAccommodationTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Name      string  `json:"name"`
+		CheckIn   *string `json:"check_in"`
+		CheckOut  *string `json:"check_out"`
+		Address   *string `json:"address"`
+		URL       *string `json:"url"`
+		PriceNote *string `json:"price_note"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBoundTripSession(s)
+	if failed {
+		return msg, true
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return "name is required.", true
+	}
+	checkIn, err := parseDateParam(in.CheckIn)
+	if err != nil {
+		return "check_in must be YYYY-MM-DD.", true
+	}
+	checkOut, err := parseDateParam(in.CheckOut)
+	if err != nil {
+		return "check_out must be YYYY-MM-DD.", true
+	}
+
+	acc, err := store.New(dbPool).CreateAccommodation(s.ctx, store.CreateAccommodationParams{
+		TripID:    tid,
+		Name:      name,
+		Url:       in.URL,
+		Address:   in.Address,
+		CheckIn:   checkIn,
+		CheckOut:  checkOut,
+		PriceNote: in.PriceNote,
+	})
+	if err != nil {
+		return "Could not save the accommodation.", true
+	}
+	touchTripAs(s.ctx, tid, s.uid)
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_accommodation_added", &tid, nil)
+	return fmt.Sprintf("Added the stay %q to the trip. It starts unbooked — the traveler can confirm it on the trip page. Mention it briefly.", acc.Name), false
+}
+
+func runAddTransportSegmentTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Mode        string  `json:"mode"`
+		Origin      *string `json:"origin"`
+		Destination *string `json:"destination"`
+		DepartDate  *string `json:"depart_date"`
+		Provider    *string `json:"provider"`
+		URL         *string `json:"url"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBoundTripSession(s)
+	if failed {
+		return msg, true
+	}
+	mode := strings.ToLower(strings.TrimSpace(in.Mode))
+	if !allowedSegmentModes[mode] {
+		return "mode must be one of: flight, train, bus, car, ferry, other.", true
+	}
+	depart, err := parseDateParam(in.DepartDate)
+	if err != nil {
+		return "depart_date must be YYYY-MM-DD.", true
+	}
+
+	seg, err := store.New(dbPool).CreateSegment(s.ctx, store.CreateSegmentParams{
+		TripID:      tid,
+		Mode:        mode,
+		Origin:      in.Origin,
+		Destination: in.Destination,
+		DepartDate:  depart,
+		Provider:    in.Provider,
+		Url:         in.URL,
+	})
+	if err != nil {
+		return "Could not save the transport segment.", true
+	}
+	touchTripAs(s.ctx, tid, s.uid)
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_segment_added", &tid, map[string]any{"mode": seg.Mode})
+	leg := seg.Mode
+	if seg.Origin != nil && seg.Destination != nil {
+		leg = fmt.Sprintf("%s %s → %s", seg.Mode, *seg.Origin, *seg.Destination)
+	}
+	return fmt.Sprintf("Added the %s leg to the trip. It starts unbooked — the traveler can confirm it on the trip page. Mention it briefly.", leg), false
+}
+
+func runMoveItineraryItemTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		ItemID    string  `json:"item_id"`
+		Day       *int    `json:"day"`
+		TimeOfDay *string `json:"time_of_day"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBoundTripSession(s)
+	if failed {
+		return msg, true
+	}
+	itemID, err := uuid.Parse(strings.TrimSpace(in.ItemID))
+	if err != nil {
+		return "That item_id is not valid; call get_trip to see the itinerary with ids.", true
+	}
+	if in.Day == nil || *in.Day < 1 {
+		return "day is required and must be >= 1.", true
+	}
+	params := store.UpdateItineraryItemParams{ID: itemID, TripID: tid}
+	d := int32(*in.Day)
+	params.Day = &d
+	if in.TimeOfDay != nil {
+		tod := strings.ToLower(strings.TrimSpace(*in.TimeOfDay))
+		if !allowedTimesOfDay[tod] {
+			return "time_of_day must be 'morning', 'afternoon', or 'evening'.", true
+		}
+		params.TimeOfDay = &tod
+	}
+
+	// TripID scopes the update — an item on another trip matches no row and
+	// errors, so this also enforces "belongs to the bound trip".
+	item, err := store.New(dbPool).UpdateItineraryItem(s.ctx, params)
+	if err != nil {
+		return "No such itinerary item on this trip; call get_trip to see the itinerary with ids.", true
+	}
+	touchTripAs(s.ctx, tid, s.uid)
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_item_moved", &tid, nil)
+	where := fmt.Sprintf("Day %d", *in.Day)
+	if item.TimeOfDay != nil && *item.TimeOfDay != "" {
+		where += " (" + *item.TimeOfDay + ")"
+	}
+	return fmt.Sprintf("Moved %q to %s — the traveler's trip page has refreshed.", item.Name, where), false
 }
 
 func runGetWeatherTool(ctx context.Context, input json.RawMessage) (string, bool) {
