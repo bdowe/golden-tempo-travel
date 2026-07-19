@@ -42,6 +42,7 @@ import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/add_to_trip_sheet.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
+import '../widgets/checklist_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
@@ -3775,6 +3776,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     ),
                                   ],
                                 ],
+                              ),
+                            ),
+                          ),
+                          // Packing & prep: a lightweight per-trip checklist,
+                          // seeded by the AI assistant and freely editable. Its
+                          // own endpoint/provider (not part of the trip payload),
+                          // so it's a self-contained peer section here.
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            sliver: SliverToBoxAdapter(
+                              child: ChecklistSection(
+                                tripId: trip.id,
+                                canEdit: !_readOnly,
+                                isOffline: _isOffline,
                               ),
                             ),
                           ),

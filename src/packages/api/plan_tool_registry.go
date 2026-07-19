@@ -97,6 +97,7 @@ var planToolRegistry = []planTool{
 	{def: addBookingTodoTool, enabled: authedOnly, run: runAddBookingTodoTool},
 	{def: updateBookingTodoTool, enabled: authedOnly, run: runUpdateBookingTodoTool},
 	{def: removeBookingTodoTool, enabled: authedOnly, run: runRemoveBookingTodoTool},
+	{def: addPackingItemTool, enabled: authedOnly, run: runAddPackingItemTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the

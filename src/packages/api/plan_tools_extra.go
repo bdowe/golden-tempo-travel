@@ -139,6 +139,65 @@ var removeBookingTodoTool = anthropic.ToolParam{
 	},
 }
 
+var addPackingItemTool = anthropic.ToolParam{
+	Name:        "add_packing_item",
+	Description: anthropic.String("Add one item to a saved trip's packing & prep checklist (e.g. 'Rain jacket', 'Passport', 'Reef-safe sunscreen', 'EU power adapter'). Use it when the traveler asks for help packing or preparing for one of their saved trips — call it once per item to build the list. Consider calling get_weather first for the destination and dates so the list fits the season (layers for cold, sun protection for beach, etc.). Requires the trip's id (use get_trip first if you don't have it)."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"trip_id": map[string]any{
+				"type":        "string",
+				"description": "The saved trip's id",
+			},
+			"title": map[string]any{
+				"type":        "string",
+				"description": "The item to pack or prepare, e.g. 'Rain jacket' or 'Book travel insurance'",
+			},
+			"category": map[string]any{
+				"type":        "string",
+				"enum":        []string{"clothing", "documents", "electronics", "health", "general"},
+				"description": "Which group the item belongs to; defaults to 'general'",
+			},
+		},
+		Required: []string{"trip_id", "title"},
+	},
+}
+
+func runAddPackingItemTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		TripID   string `json:"trip_id"`
+		Title    string `json:"title"`
+		Category string `json:"category"`
+	}
+	json.Unmarshal(input, &in)
+
+	tid, msg, failed := checkBookingTodoSession(s, in.TripID)
+	if failed {
+		return msg, true
+	}
+	if strings.TrimSpace(in.Title) == "" {
+		return "title is required.", true
+	}
+	category, valid := normalizeChecklistCategory(in.Category)
+	if !valid {
+		return "category must be one of: clothing, documents, electronics, health, general.", true
+	}
+
+	item, err := store.New(dbPool).CreateChecklistItem(s.ctx, store.CreateChecklistItemParams{
+		TripID:   tid,
+		Category: category,
+		Title:    strings.TrimSpace(in.Title),
+		Position: 9999,
+		Auto:     true, // AI-seeded; the traveler can still edit/toggle/delete it freely.
+	})
+	if err != nil {
+		return "Could not save the packing item.", true
+	}
+	touchTripAs(s.ctx, tid, s.uid)
+	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+	go recordEvent(s.uid, "agent_packing_item_added", &tid, map[string]any{"category": item.Category})
+	return fmt.Sprintf("Added %q to the trip's packing & prep checklist. Keep going for the other items; the traveler will see the list on the trip page.", item.Title), false
+}
+
 func runGetWeatherTool(ctx context.Context, input json.RawMessage) (string, bool) {
 	var in struct {
 		City      string `json:"city"`
