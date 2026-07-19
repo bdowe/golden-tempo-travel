@@ -644,6 +644,10 @@ func main() {
 	// planning nudge; no-op in degraded mode.
 	startReengagementChecker(ctx)
 
+	// Background health self-check (Observability): alerts on healthy<->degraded
+	// transitions (DB reachability + backup freshness); no-op in degraded mode.
+	startHealthMonitor(ctx)
+
 	startServer(buildRouter())
 }
 
@@ -873,6 +877,10 @@ func buildRouter() *mux.Router {
 	// Live in-process request/latency/error + runtime rollup (ops_metrics.go).
 	// No dbPool guard — it must render in degraded mode; admin auth only.
 	api.Handle("/admin/ops/metrics", admin(opsMetricsHandler)).Methods("GET")
+
+	// Consolidated dependency health: DB + provider config + build + backup
+	// freshness (ops_health.go). Also renders in degraded mode; admin auth only.
+	api.Handle("/admin/ops/health", admin(opsHealthHandler)).Methods("GET")
 
 	// Public browse endpoints for published local-sourced content.
 	api.HandleFunc("/local/recommendations", localRecommendationsHandler).Methods("GET")

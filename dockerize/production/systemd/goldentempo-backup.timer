@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily Golden Tempo Postgres backup (~04:10)
+Documentation=file:///opt/goldentempo/restore.md
+
+[Timer]
+# Daily at 04:10. RandomizedDelaySec smears the exact start a little so a fleet
+# of hosts don't all hit storage at the same instant.
+OnCalendar=*-*-* 04:10:00
+RandomizedDelaySec=300
+# Persistent=true runs a missed backup on next boot (host was off at 04:10).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

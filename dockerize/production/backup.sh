@@ -24,6 +24,9 @@
 #   PG_USER / PG_DB   database credentials (default travel / travel_planner)
 #   RETENTION_DAYS    local prune horizon (default 14)
 #   RCLONE_REMOTE     rclone destination (default r2:goldentempo-backups)
+#   BACKUP_HEARTBEAT_FILE  freshness marker written on a good local dump
+#                     (default $BACKUP_DIR/.last_success); the API's
+#                     /admin/ops/health reads it to detect stale backups
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-/opt/goldentempo/docker-compose.yml}"
@@ -34,6 +37,7 @@ PG_USER="${PG_USER:-travel}"
 PG_DB="${PG_DB:-travel_planner}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-r2:goldentempo-backups}"
+BACKUP_HEARTBEAT_FILE="${BACKUP_HEARTBEAT_FILE:-$BACKUP_DIR/.last_success}"
 
 compose() {
     if [ -n "$COMPOSE_PROJECT" ]; then
@@ -62,6 +66,13 @@ echo "[backup] wrote $(du -h "$out" | cut -f1) $out"
 find "$BACKUP_DIR" -maxdepth 1 -name "${PG_DB}-*.dump.gz" -type f \
     -mtime +"$RETENTION_DAYS" -print -delete |
     sed 's/^/[backup] pruned /'
+
+# Freshness heartbeat: a good local dump exists. Written BEFORE the best-effort
+# off-site copy so an unconfigured/failed rclone (which exits 0) never withholds
+# the "backups are current" signal — the API's /admin/ops/health only asks
+# whether a recent dump succeeded, not whether it was mirrored off-site.
+date -u +%FT%TZ >"$BACKUP_HEARTBEAT_FILE"
+echo "[backup] heartbeat $(cat "$BACKUP_HEARTBEAT_FILE") -> $BACKUP_HEARTBEAT_FILE"
 
 # Off-site copy (best-effort): requires rclone AND the remote to exist.
 remote_name="${RCLONE_REMOTE%%:*}"

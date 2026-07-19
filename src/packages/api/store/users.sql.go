@@ -103,6 +103,43 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const listAdminUsers = `-- name: ListAdminUsers :many
+SELECT id, email, display_name
+FROM users
+WHERE is_admin = true
+ORDER BY created_at ASC
+`
+
+type ListAdminUsersRow struct {
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName *string   `json:"display_name"`
+}
+
+// All admin accounts (is_admin = true), for operational fan-out such as the
+// ops-health degradation alert. Returns just what an alert needs: id + email +
+// display name. Stable ordering by creation so the recipient list is
+// deterministic.
+func (q *Queries) ListAdminUsers(ctx context.Context) ([]ListAdminUsersRow, error) {
+	rows, err := q.db.Query(ctx, listAdminUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminUsersRow
+	for rows.Next() {
+		var i ListAdminUsersRow
+		if err := rows.Scan(&i.ID, &i.Email, &i.DisplayName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markUserEmailVerified = `-- name: MarkUserEmailVerified :exec
 UPDATE users SET email_verified_at = COALESCE(email_verified_at, now())
 WHERE id = $1
