@@ -141,3 +141,20 @@ curl -fsS https://goldentempo.co/api/v1/health       # API through the proxy
 curl -sI  http://goldentempo.co/                     # 301 → https apex
 curl -sI  https://www.goldentempo.co/                # 301 → apex
 ```
+
+For the full end-to-end journey (register → trip → item → share/OG → export →
+alerts → notifications → teardown), run the smoke harness against the live host.
+It registers a throwaway user and deletes it in teardown, so it is safe to run
+against production:
+
+```bash
+# sql seed mode is local-only (needs the postgres container); against prod use
+# plan mode (the AI planner builds a real trip — costs a little Anthropic spend)
+# or existing mode with a trip you own (SMOKE_TRIP_ID + SMOKE_TOKEN=<bearer>).
+make smoke BASE_URL=https://goldentempo.co SMOKE_SEED_MODE=plan
+```
+
+Green means the traveler journey works end to end; the run also prints a
+**MANUAL CHECKS REMAINING** block for the things a script can't assert on its own
+(real Cloudflare real-IP rate limiting, Slack/Facebook link-preview unfurl, SMTP
+inbox round-trips, legal-page DRAFT-banner sign-off).
