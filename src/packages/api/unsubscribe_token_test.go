@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -41,12 +42,17 @@ func TestUnsubscribeToken_TamperedPayloadFails(t *testing.T) {
 func TestUnsubscribeToken_TamperedSignatureFails(t *testing.T) {
 	id := uuid.New()
 	tok := signUnsubscribeToken(testUnsubSecret, id, unsubAll)
-	flipped := tok[:len(tok)-1]
-	if tok[len(tok)-1] == 'A' {
-		flipped += "B"
-	} else {
-		flipped += "A"
+	// Tamper the signature by flipping a byte of the DECODED signature and
+	// re-encoding — flipping the last base64 char is unreliable because
+	// non-strict RawURLEncoding ignores its trailing padding bits, so the
+	// decode can round-trip to the same bytes and "verify" a tampered token.
+	parts := strings.SplitN(tok, ".", 2)
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode signature: %v", err)
 	}
+	sig[0] ^= 0xFF
+	flipped := parts[0] + "." + base64.RawURLEncoding.EncodeToString(sig)
 	if _, _, ok := verifyUnsubscribeTokenWith(testUnsubSecret, flipped); ok {
 		t.Fatal("tampered signature verified")
 	}

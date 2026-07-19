@@ -78,7 +78,7 @@ func unsubscribeSigningSecret() []byte {
 func signUnsubscribeToken(secret []byte, userID uuid.UUID, category string) string {
 	payload := userID.String() + "|" + category
 	sig := hmacSign(secret, payload)
-	enc := base64.RawURLEncoding
+	enc := base64.RawURLEncoding.Strict()
 	return enc.EncodeToString([]byte(payload)) + "." + enc.EncodeToString(sig)
 }
 
@@ -91,7 +91,7 @@ func verifyUnsubscribeTokenWith(secret []byte, token string) (uuid.UUID, string,
 	if len(parts) != 2 {
 		return uuid.UUID{}, "", false
 	}
-	enc := base64.RawURLEncoding
+	enc := base64.RawURLEncoding.Strict()
 	payloadBytes, err := enc.DecodeString(parts[0])
 	if err != nil {
 		return uuid.UUID{}, "", false
