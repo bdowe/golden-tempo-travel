@@ -82,6 +82,7 @@ dependencies:
   desktop_drop: ^0.6.1 # drag-drop target (web + desktop; no-op on mobile)
   file_picker: ^10.3.3 # paperclip button; uniform bytes on web/desktop/gallery
   image: ^4.3.0 # pure-Dart ENCODING of already-downscaled pixels only
+  web: ^1.1.1 # paste-from-clipboard listener (clipboard_images_web.dart)
 
 dev_dependencies:
   flutter_test:
