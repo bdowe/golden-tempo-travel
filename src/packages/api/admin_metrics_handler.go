@@ -273,10 +273,9 @@ func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
 			PlanCacheCreationTokens: row.PlanCacheCreationTokens,
 			// Same pricing basis as MetricsResponse.EstClaudeCostUSD — the
 			// planCost* constants pinned to the /plan model.
-			EstClaudeCostUSD: (float64(row.PlanInputTokens)*planCostInputUSDPerMTok +
-				float64(row.PlanOutputTokens)*planCostOutputUSDPerMTok +
-				float64(row.PlanCacheCreationTokens)*planCostCacheWriteUSDPerMTok +
-				float64(row.PlanCacheReadTokens)*planCostCacheReadUSDPerMTok) / 1e6,
+			EstClaudeCostUSD: estClaudeCostUSD(
+				row.PlanInputTokens, row.PlanOutputTokens,
+				row.PlanCacheCreationTokens, row.PlanCacheReadTokens),
 		}
 		// max(created_at) through a LEFT JOIN: sqlc types it interface{};
 		// pgx delivers time.Time or nil.

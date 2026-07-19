@@ -246,6 +246,18 @@ const (
 	planCostCacheReadUSDPerMTok  = 0.30 // cache read (0.1x input)
 )
 
+// estClaudeCostUSD estimates /plan Claude spend from a token breakdown, using
+// the planCost* rates above. input_tokens is the uncached remainder — cache
+// reads and writes are billed separately at their own rates. Shared by the
+// window metrics (MetricsResponse.EstClaudeCostUSD) and the per-user activity
+// rows so the two never drift.
+func estClaudeCostUSD(inTok, outTok, cacheWriteTok, cacheReadTok int64) float64 {
+	return (float64(inTok)*planCostInputUSDPerMTok +
+		float64(outTok)*planCostOutputUSDPerMTok +
+		float64(cacheWriteTok)*planCostCacheWriteUSDPerMTok +
+		float64(cacheReadTok)*planCostCacheReadUSDPerMTok) / 1e6
+}
+
 // Google Places pricing used for est_places_cost_usd, in USD per call.
 // Source: Google Maps Platform pricing table
 // (https://developers.google.com/maps/billing-and-pricing/pricing), list
@@ -468,10 +480,9 @@ func adminMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	// uncached remainder — cache reads and writes are billed separately at
 	// their own rates.
 	resp.EstCostModel = planCostModelID
-	resp.EstClaudeCostUSD = (float64(resp.PlanInputTokens)*planCostInputUSDPerMTok +
-		float64(resp.PlanOutputTokens)*planCostOutputUSDPerMTok +
-		float64(resp.PlanCacheCreateTokens)*planCostCacheWriteUSDPerMTok +
-		float64(resp.PlanCacheReadTokens)*planCostCacheReadUSDPerMTok) / 1e6
+	resp.EstClaudeCostUSD = estClaudeCostUSD(
+		resp.PlanInputTokens, resp.PlanOutputTokens,
+		resp.PlanCacheCreateTokens, resp.PlanCacheReadTokens)
 	if resp.ActiveUsers > 0 {
 		resp.EstCogsPerActiveUser = resp.EstClaudeCostUSD / float64(resp.ActiveUsers)
 	}
