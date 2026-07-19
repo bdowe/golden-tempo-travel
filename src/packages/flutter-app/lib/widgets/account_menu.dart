@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation/app_nav.dart';
-import '../providers/alerts_provider.dart';
+import '../providers/notifications_provider.dart';
 import '../providers/auth_provider.dart';
 import '../screens/account_settings_screen.dart';
 import '../screens/admin_metrics_screen.dart';
@@ -197,7 +197,7 @@ class AccountMenu extends ConsumerWidget {
     }
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
-    final unread = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final unread = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final avatar = user != null
         ? CircleAvatar(
             radius: 16,
@@ -237,7 +237,7 @@ class RailAccountButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
-    final unread = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final unread = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final avatar = CircleAvatar(
       radius: 18,
       backgroundColor: AppColors.brand,

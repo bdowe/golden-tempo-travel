@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/alert_event.dart';
-import '../providers/alerts_provider.dart';
+import '../models/notification.dart';
+import '../providers/notifications_provider.dart';
 import '../theme/spacing.dart';
 import '../utils/money_format.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/offline_banner.dart' show relativeTime;
 import '../widgets/page_container.dart';
 
-/// The notification center (specs/price-alerts-v2): every price drop as a
-/// durable, read/unread feed row. Opening the center is the read action —
-/// mark-all-read fires on open, then the badge clears.
+/// The notification center (Wave 16): every notification as a durable,
+/// read/unread feed row. Type-agnostic — each row renders from its `type` +
+/// `payload`, so price drops, trip reminders and future types share one center.
+/// Opening the center is the read action — mark-all-read fires on open, then
+/// the badge clears.
 class NotificationCenterScreen extends ConsumerStatefulWidget {
   const NotificationCenterScreen({super.key});
 
@@ -24,30 +26,30 @@ class _NotificationCenterScreenState
   @override
   void initState() {
     super.initState();
-    // Opening the center marks all events read (mark-all is the read model),
-    // then refreshes both the feed (so rows show as read) and the badge.
+    // Opening the center marks all notifications read (mark-all is the read
+    // model), then refreshes both the feed (so rows show as read) and the badge.
     WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
   }
 
   Future<void> _markRead() async {
     try {
-      await ref.read(alertsApiServiceProvider).markAlertEventsRead();
+      await ref.read(notificationsApiServiceProvider).markRead();
     } catch (_) {
       // Best-effort: a failed mark-read shouldn't block reading the feed. The
       // badge simply stays until the next successful open.
     }
     if (!mounted) return;
-    ref.invalidate(alertUnreadCountProvider);
-    ref.invalidate(alertEventsProvider);
+    ref.invalidate(notificationsUnreadCountProvider);
+    ref.invalidate(notificationsProvider);
   }
 
   @override
   Widget build(BuildContext context) {
-    final events = ref.watch(alertEventsProvider);
+    final notifs = ref.watch(notificationsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
       body: PageContainer(
-        child: events.when(
+        child: notifs.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => EmptyState(
             icon: Icons.cloud_off,
@@ -55,7 +57,7 @@ class _NotificationCenterScreenState
             message: '$e'.replaceFirst('Exception: ', ''),
             actions: [
               FilledButton(
-                onPressed: () => ref.invalidate(alertEventsProvider),
+                onPressed: () => ref.invalidate(notificationsProvider),
                 child: const Text('Retry'),
               ),
             ],
@@ -70,14 +72,14 @@ class _NotificationCenterScreenState
               );
             }
             return RefreshIndicator(
-              onRefresh: () async => ref.invalidate(alertEventsProvider),
+              onRefresh: () async => ref.invalidate(notificationsProvider),
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 itemCount: list.length,
                 separatorBuilder: (_, __) =>
                     const SizedBox(height: AppSpacing.sm),
-                itemBuilder: (_, i) => _EventTile(event: list[i]),
+                itemBuilder: (_, i) => _NotificationTile(notification: list[i]),
               ),
             );
           },
@@ -87,36 +89,28 @@ class _NotificationCenterScreenState
   }
 }
 
-/// One drop in the feed: route, the drop ("$412, down from $498"), and how long
-/// ago. Unread rows get an accent dot and bolder text; read rows are muted.
-class _EventTile extends StatelessWidget {
-  final AlertEvent event;
-  const _EventTile({required this.event});
-
-  String _dropLine() {
-    final now = formatMoney(event.price, event.currency);
-    if (event.previousPrice != null) {
-      return '$now, down from ${formatMoney(event.previousPrice!, event.currency)}';
-    }
-    return now;
-  }
-
-  String _datesLine() {
-    // A flexible alert reports the cheapest day it found; show that instead of
-    // the nominal departure so the traveler books the right date.
-    var s = event.matchedDate ?? event.departDate;
-    if (event.returnDate != null) s += ' → ${event.returnDate}';
-    if (event.matchedDate != null && event.matchedDate != event.departDate) {
-      s += ' (best in window)';
-    }
-    return s;
-  }
+/// One feed row. The chrome (unread dot + timestamp + card) is shared; the body
+/// is chosen by `type`: `price_drop` renders the flight-specific layout from its
+/// payload, and any unrecognized type falls back to a generic title/subtitle so
+/// a new backend type is never a blank row.
+class _NotificationTile extends StatelessWidget {
+  final AppNotification notification;
+  const _NotificationTile({required this.notification});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final unread = event.isUnread;
-    final when = relativeTime(DateTime.parse(event.occurredAt).toLocal());
+    final unread = notification.isUnread;
+    final when =
+        relativeTime(DateTime.parse(notification.createdAt).toLocal());
+
+    final content = notification.type == 'price_drop'
+        ? _PriceDropBody(payload: notification.payload, unread: unread)
+        : _GenericBody(
+            type: notification.type,
+            payload: notification.payload,
+            unread: unread,
+          );
 
     return Card(
       child: Padding(
@@ -142,31 +136,10 @@ class _EventTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${event.origin} → ${event.destination}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight:
-                          unread ? FontWeight.w700 : FontWeight.w500,
-                      color: unread
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  content,
                   const SizedBox(height: 2),
                   Text(
-                    _dropLine(),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight:
-                          unread ? FontWeight.w600 : FontWeight.w400,
-                      color: unread
-                          ? Colors.green.shade800
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${_datesLine()} · $when',
+                    when,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -177,6 +150,146 @@ class _EventTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The price-drop layout: route, the drop ("$412, down from $498") and the
+/// (possibly flexible) dates — built entirely from the payload map.
+class _PriceDropBody extends StatelessWidget {
+  final Map<String, dynamic> payload;
+  final bool unread;
+  const _PriceDropBody({required this.payload, required this.unread});
+
+  String? _str(String k) {
+    final v = payload[k];
+    return v is String ? v : null;
+  }
+
+  double? _num(String k) {
+    final v = payload[k];
+    return v is num ? v.toDouble() : null;
+  }
+
+  String _dropLine() {
+    final price = _num('price') ?? 0;
+    final currency = _str('currency') ?? '';
+    final now = formatMoney(price, currency);
+    final prev = _num('previous_price');
+    if (prev != null) {
+      return '$now, down from ${formatMoney(prev, currency)}';
+    }
+    return now;
+  }
+
+  String _datesLine() {
+    final depart = _str('depart_date') ?? '';
+    final matched = _str('matched_date');
+    var s = matched ?? depart;
+    final ret = _str('return_date');
+    if (ret != null) s += ' → $ret';
+    if (matched != null && matched != depart) s += ' (best in window)';
+    return s;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final origin = _str('origin') ?? '';
+    final destination = _str('destination') ?? '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$origin → $destination',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+            color: unread
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _dropLine(),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+            color: unread
+                ? Colors.green.shade800
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _datesLine(),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Fallback layout for any type the client doesn't specialize yet. Reads a
+/// `title` (or `message`/`body`) from the payload, else humanizes the type
+/// name, so a newly-added backend notification always renders something
+/// sensible instead of a blank row.
+class _GenericBody extends StatelessWidget {
+  final String type;
+  final Map<String, dynamic> payload;
+  final bool unread;
+  const _GenericBody({
+    required this.type,
+    required this.payload,
+    required this.unread,
+  });
+
+  static String _humanize(String type) {
+    if (type.isEmpty) return 'Notification';
+    return type
+        .split(RegExp(r'[_\s]+'))
+        .where((w) => w.isNotEmpty)
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title =
+        (payload['title'] is String && (payload['title'] as String).isNotEmpty)
+            ? payload['title'] as String
+            : _humanize(type);
+    final subtitle = payload['message'] is String
+        ? payload['message'] as String
+        : payload['body'] is String
+            ? payload['body'] as String
+            : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+            color: unread
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

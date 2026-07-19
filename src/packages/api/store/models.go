@@ -169,6 +169,16 @@ type LocalSourceMaterial struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Notification struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Type      string             `json:"type"`
+	Payload   []byte             `json:"payload"`
+	TripID    pgtype.UUID        `json:"trip_id"`
+	ReadAt    pgtype.Timestamptz `json:"read_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
 type PlanChatSession struct {
 	ID           uuid.UUID `json:"id"`
 	UserID       uuid.UUID `json:"user_id"`

@@ -780,6 +780,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/alerts/events", authMiddleware(http.HandlerFunc(listAlertEventsHandler))).Methods("GET")
 	api.Handle("/alerts/events/read", authMiddleware(http.HandlerFunc(markAlertEventsReadHandler))).Methods("POST")
 	api.Handle("/alerts/events/unread-count", authMiddleware(http.HandlerFunc(unreadAlertEventsCountHandler))).Methods("GET")
+	// Generalized notifications feed (Wave 16): the type-agnostic successor to
+	// /alerts/events. The Flutter notification center + badge read these; the
+	// price-alert checker writes 'price_drop' rows here.
+	api.Handle("/notifications", authMiddleware(http.HandlerFunc(listNotificationsHandler))).Methods("GET")
+	api.Handle("/notifications/read", authMiddleware(http.HandlerFunc(markNotificationsReadHandler))).Methods("POST")
+	api.Handle("/notifications/unread-count", authMiddleware(http.HandlerFunc(unreadNotificationsCountHandler))).Methods("GET")
 	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(patchPriceAlertHandler))).Methods("PATCH")
 	api.Handle("/alerts/{id}", authMiddleware(http.HandlerFunc(deletePriceAlertHandler))).Methods("DELETE")
 	api.Handle("/preferences", authMiddleware(http.HandlerFunc(getPreferencesHandler))).Methods("GET")
