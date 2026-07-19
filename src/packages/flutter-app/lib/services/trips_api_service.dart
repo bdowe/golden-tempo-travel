@@ -126,6 +126,21 @@ class TripsApiService {
     throw Exception('Failed to create share link (${res.statusCode})');
   }
 
+  /// Mints a short-lived, owner-private export token for a trip. The printable
+  /// and calendar (.ics) views are then reachable at the token-gated public
+  /// export routes (build the URLs with exportPrintUrl/exportIcsUrl). Owner-
+  /// only on the server: non-owners get a 404.
+  Future<String> mintExportToken(String tripId) async {
+    final res = await apiClient.httpClient.post(
+      Uri.parse('${apiClient.baseUrl}/trips/$tripId/export-token'),
+      headers: apiClient.jsonHeaders(json: true),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return (jsonDecode(res.body) as Map<String, dynamic>)['token'] as String;
+    }
+    throw Exception('Failed to create export link (${res.statusCode})');
+  }
+
   /// Redeems an editor-role share token; returns the trip id to open.
   Future<String> joinSharedTrip(String token) async {
     final res = await apiClient.httpClient.post(
