@@ -1,5 +1,6 @@
-# Build stage
-FROM golang:1.26-alpine AS builder
+# Build stage — pinned to the build host's platform so multi-arch builds
+# cross-compile (fast) instead of running the Go toolchain under QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -16,8 +17,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Build the application for the image's target platform (amd64/arm64)
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -installsuffix cgo -o main .
 
 # Final stage
 FROM alpine:latest

@@ -1,5 +1,7 @@
-# Build Flutter web app
-FROM debian:stable-slim AS flutter-build
+# Build Flutter web app. The output (js/wasm/assets) is target-independent,
+# so pin this stage to the build host's platform: multi-arch builds run the
+# Flutter toolchain once, natively, instead of again under QEMU emulation.
+FROM --platform=$BUILDPLATFORM debian:stable-slim AS flutter-build
 
 RUN apt-get update && apt-get install -y \
     curl \
