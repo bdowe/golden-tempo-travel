@@ -31,6 +31,11 @@ import '../providers/ferries_provider.dart';
 import '../providers/local_provider.dart';
 import '../providers/shared_with_me_provider.dart';
 import '../providers/trip_cache_provider.dart';
+import '../providers/trip_review_provider.dart';
+import '../providers/checklist_provider.dart';
+import '../providers/budget_provider.dart';
+import '../models/trip_finding.dart';
+import '../models/budget.dart';
 import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
@@ -2865,6 +2870,256 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  // ---- Trip Health one-tap fixes ------------------------------------------
+
+  /// Applies a Trip Health finding's structured [FindingFix]. Safe mutations
+  /// (move/mark-booked/add-packing) apply instantly with a snackbar + Undo;
+  /// adds open the existing sheet PREFILLED; set-dates / raise-budget open the
+  /// existing editors. After any success the trip reloads and the review
+  /// re-reads (see [_afterFix]) so the resolved finding drops off.
+  Future<void> _applyFix(TripFinding finding) async {
+    if (_guardOffline()) return;
+    final fix = finding.fix;
+    if (fix == null) return;
+    final tripId = widget.tripId;
+    switch (fix.action) {
+      case 'add_lodging':
+        final body = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (_) => AddStaySheet(
+            initialName: fix.city == null ? null : 'Stay in ${fix.city}',
+            initialCheckIn: fix.checkIn,
+            initialCheckOut: fix.checkOut,
+          ),
+        );
+        if (body == null) return;
+        try {
+          await ref
+              .read(accommodationsApiServiceProvider)
+              .add(tripId, body);
+          await _afterFix();
+        } catch (e) {
+          _showSnack('Could not add stay: $e');
+        }
+        break;
+      case 'add_transport':
+        final body = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (_) => AddSegmentSheet(
+            initialOrigin: fix.origin,
+            initialDestination: fix.destination,
+            initialMode: fix.mode,
+            initialDepartDate: fix.date,
+          ),
+        );
+        if (body == null) return;
+        try {
+          await ref
+              .read(transportApiServiceProvider)
+              .addSegment(tripId, body);
+          await _afterFix();
+        } catch (e) {
+          _showSnack('Could not add transport: $e');
+        }
+        break;
+      case 'move_item':
+        final itemId = fix.itemId;
+        final targetDay = fix.targetDay;
+        if (itemId == null || targetDay == null) return;
+        final oldDay = _dayOfItem(itemId);
+        try {
+          await ref
+              .read(tripsApiServiceProvider)
+              .updateItineraryItem(tripId, itemId, {'day': targetDay});
+          await _afterFix();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Moved to Day $targetDay'),
+            action: oldDay == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () => _moveItemToDay(itemId, oldDay),
+                  ),
+          ));
+        } catch (e) {
+          _showSnack('Could not move item: $e');
+        }
+        break;
+      case 'mark_booked':
+        final itemId = fix.itemId;
+        if (itemId == null) return;
+        final isAccommodation = fix.entityType == 'accommodation';
+        try {
+          await _setEntityBooked(isAccommodation, itemId, true);
+          await _afterFix();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('Marked as booked'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () async {
+                await _setEntityBooked(isAccommodation, itemId, false);
+                await _afterFix();
+              },
+            ),
+          ));
+        } catch (e) {
+          _showSnack('Could not update booking: $e');
+        }
+        break;
+      case 'add_packing':
+        final title = fix.packingItem;
+        if (title == null) return;
+        final category = fix.packingCategory ?? 'general';
+        try {
+          final added = await ref
+              .read(checklistApiServiceProvider)
+              .add(tripId, title, category);
+          ref.invalidate(checklistProvider(tripId));
+          await _afterFix();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Added "$title" to packing'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () async {
+                try {
+                  await ref
+                      .read(checklistApiServiceProvider)
+                      .delete(tripId, added.id);
+                  ref.invalidate(checklistProvider(tripId));
+                  _invalidateReview();
+                } catch (e) {
+                  _showSnack('Could not undo: $e');
+                }
+              },
+            ),
+          ));
+        } catch (e) {
+          _showSnack('Could not add packing item: $e');
+        }
+        break;
+      case 'set_dates':
+        await _editDates();
+        _invalidateReview();
+        break;
+      case 'raise_budget':
+        await _editBudgetTarget();
+        break;
+    }
+  }
+
+  /// Reloads the trip payload and re-reads the health review so a resolved
+  /// finding disappears on the next fetch.
+  Future<void> _afterFix() async {
+    await _load();
+    _invalidateReview();
+  }
+
+  /// Invalidates both review variants (hours-off and hours-on) so whichever the
+  /// section is showing re-fetches.
+  void _invalidateReview() {
+    ref.invalidate(
+        tripReviewProvider(TripReviewKey(widget.tripId, checkHours: false)));
+    ref.invalidate(
+        tripReviewProvider(TripReviewKey(widget.tripId, checkHours: true)));
+  }
+
+  int? _dayOfItem(String itemId) {
+    for (final item in _trip?.items ?? const <ItineraryItem>[]) {
+      if (item.id == itemId) return item.day;
+    }
+    return null;
+  }
+
+  Future<void> _moveItemToDay(String itemId, int day) async {
+    try {
+      await ref
+          .read(tripsApiServiceProvider)
+          .updateItineraryItem(widget.tripId, itemId, {'day': day});
+      await _afterFix();
+    } catch (e) {
+      _showSnack('Could not move item: $e');
+    }
+  }
+
+  Future<void> _setEntityBooked(
+      bool isAccommodation, String id, bool booked) async {
+    if (isAccommodation) {
+      await ref
+          .read(accommodationsApiServiceProvider)
+          .update(widget.tripId, id, {'booked': booked});
+    } else {
+      await ref
+          .read(transportApiServiceProvider)
+          .updateSegment(widget.tripId, id, {'booked': booked});
+    }
+  }
+
+  /// Screen-level budget-target editor for the raise_budget fix. Reuses the
+  /// budget provider/service; keeps the trip's existing currency.
+  Future<void> _editBudgetTarget() async {
+    if (_guardOffline()) return;
+    final Budget budget;
+    try {
+      budget = await ref.read(budgetProvider(widget.tripId).future);
+    } catch (e) {
+      _showSnack('Could not load budget: $e');
+      return;
+    }
+    if (!mounted) return;
+    final currency = budget.currency;
+    final controller = TextEditingController(
+      text: budget.targetAmount == null
+          ? ''
+          : budget.targetAmount!.toStringAsFixed(0),
+    );
+    final result = await showDialog<Map<String, double?>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set budget target'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Target ($currency)',
+            hintText: 'Leave blank to just track spending',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final raw = controller.text.trim();
+              final amount = raw.isEmpty ? null : double.tryParse(raw);
+              if (raw.isNotEmpty && (amount == null || amount < 0)) return;
+              Navigator.of(ctx).pop(<String, double?>{'amount': amount});
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return; // cancelled
+    try {
+      await ref.read(budgetApiServiceProvider).upsertBudget(
+            widget.tripId,
+            targetAmount: result['amount'],
+            currency: currency,
+          );
+      ref.invalidate(budgetProvider(widget.tripId));
+      await _afterFix();
+    } catch (e) {
+      _showSnack('Could not update budget: $e');
+    }
+  }
+
   /// Google Maps deep link for a place: prefer place_id, then coordinates, then a
   /// name/address text search.
   String _mapsUrl(ItineraryItem it) {
@@ -3866,6 +4121,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   }
                                   return null;
                                 },
+                                onApplyFix: _readOnly ? null : _applyFix,
                               ),
                             ),
                           ),

@@ -27,7 +27,7 @@ class _FakeTripReviewApiService extends TripReviewApiService {
 }
 
 TripFinding _f(String severity, String category, String message,
-        {int? day, String? itemId}) =>
+        {int? day, String? itemId, FindingFix? fix}) =>
     TripFinding(
       severity: severity,
       category: category,
@@ -35,6 +35,7 @@ TripFinding _f(String severity, String category, String message,
       tripId: 't1',
       day: day,
       itemId: itemId,
+      fix: fix,
     );
 
 Future<_FakeTripReviewApiService> _pump(
@@ -43,6 +44,7 @@ Future<_FakeTripReviewApiService> _pump(
   bool isOffline = false,
   void Function(int day)? onScrollToDay,
   int? Function(String itemId)? dayForItem,
+  Future<void> Function(TripFinding finding)? onApplyFix,
 }) async {
   final fake = _FakeTripReviewApiService(findings);
   await tester.pumpWidget(
@@ -58,6 +60,7 @@ Future<_FakeTripReviewApiService> _pump(
               isOffline: isOffline,
               onScrollToDay: onScrollToDay,
               dayForItem: dayForItem,
+              onApplyFix: onApplyFix,
             ),
           ),
         ),
@@ -161,6 +164,97 @@ void main() {
 
     // Flipping the flag re-fetches with checkHours=true.
     expect(fake.checkHoursCalls, contains(true));
+  });
+
+  testWidgets('a finding with a fix renders a button with the fix label',
+      (tester) async {
+    await _pump(
+      tester,
+      [
+        _f('warn', 'lodging', 'No lodging in Naxos',
+            fix: const FindingFix(action: 'add_lodging', label: 'Add a stay')),
+      ],
+      onApplyFix: (_) async {},
+    );
+
+    expect(find.widgetWithText(FilledButton, 'Add a stay'), findsOneWidget);
+    // The fix took the trailing slot from the chevron.
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
+  });
+
+  testWidgets('every fix action renders its labelled button', (tester) async {
+    await _pump(
+      tester,
+      [
+        _f('warn', 'lodging', 'a',
+            fix: const FindingFix(action: 'add_lodging', label: 'Add a stay')),
+        _f('warn', 'transit', 'b',
+            fix: const FindingFix(
+                action: 'add_transport', label: 'Add transport')),
+        _f('warn', 'unscheduled', 'c',
+            fix: const FindingFix(action: 'move_item', label: 'Move to Day 2')),
+        _f('warn', 'bookings', 'd',
+            fix: const FindingFix(action: 'mark_booked', label: 'Mark booked')),
+        _f('info', 'packing', 'e',
+            fix: const FindingFix(action: 'add_packing', label: 'Add to list')),
+        _f('critical', 'dates', 'f',
+            fix: const FindingFix(action: 'set_dates', label: 'Set dates')),
+        _f('info', 'budget', 'g',
+            fix:
+                const FindingFix(action: 'raise_budget', label: 'Raise budget')),
+      ],
+      onApplyFix: (_) async {},
+    );
+
+    for (final label in const [
+      'Add a stay',
+      'Add transport',
+      'Move to Day 2',
+      'Mark booked',
+      'Add to list',
+      'Set dates',
+      'Raise budget',
+    ]) {
+      expect(find.widgetWithText(FilledButton, label), findsOneWidget);
+    }
+  });
+
+  testWidgets('tapping the fix button calls onApplyFix, not the row scroll',
+      (tester) async {
+    TripFinding? applied;
+    var scrollCount = 0;
+    // Finding carries a day, so the row is also tap-to-scroll — the button must
+    // win the gesture and never scroll.
+    await _pump(
+      tester,
+      [
+        _f('warn', 'unscheduled', 'Nothing on day 2', day: 2,
+            fix: const FindingFix(
+                action: 'move_item', label: 'Move here', targetDay: 2)),
+      ],
+      onScrollToDay: (_) => scrollCount++,
+      onApplyFix: (f) async => applied = f,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Move here'));
+    await tester.pumpAndSettle();
+
+    expect(applied, isNotNull);
+    expect(applied!.fix!.action, 'move_item');
+    expect(scrollCount, 0);
+  });
+
+  testWidgets('no fix button when onApplyFix is null', (tester) async {
+    await _pump(
+      tester,
+      [
+        _f('warn', 'lodging', 'No lodging',
+            fix: const FindingFix(action: 'add_lodging', label: 'Add a stay')),
+      ],
+      // onApplyFix omitted (null) — the button is hidden.
+    );
+
+    expect(find.widgetWithText(FilledButton, 'Add a stay'), findsNothing);
   });
 
   testWidgets('offline disables the check-hours action', (tester) async {

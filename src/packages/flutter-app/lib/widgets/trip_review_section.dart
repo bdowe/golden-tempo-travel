@@ -27,12 +27,17 @@ class TripReviewSection extends ConsumerStatefulWidget {
   /// item id but no day. Returns null when the item isn't placed on a day.
   final int? Function(String itemId)? dayForItem;
 
+  /// Applies a finding's one-tap fix. The screen owns the sheets, services and
+  /// refresh, so it supplies this; when null the fix button is hidden.
+  final Future<void> Function(TripFinding finding)? onApplyFix;
+
   const TripReviewSection({
     super.key,
     required this.tripId,
     required this.isOffline,
     this.onScrollToDay,
     this.dayForItem,
+    this.onApplyFix,
   });
 
   @override
@@ -186,7 +191,11 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
                   ?.copyWith(color: theme.colorScheme.onSurface),
             ),
           ),
-          if (tappable)
+          // A fix, when present, takes the trailing slot from the chevron: its
+          // own button so its tap never reaches the row's scroll InkWell.
+          if (finding.fix != null && widget.onApplyFix != null)
+            _buildFixButton(finding)
+          else if (tappable)
             Icon(Icons.chevron_right,
                 size: 18, color: theme.colorScheme.onSurfaceVariant),
         ],
@@ -198,6 +207,27 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
       onTap: () => _onTapFinding(finding),
       borderRadius: AppRadius.smAll,
       child: row,
+    );
+  }
+
+  // Compact trailing "fix" affordance. Sits inside the row's InkWell when the
+  // finding is also tap-to-scroll; because it's a button it wins the gesture
+  // arena, so applying a fix never scrolls the itinerary.
+  Widget _buildFixButton(TripFinding finding) {
+    return Padding(
+      padding: const EdgeInsets.only(left: AppSpacing.xs),
+      child: FilledButton.tonal(
+        key: ValueKey('fix-${finding.fix!.action}-${finding.message}'),
+        onPressed: () => widget.onApplyFix!(finding),
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm, vertical: 0),
+          minimumSize: const Size(0, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(finding.fix!.label),
+      ),
     );
   }
 
