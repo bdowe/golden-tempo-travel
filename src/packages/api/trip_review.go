@@ -25,13 +25,42 @@ import (
 // to a specific day or entity. Severity is info|warn|critical; Category is one
 // of dates|unscheduled|packing|lodging|transit|budget|bookings|weather|hours.
 type Finding struct {
-	Severity string  `json:"severity"`
-	Category string  `json:"category"`
-	Message  string  `json:"message"`
-	TripID   string  `json:"trip_id"`
-	Day      *int    `json:"day,omitempty"`
-	ItemID   *string `json:"item_id,omitempty"`
+	Severity string      `json:"severity"`
+	Category string      `json:"category"`
+	Message  string      `json:"message"`
+	TripID   string      `json:"trip_id"`
+	Day      *int        `json:"day,omitempty"`
+	ItemID   *string     `json:"item_id,omitempty"`
+	Fix      *FindingFix `json:"fix,omitempty"`
 }
+
+// FindingFix is a structured, typed descriptor of the one-tap remediation a
+// finding suggests — additive over the prose Message so the UI (and, later, the
+// AI agent) can act on a finding without re-parsing its text. Every field is a
+// nullable pointer with omitempty: only the ones an Action needs are populated,
+// so the payload stays lean and backward-compatible (older clients ignore it).
+// Populated deterministically inside the same checkX helper that emits the
+// finding — never a live/external lookup.
+type FindingFix struct {
+	Action          string  `json:"action"` // add_lodging|add_transport|move_item|mark_booked|add_packing|set_dates|raise_budget
+	Label           string  `json:"label"`  // human button label, e.g. "Add a stay", "Add ferry", "Move to Day 3"
+	ItemID          *string `json:"item_id,omitempty"`
+	EntityType      *string `json:"entity_type,omitempty"` // "accommodation"|"segment" — disambiguates a bookings ItemID
+	TargetDay       *int    `json:"target_day,omitempty"`
+	City            *string `json:"city,omitempty"`
+	Origin          *string `json:"origin,omitempty"`
+	Destination     *string `json:"destination,omitempty"`
+	CheckIn         *string `json:"check_in,omitempty"`  // YYYY-MM-DD
+	CheckOut        *string `json:"check_out,omitempty"` // YYYY-MM-DD
+	Date            *string `json:"date,omitempty"`      // YYYY-MM-DD
+	Mode            *string `json:"mode,omitempty"`      // ferry|flight|train|bus
+	PackingItem     *string `json:"packing_item,omitempty"`
+	PackingCategory *string `json:"packing_category,omitempty"`
+}
+
+// ptrTo returns a pointer to v — a tiny helper for populating FindingFix's
+// nullable-pointer fields from literals without a temporary local each time.
+func ptrTo[T any](v T) *T { return &v }
 
 // reviewOptions carries inputs that don't live on exportData. Budget is the
 // pre-computed BudgetResponse (nil when there's no budget row) so checkBudget
@@ -120,6 +149,7 @@ func checkDates(d exportData) []Finding {
 		out = append(out, Finding{
 			Severity: "info", Category: "dates", TripID: tripID,
 			Message: "Add trip dates to unlock day-by-day checks.",
+			Fix:     &FindingFix{Action: "set_dates", Label: "Set dates"},
 		})
 		return out // no span → the beyond-span check below is meaningless
 	}
@@ -128,9 +158,14 @@ func checkDates(d exportData) []Finding {
 		if it.Day != nil && int(*it.Day) > dc {
 			day := int(*it.Day)
 			id := it.ID.String()
+			lastValidDay := dc
 			out = append(out, Finding{
 				Severity: "warn", Category: "dates", TripID: tripID, Day: &day, ItemID: &id,
 				Message: fmt.Sprintf("%q is on day %d, past the trip's %d-day span.", it.Name, day, dc),
+				Fix: &FindingFix{
+					Action: "move_item", Label: fmt.Sprintf("Move to Day %d", lastValidDay),
+					ItemID: &id, TargetDay: &lastValidDay,
+				},
 			})
 		}
 	}
@@ -198,10 +233,21 @@ func checkDensity(d exportData) []Finding {
 		}
 		dd := day
 		if len(items) > 6 {
-			out = append(out, Finding{
+			f := Finding{
 				Severity: "warn", Category: "packing", TripID: tripID, Day: &dd,
 				Message: fmt.Sprintf("Day %d has %d items planned — that may be too packed.", day, len(items)),
-			})
+			}
+			// Offer a one-tap move of the last item in the crowded day to the
+			// nearest meaningfully-lighter day — only when both a movable item
+			// and a lighter day exist; otherwise stay report-only.
+			if target := lighterDay(d, day); target != nil {
+				id := items[len(items)-1].ID.String()
+				f.Fix = &FindingFix{
+					Action: "move_item", Label: fmt.Sprintf("Move to Day %d", *target),
+					ItemID: &id, TargetDay: target,
+				}
+			}
+			out = append(out, f)
 		}
 		todCount := map[string]int{}
 		for _, it := range items {
@@ -212,14 +258,71 @@ func checkDensity(d exportData) []Finding {
 		// Fixed order keeps the output deterministic.
 		for _, tod := range []string{"morning", "afternoon", "evening"} {
 			if todCount[tod] > 1 {
-				out = append(out, Finding{
+				f := Finding{
 					Severity: "warn", Category: "packing", TripID: tripID, Day: &dd,
 					Message: fmt.Sprintf("Day %d has %d things scheduled for the %s.", day, todCount[tod], tod),
-				})
+				}
+				if target := lighterDay(d, day); target != nil {
+					// The last item in that colliding slot is the one to move.
+					if id, ok := lastItemInSlot(items, tod); ok {
+						f.Fix = &FindingFix{
+							Action: "move_item", Label: fmt.Sprintf("Move to Day %d", *target),
+							ItemID: &id, TargetDay: target,
+						}
+					}
+				}
+				out = append(out, f)
 			}
 		}
 	}
 	return out
+}
+
+// lighterDay finds the nearest day to fromDay — searching outward (fromDay-1,
+// fromDay+1, fromDay-2, …) within the scheduled span — whose item count is at
+// least two fewer than fromDay's, so a move meaningfully de-crowds. Returns nil
+// when no such day exists (then the finding stays report-only).
+func lighterDay(data exportData, fromDay int) *int {
+	counts := map[int]int{}
+	minDay, maxDay := 0, 0
+	for _, it := range data.Items {
+		if it.Day == nil {
+			continue
+		}
+		day := int(*it.Day)
+		counts[day]++
+		if minDay == 0 || day < minDay {
+			minDay = day
+		}
+		if day > maxDay {
+			maxDay = day
+		}
+	}
+	fromCount := counts[fromDay]
+	for delta := 1; delta <= maxDay-minDay; delta++ {
+		for _, cand := range []int{fromDay - delta, fromDay + delta} {
+			if cand < minDay || cand > maxDay {
+				continue
+			}
+			if counts[cand] <= fromCount-2 {
+				c := cand
+				return &c
+			}
+		}
+	}
+	return nil
+}
+
+// lastItemInSlot returns the ID of the last item scheduled in the given
+// time-of-day slot (the one whose move relieves the collision), false if none.
+func lastItemInSlot(items []store.ItineraryItem, tod string) (string, bool) {
+	id, ok := "", false
+	for _, it := range items {
+		if strings.TrimSpace(strPtrVal(it.TimeOfDay)) == tod {
+			id, ok = it.ID.String(), true
+		}
+	}
+	return id, ok
 }
 
 // checkLodging walks each night of a dated trip (start .. end-1, checkout-
@@ -248,9 +351,17 @@ func checkLodging(d exportData) []Finding {
 		}
 		if !covered {
 			day := n + 1
+			checkIn := night.Format(dateLayout)
+			checkOut := night.AddDate(0, 0, 1).Format(dateLayout)
 			out = append(out, Finding{
 				Severity: "warn", Category: "lodging", TripID: tripID, Day: &day,
 				Message: fmt.Sprintf("No lodging booked for the night of %s.", night.Format("Mon, Jan 2")),
+				Fix: &FindingFix{
+					Action: "add_lodging", Label: "Add a stay",
+					City:     cityForDay(d.Items, day),
+					CheckIn:  &checkIn,
+					CheckOut: &checkOut,
+				},
 			})
 		}
 	}
@@ -265,6 +376,52 @@ func stayCoversNight(checkIn, checkOut pgtype.Date, night time.Time) bool {
 		return false
 	}
 	return !night.Before(checkIn.Time) && night.Before(checkOut.Time)
+}
+
+// itemHub derives an item's hub city the same way groupExportItems does:
+// day_trip_from → city → "" (unknown). Used to prefill the "add a stay" sheet.
+func itemHub(it store.ItineraryItem) string {
+	hub := strings.TrimSpace(strPtrVal(it.DayTripFrom))
+	if hub == "" {
+		hub = strings.TrimSpace(strPtrVal(it.City))
+	}
+	return hub
+}
+
+// cityForDay returns the hub city of the first item scheduled on the given day,
+// or nil when that day has no item with a real (non-"Itinerary") hub — the add-
+// lodging sheet then prefills only the dates.
+func cityForDay(items []store.ItineraryItem, day int) *string {
+	for _, it := range items {
+		if it.Day == nil || int(*it.Day) != day {
+			continue
+		}
+		if hub := itemHub(it); hub != "" && !strings.EqualFold(hub, "Itinerary") {
+			return &hub
+		}
+	}
+	return nil
+}
+
+// hubFirstDate returns the earliest calendar date of any item whose hub matches,
+// so a missing-transport fix can carry the destination leg's date. Not datable
+// when the trip is undated or no matching item has a resolvable day.
+func hubFirstDate(trip store.Trip, items []store.ItineraryItem, hub string) (time.Time, bool) {
+	var best time.Time
+	found := false
+	for _, it := range items {
+		if !strings.EqualFold(itemHub(it), hub) {
+			continue
+		}
+		dt, ok := itemStartDate(trip, it)
+		if !ok {
+			continue
+		}
+		if !found || dt.Before(best) {
+			best, found = dt, true
+		}
+	}
+	return best, found
 }
 
 // checkTransit walks consecutive hub groups; when the hub city changes and no
@@ -289,9 +446,24 @@ func checkTransit(d exportData) []Finding {
 		if segmentConnects(d.Segments, from, to) {
 			continue
 		}
+		origin, dest := from, to
+		greek := isGreekLocation(origin) || isGreekLocation(dest)
+		label, mode := "Add transport", "flight"
+		if greek {
+			label, mode = "Add ferry", "ferry"
+		}
+		fix := &FindingFix{
+			Action: "add_transport", Label: label,
+			Origin: &origin, Destination: &dest, Mode: &mode,
+		}
+		// The leg's date, when derivable, is the destination hub's first day.
+		if dt, ok := hubFirstDate(d.Trip, d.Items, groups[i].Hub); ok {
+			fix.Date = ptrTo(dt.Format(dateLayout))
+		}
 		out = append(out, Finding{
 			Severity: "warn", Category: "transit", TripID: tripID,
 			Message: fmt.Sprintf("No transport booked from %s to %s.", from, to),
+			Fix:     fix,
 		})
 	}
 	return out
@@ -332,6 +504,7 @@ func checkBudget(d exportData, budget *BudgetResponse) []Finding {
 	return []Finding{{
 		Severity: "warn", Category: "budget", TripID: d.Trip.ID.String(),
 		Message: fmt.Sprintf("Over budget by %.2f %s.", over, budget.Currency),
+		Fix:     &FindingFix{Action: "raise_budget", Label: "Adjust budget"},
 	}}
 }
 
@@ -348,9 +521,13 @@ func checkBookings(d exportData) []Finding {
 			continue
 		}
 		id := a.ID.String()
+		et := "accommodation"
 		out = append(out, Finding{
 			Severity: "info", Category: "bookings", TripID: tripID, ItemID: &id,
 			Message: fmt.Sprintf("Confirm your booking for %s.", a.Name),
+			Fix: &FindingFix{
+				Action: "mark_booked", Label: "Mark booked", ItemID: &id, EntityType: &et,
+			},
 		})
 	}
 	for _, s := range d.Segments {
@@ -358,9 +535,13 @@ func checkBookings(d exportData) []Finding {
 			continue
 		}
 		id := s.ID.String()
+		et := "segment"
 		out = append(out, Finding{
 			Severity: "info", Category: "bookings", TripID: tripID, ItemID: &id,
 			Message: fmt.Sprintf("Confirm your booking for %s.", segmentRoute(s)),
+			Fix: &FindingFix{
+				Action: "mark_booked", Label: "Mark booked", ItemID: &id, EntityType: &et,
+			},
 		})
 	}
 	return out
@@ -464,6 +645,10 @@ func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
 					Message: fmt.Sprintf("Rain likely on Day %d (%s) — pack an umbrella.", day, city),
+					Fix: &FindingFix{
+						Action: "add_packing", Label: "+ umbrella",
+						PackingItem: ptrTo("Umbrella"), PackingCategory: ptrTo("general"),
+					},
 				})
 			}
 			switch {
@@ -471,11 +656,19 @@ func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
 					Message: fmt.Sprintf("Day %d (%s) could be very hot (%.0f°C) — plan for the heat.", day, city, wd.TempMaxC),
+					Fix: &FindingFix{
+						Action: "add_packing", Label: "+ sun protection",
+						PackingItem: ptrTo("Sunscreen"), PackingCategory: ptrTo("health"),
+					},
 				})
 			case wd.TempMinC <= coldThresholdC:
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
 					Message: fmt.Sprintf("Day %d (%s) could be very cold (%.0f°C) — pack warm layers.", day, city, wd.TempMinC),
+					Fix: &FindingFix{
+						Action: "add_packing", Label: "+ warm layers",
+						PackingItem: ptrTo("Warm layers"), PackingCategory: ptrTo("clothing"),
+					},
 				})
 			}
 		}
@@ -573,6 +766,9 @@ func checkHours(ctx context.Context, d exportData, places *GooglePlacesService) 
 		out = append(out, Finding{
 			Severity: "warn", Category: "hours", TripID: tripID, Day: &day, ItemID: &id,
 			Message: fmt.Sprintf("%s may be closed on %s (Day %d).", it.Name, weekday.String(), day),
+			// No cheap "open on day N" signal here (we only fetched this item's
+			// hours), so the client opens an editor — TargetDay stays nil.
+			Fix: &FindingFix{Action: "move_item", Label: "Reschedule", ItemID: &id},
 		})
 	}
 	return out
