@@ -26,16 +26,31 @@ Map<String, dynamic> _$ChatSessionSummaryToJson(ChatSessionSummary instance) =>
       'updated_at': instance.updatedAt,
     };
 
+ChatSessionImage _$ChatSessionImageFromJson(Map<String, dynamic> json) =>
+    ChatSessionImage(
+      mediaType: json['media_type'] as String,
+    );
+
+Map<String, dynamic> _$ChatSessionImageToJson(ChatSessionImage instance) =>
+    <String, dynamic>{
+      'media_type': instance.mediaType,
+    };
+
 ChatSessionMessage _$ChatSessionMessageFromJson(Map<String, dynamic> json) =>
     ChatSessionMessage(
       role: json['role'] as String,
       content: json['content'] as String,
+      images: (json['images'] as List<dynamic>?)
+              ?.map((e) => ChatSessionImage.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$ChatSessionMessageToJson(ChatSessionMessage instance) =>
     <String, dynamic>{
       'role': instance.role,
       'content': instance.content,
+      'images': instance.images.map((e) => e.toJson()).toList(),
     };
 
 ChatSessionDetail _$ChatSessionDetailFromJson(Map<String, dynamic> json) =>

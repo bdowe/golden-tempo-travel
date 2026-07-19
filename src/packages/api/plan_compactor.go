@@ -59,6 +59,9 @@ func summaryAsMessage(summary string) PlanChatMessage {
 // summary) into a new state summary with one non-streamed forced-tool Haiku
 // call.
 func summarizePlanConversation(ctx context.Context, client anthropic.Client, prevSummary string, older []PlanChatMessage) (string, error) {
+	// The distillation transcript is text-only (.Content): attached images on
+	// folded messages intentionally leave the model's context here — only the
+	// planCompactKeep newest messages keep their images verbatim.
 	text := buildDistillationTranscript(older, len(older), compactMaxInputChars)
 	if text == "" {
 		return "", fmt.Errorf("empty transcript")

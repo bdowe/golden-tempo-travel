@@ -37,4 +37,32 @@ void main() {
     expect(await capturedBody(), isNot(contains('summary')));
     expect(await capturedBody(summary: ''), isNot(contains('summary')));
   });
+
+  test('message images pass through the body untouched', () async {
+    late Map<String, dynamic> body;
+    final service = PlanService(
+      'http://test/api/v1',
+      clientFactory: () => MockClient.streaming((request, bodyStream) async {
+        body = jsonDecode(await utf8.decodeStream(bodyStream))
+            as Map<String, dynamic>;
+        return http.StreamedResponse(Stream.value(utf8.encode(sse)), 200);
+      }),
+    );
+    await service.streamPlan([
+      {
+        'role': 'user',
+        'content': 'where is this?',
+        'images': [
+          {'media_type': 'image/png', 'data': 'aGVsbG8='},
+        ],
+      },
+      {'role': 'assistant', 'content': 'Lisbon.'},
+    ]).toList();
+
+    final messages = body['messages'] as List<dynamic>;
+    expect((messages[0] as Map<String, dynamic>)['images'], [
+      {'media_type': 'image/png', 'data': 'aGVsbG8='},
+    ]);
+    expect(messages[1], isNot(contains('images')));
+  });
 }

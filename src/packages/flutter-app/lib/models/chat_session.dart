@@ -31,12 +31,33 @@ class ChatSessionSummary {
   Map<String, dynamic> toJson() => _$ChatSessionSummaryToJson(this);
 }
 
+/// Marker for an image that was attached to a persisted message. The server
+/// strips pixel data before storing transcripts, so only the media type
+/// survives — enough to render an "Image" placeholder chip on resume.
 @JsonSerializable()
+class ChatSessionImage {
+  @JsonKey(name: 'media_type')
+  final String mediaType;
+
+  const ChatSessionImage({required this.mediaType});
+
+  factory ChatSessionImage.fromJson(Map<String, dynamic> json) =>
+      _$ChatSessionImageFromJson(json);
+  Map<String, dynamic> toJson() => _$ChatSessionImageToJson(this);
+}
+
+@JsonSerializable(explicitToJson: true)
 class ChatSessionMessage {
   final String role;
   final String content;
+  @JsonKey(defaultValue: <ChatSessionImage>[])
+  final List<ChatSessionImage> images;
 
-  const ChatSessionMessage({required this.role, required this.content});
+  const ChatSessionMessage({
+    required this.role,
+    required this.content,
+    this.images = const [],
+  });
 
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) =>
       _$ChatSessionMessageFromJson(json);

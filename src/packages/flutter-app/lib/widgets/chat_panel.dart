@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +10,7 @@ import '../models/plan_message.dart';
 import '../providers/dictation_provider.dart';
 import '../providers/plan_provider.dart';
 import '../services/dictation_controller.dart';
+import '../services/image_attachment_pipeline.dart';
 import '../theme/app_colors.dart';
 import '../utils/tracked_launch.dart';
 import 'result_summary_chip.dart';
@@ -37,6 +42,13 @@ class ChatPanel extends ConsumerStatefulWidget {
   /// panel leaves this null — the trip is already on screen.
   final void Function(String tripId)? onViewTrip;
 
+  /// Downscale/validate stage for attached images. Injectable for tests.
+  final ImageAttachmentPipeline attachmentPipeline;
+
+  /// Source for the paperclip button, returning (bytes, mimeType) pairs.
+  /// Defaults to the platform file picker; injectable for tests.
+  final Future<List<(Uint8List, String)>> Function()? pickImages;
+
   const ChatPanel({
     super.key,
     required this.state,
@@ -45,6 +57,8 @@ class ChatPanel extends ConsumerStatefulWidget {
     this.emptyState,
     this.footerBuilder,
     this.onViewTrip,
+    this.attachmentPipeline = const ImageAttachmentPipeline(),
+    this.pickImages,
   });
 
   @override
@@ -66,6 +80,19 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// At most one bottom-jump pending per frame, no matter how many state
   /// changes request one.
   bool _scrollScheduled = false;
+
+  /// Images attached but not yet sent (specs/chat-image-attachments), shown as
+  /// removable chips above the input bar.
+  final List<PlanAttachment> _pending = [];
+
+  /// Images currently going through the downscale pipeline (spinner chips);
+  /// sending is deferred until this reaches zero.
+  int _processingCount = 0;
+
+  /// Whether a drag hovers over the panel — drives the drop overlay.
+  bool _dragging = false;
+
+  static const _maxAttachments = 4;
 
   @override
   void initState() {
@@ -120,11 +147,92 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _pending.isEmpty) return;
+    if (_processingCount > 0) {
+      _notify('Still preparing an image — one moment.');
+      return;
+    }
+    final attachments = List<PlanAttachment>.of(_pending);
     _controller.clear();
-    ref.read(widget.notifier).sendMessage(text);
+    setState(_pending.clear);
+    ref.read(widget.notifier).sendMessage(text, attachments: attachments);
     _stickToBottom = true;
     _scrollToBottom();
+  }
+
+  void _notify(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Single intake seam: drag-drop, the paperclip picker, and any future
+  /// paste path all feed (bytes, mimeType) pairs through here.
+  Future<void> _addFiles(Iterable<(Uint8List, String)> files) async {
+    for (final (bytes, mime) in files) {
+      if (_pending.length + _processingCount >= _maxAttachments) {
+        _notify('You can attach up to $_maxAttachments images.');
+        return;
+      }
+      setState(() => _processingCount++);
+      final attachment = await widget.attachmentPipeline.process(bytes, mime);
+      if (!mounted) return;
+      setState(() {
+        _processingCount--;
+        if (attachment != null) _pending.add(attachment);
+      });
+      if (attachment == null) {
+        _notify("Couldn't read that image — try a JPEG, PNG, GIF, or WebP under 10 MB.");
+      }
+    }
+  }
+
+  Future<void> _pickImages() async {
+    final pick = widget.pickImages ?? _pickImagesFromPlatform;
+    final files = await pick();
+    if (files.isNotEmpty) await _addFiles(files);
+  }
+
+  static Future<List<(Uint8List, String)>> _pickImagesFromPlatform() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+      allowMultiple: true,
+    );
+    if (result == null) return const [];
+    return [
+      for (final f in result.files)
+        if (f.bytes != null) (f.bytes!, _mimeFromName(f.name)),
+    ];
+  }
+
+  Future<void> _onDragDone(DropDoneDetails detail) async {
+    final files = <(Uint8List, String)>[];
+    for (final item in detail.files) {
+      final mime = (item.mimeType?.isNotEmpty ?? false)
+          ? item.mimeType!
+          : _mimeFromName(item.name);
+      if (!mime.startsWith('image/')) continue;
+      files.add((await item.readAsBytes(), mime));
+    }
+    if (!mounted) return;
+    if (files.isEmpty) {
+      _notify('Only image files can be attached.');
+      return;
+    }
+    await _addFiles(files);
+  }
+
+  static String _mimeFromName(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      _ => 'application/octet-stream',
+    };
   }
 
   @override
@@ -141,7 +249,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     ref.listen(widget.state.select((s) => s.queuedMessages.length),
         (_, __) => _scrollToBottom());
 
-    return Column(
+    final panel = Column(
       children: [
         Expanded(
           child: isEmpty
@@ -181,14 +289,168 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                   ),
                 ),
         ),
+        if (_pending.isNotEmpty || _processingCount > 0)
+          _PendingAttachmentsRow(
+            pending: _pending,
+            processingCount: _processingCount,
+            onRemove: (i) => setState(() => _pending.removeAt(i)),
+          ),
         _InputBar(
           controller: _controller,
           isStreaming: isStreaming,
           hint: widget.inputHint,
           onSend: _send,
+          onAttach: _pickImages,
           dictation: _dictation,
         ),
       ],
+    );
+
+    // DropTarget is a no-op on platforms without drag-drop (mobile), so the
+    // wrap is unconditional. The overlay invites the drop while a drag hovers.
+    return DropTarget(
+      onDragEntered: (_) => setState(() => _dragging = true),
+      onDragExited: (_) => setState(() => _dragging = false),
+      onDragDone: (detail) {
+        setState(() => _dragging = false);
+        _onDragDone(detail);
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          panel,
+          if (_dragging) const _DropOverlay(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-panel affordance shown while image files hover over the chat.
+class _DropOverlay extends StatelessWidget {
+  const _DropOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return IgnorePointer(
+      child: Container(
+        color: theme.colorScheme.surface.withValues(alpha: 0.85),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.colorScheme.primary, width: 2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_photo_alternate_outlined,
+                    size: 40, color: theme.colorScheme.primary),
+                const SizedBox(height: 8),
+                Text(
+                  'Drop images to attach',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(color: theme.colorScheme.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Not-yet-sent attachment chips above the input bar: thumbnails with a
+/// remove ✕, plus spinner chips while the pipeline processes new drops.
+class _PendingAttachmentsRow extends StatelessWidget {
+  final List<PlanAttachment> pending;
+  final int processingCount;
+  final void Function(int index) onRemove;
+
+  const _PendingAttachmentsRow({
+    required this.pending,
+    required this.processingCount,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: SizedBox(
+        height: 64,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            for (var i = 0; i < pending.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          pending[i].bytes!,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Semantics(
+                        button: true,
+                        label: 'Remove image',
+                        child: InkWell(
+                          onTap: () => onRemove(i),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.inverseSurface,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: const EdgeInsets.all(2),
+                            child: Icon(Icons.close,
+                                size: 12,
+                                color: theme.colorScheme.onInverseSurface),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            for (var i = 0; i < processingCount; i++)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 14),
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -631,10 +893,15 @@ class _QueuedBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    message.displayLabel ?? message.text,
-                    style: TextStyle(color: theme.colorScheme.onPrimary),
-                  ),
+                  if (message.attachments.isNotEmpty) ...[
+                    _BubbleAttachments(attachments: message.attachments),
+                    const SizedBox(height: 4),
+                  ],
+                  if (message.text.isNotEmpty || message.displayLabel != null)
+                    Text(
+                      message.displayLabel ?? message.text,
+                      style: TextStyle(color: theme.colorScheme.onPrimary),
+                    ),
                   Text(
                     'Queued',
                     style: theme.textTheme.labelSmall?.copyWith(
@@ -711,9 +978,22 @@ class ChatMessageBubble extends StatelessWidget {
           children: [
             Flexible(
               child: isUser
-                  ? Text(
-                      message.content,
-                      style: TextStyle(color: theme.colorScheme.onPrimary),
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (message.attachments.isNotEmpty) ...[
+                          _BubbleAttachments(attachments: message.attachments),
+                          if (message.content.isNotEmpty)
+                            const SizedBox(height: 6),
+                        ],
+                        if (message.content.isNotEmpty)
+                          Text(
+                            message.content,
+                            style:
+                                TextStyle(color: theme.colorScheme.onPrimary),
+                          ),
+                      ],
                     )
                   : GptMarkdown(
                       message.content,
@@ -728,6 +1008,57 @@ class ChatMessageBubble extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Image thumbnails inside a sent user bubble. Placeholders (null bytes —
+/// resumed transcripts, where the server keeps only the media type) render as
+/// an icon chip instead.
+class _BubbleAttachments extends StatelessWidget {
+  final List<PlanAttachment> attachments;
+
+  const _BubbleAttachments({required this.attachments});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      alignment: WrapAlignment.end,
+      children: [
+        for (final a in attachments)
+          if (a.bytes != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.memory(
+                a.bytes!,
+                width: 160,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
+            )
+          else
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onPrimary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.image_outlined,
+                      size: 18, color: theme.colorScheme.onPrimary),
+                  const SizedBox(width: 6),
+                  Text('Image',
+                      style: TextStyle(color: theme.colorScheme.onPrimary)),
+                ],
+              ),
+            ),
+      ],
     );
   }
 }
@@ -777,6 +1108,7 @@ class _InputBar extends StatelessWidget {
   final bool isStreaming;
   final String hint;
   final VoidCallback onSend;
+  final VoidCallback onAttach;
   final DictationController dictation;
 
   const _InputBar({
@@ -784,6 +1116,7 @@ class _InputBar extends StatelessWidget {
     required this.isStreaming,
     required this.hint,
     required this.onSend,
+    required this.onAttach,
     required this.dictation,
   });
 
@@ -801,9 +1134,14 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
       child: Row(
         children: [
+          IconButton(
+            tooltip: 'Attach images',
+            onPressed: onAttach,
+            icon: const Icon(Icons.attach_file),
+          ),
           Expanded(
             child: TextField(
               controller: controller,

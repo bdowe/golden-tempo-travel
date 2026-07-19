@@ -85,13 +85,17 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 //
 // The /plan lane must comfortably cover everything plan_handler.go's own
 // rune caps admit: planMaxMessages (40) x planMaxMessageChars (20,000 runes)
-// of 4-byte UTF-8 is ~3.2 MiB of content plus JSON framing, so 4 MiB keeps
-// the byte lane strictly wider than the rune lane. That way conversations the
-// handler would accept (or reject with a friendly SSE error event) never die
-// here first with a bare 413, which an SSE client surfaces poorly.
+// of 4-byte UTF-8 is ~3.2 MiB of content plus JSON framing. Image attachments
+// widen the lane: the client downscales to ~100-300 KB base64 per image, but
+// the per-image cap admits up to ~6.8 MB, so this body cap — not the
+// planMaxImagesPerRequest count — is the effective aggregate byte bound for
+// image-heavy histories. A 413 here still beats dying at the model API, but
+// conversations within plan_handler.go's own caps should normally clear this
+// lane and get friendly SSE error events instead. nginx's client_max_body_size
+// (dockerize/*/nginx) must stay >= this value or the gateway 413s first.
 const (
 	maxRequestBodyBytes       = 256 << 10 // 256 KiB, all endpoints by default
-	planMaxRequestBodyBytes   = 4 << 20   // 4 MiB for the /plan chat history (see above)
+	planMaxRequestBodyBytes   = 20 << 20  // 20 MiB for the /plan chat history incl. images (see above)
 	transcribeMaxRequestBytes = 10 << 20  // 10 MiB for /transcribe audio clips (60s opus is well under)
 )
 

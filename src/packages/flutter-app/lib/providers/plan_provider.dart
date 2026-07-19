@@ -19,8 +19,14 @@ class QueuedMessage {
   final int id;
   final String text;
   final String? displayLabel;
+  final List<PlanAttachment> attachments;
 
-  const QueuedMessage({required this.id, required this.text, this.displayLabel});
+  const QueuedMessage({
+    required this.id,
+    required this.text,
+    this.displayLabel,
+    this.attachments = const [],
+  });
 }
 
 class PlanState {
@@ -245,11 +251,16 @@ class PlanNotifier extends StateNotifier<PlanState> {
   /// Sends [text], or queues it if a turn is already streaming (or a backlog
   /// exists post-error). Queued messages drain FIFO as each turn completes
   /// successfully; the returned future completes once the whole chain settles.
-  Future<void> sendMessage(String text, {String? displayLabel}) {
+  Future<void> sendMessage(String text,
+      {String? displayLabel, List<PlanAttachment> attachments = const []}) {
     if (state.isStreaming || state.queuedMessages.isNotEmpty) {
       state = state.copyWith(queuedMessages: [
         ...state.queuedMessages,
-        QueuedMessage(id: _nextQueuedId++, text: text, displayLabel: displayLabel),
+        QueuedMessage(
+            id: _nextQueuedId++,
+            text: text,
+            displayLabel: displayLabel,
+            attachments: attachments),
       ]);
       // Idle with a backlog (post-error state): an explicit send is fresh user
       // intent — start draining now. FIFO holds because the new message went
@@ -257,7 +268,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
       if (!state.isStreaming) return _drainQueue();
       return Future.value();
     }
-    return _sendNow(text, displayLabel: displayLabel);
+    return _sendNow(text, displayLabel: displayLabel, attachments: attachments);
   }
 
   /// Removes a not-yet-sent queued message by its [QueuedMessage.id].
@@ -276,14 +287,19 @@ class PlanNotifier extends StateNotifier<PlanState> {
     if (state.isStreaming || state.queuedMessages.isEmpty) return;
     final next = state.queuedMessages.first;
     state = state.copyWith(queuedMessages: state.queuedMessages.sublist(1));
-    await _sendNow(next.text, displayLabel: next.displayLabel);
+    await _sendNow(next.text,
+        displayLabel: next.displayLabel, attachments: next.attachments);
   }
 
-  Future<void> _sendNow(String text, {String? displayLabel}) async {
+  Future<void> _sendNow(String text,
+      {String? displayLabel, List<PlanAttachment> attachments = const []}) async {
     _chatId ??= _newChatId();
 
     final userMessage = PlanMessage(
-        role: MessageRole.user, content: text, displayLabel: displayLabel);
+        role: MessageRole.user,
+        content: text,
+        displayLabel: displayLabel,
+        attachments: attachments);
     final updatedMessages = [...state.messages, userMessage];
 
     state = state.copyWith(
@@ -308,9 +324,20 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
     // Messages covered by the compacted summary stay visible but leave the
     // wire history — the summary stands in for them server-side.
+    // Resume placeholders (null bytes) stay out of the wire history — the
+    // server persists images as data-less markers and skips them anyway.
     final history = updatedMessages
         .sublist(state.compactedCount.clamp(0, updatedMessages.length))
-        .map((m) => {'role': m.role == MessageRole.user ? 'user' : 'assistant', 'content': m.content})
+        .map((m) => <String, dynamic>{
+              'role': m.role == MessageRole.user ? 'user' : 'assistant',
+              'content': m.content,
+              if (m.attachments.any((a) => a.bytes != null))
+                'images': [
+                  for (final a in m.attachments)
+                    if (a.bytes != null)
+                      {'media_type': a.mediaType, 'data': a.base64Data},
+                ],
+            })
         .toList();
 
     final textBuffer = StringBuffer();
@@ -522,7 +549,8 @@ class PlanNotifier extends StateNotifier<PlanState> {
     // _sendNow, not sendMessage: with a post-error backlog the gatekeeper
     // would enqueue the retried turn at the BACK. The retried turn must run
     // first; on success its tail drains the queue.
-    await _sendNow(failed.content, displayLabel: failed.displayLabel);
+    await _sendNow(failed.content,
+        displayLabel: failed.displayLabel, attachments: failed.attachments);
   }
 
   void reset() {

@@ -215,15 +215,15 @@ func TestBodyLimitAllowsNormalBody(t *testing.T) {
 	}
 }
 
-// /plan resends the whole chat history, so it gets the wider 4 MiB lane
-// (sized to exceed what the handler's own rune caps admit): a body over the
-// general cap but under the plan cap must pass through.
+// /plan resends the whole chat history — now with inline base64 image
+// attachments — so it gets the widest 20 MiB lane: a body over the general
+// cap, and one over the pre-images 4 MiB lane, must both pass through.
 func TestBodyLimitPlanGetsWiderLane(t *testing.T) {
 	handlerRan := false
 	h := bodyLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerRan = true
 		if _, err := io.Copy(io.Discard, r.Body); err != nil {
-			t.Fatalf("reading a 512KiB /plan body failed: %v", err)
+			t.Fatalf("reading an under-cap /plan body failed: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -232,6 +232,13 @@ func TestBodyLimitPlanGetsWiderLane(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/plan", bytes.NewReader(make([]byte, 512<<10))))
 	if !handlerRan || rec.Code != http.StatusOK {
 		t.Fatalf("handlerRan = %v, status = %d; want 512KiB /plan body to pass", handlerRan, rec.Code)
+	}
+
+	// An image-bearing history over the old 4 MiB text lane must fit now.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/plan", bytes.NewReader(make([]byte, 5<<20))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want a 5 MiB /plan body to pass the image-widened lane", rec.Code)
 	}
 
 	rec = httptest.NewRecorder()

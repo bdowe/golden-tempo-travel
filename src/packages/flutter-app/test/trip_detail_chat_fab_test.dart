@@ -29,7 +29,7 @@ class _ScriptedPlanService extends PlanService {
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,

@@ -10,7 +10,7 @@ import 'package:travel_route_planner/services/plan_service.dart';
 /// after the delta so tests can enqueue mid-stream, and optionally ending the
 /// turn with an SSE error. Records the history payload of every call.
 class _GatedPlanService extends PlanService {
-  final List<List<Map<String, String>>> histories = [];
+  final List<List<Map<String, dynamic>>> histories = [];
 
   /// Consumed by the next call: the stream parks on it after its first delta.
   Completer<void>? gate;
@@ -22,7 +22,7 @@ class _GatedPlanService extends PlanService {
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,

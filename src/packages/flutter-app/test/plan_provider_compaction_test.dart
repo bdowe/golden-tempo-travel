@@ -10,7 +10,7 @@ import 'package:travel_route_planner/services/plan_service.dart';
 class _CompactionPlanService extends PlanService {
   /// Script consumed one list per call; the last list repeats when exhausted.
   final List<List<PlanEvent>> scripts;
-  final List<List<Map<String, String>>> histories = [];
+  final List<List<Map<String, dynamic>>> histories = [];
   final List<String?> summaries = [];
 
   /// Consumed by the next call: the stream parks on it after its first event.
@@ -20,7 +20,7 @@ class _CompactionPlanService extends PlanService {
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,

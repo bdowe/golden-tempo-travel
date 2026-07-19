@@ -188,6 +188,12 @@ class _ContinueChatCard extends ConsumerWidget {
                       ? MessageRole.user
                       : MessageRole.assistant,
                   content: m.content,
+                  // Pixels are stripped server-side; null bytes renders the
+                  // "Image" placeholder chip and stays out of resent history.
+                  attachments: [
+                    for (final img in m.images)
+                      PlanAttachment(bytes: null, mediaType: img.mediaType),
+                  ],
                 ),
             ],
           );
