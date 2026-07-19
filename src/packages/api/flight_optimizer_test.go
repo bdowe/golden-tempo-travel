@@ -72,7 +72,7 @@ func TestDedupCollapsesSameRouteDifferentLayoverTiming(t *testing.T) {
 		twoStop("b", 390, "OPO", "LIS", "2026-07-16T18:00:00", "2026-07-16T19:05:00"),
 		twoStop("c", 390, "OPO", "LIS", "2026-07-16T16:00:00", "2026-07-16T17:00:00"),
 	}
-	got := dedupBySchedule(in)
+	got := dedupBySchedule(in, true)
 	if len(got) != 1 {
 		t.Fatalf("expected same-route/different-layover offers to collapse to 1, got %d", len(got))
 	}
@@ -85,7 +85,7 @@ func TestDedupKeepsDifferentConnectingAirports(t *testing.T) {
 		twoStop("via-opo", 390, "OPO", "LIS", "2026-07-16T12:35:00", "2026-07-16T13:25:00"),
 		twoStop("via-mad", 390, "MAD", "LIS", "2026-07-16T12:35:00", "2026-07-16T13:25:00"),
 	}
-	got := dedupBySchedule(in)
+	got := dedupBySchedule(in, true)
 	if len(got) != 2 {
 		t.Fatalf("expected different-hub itineraries to stay separate, got %d", len(got))
 	}
@@ -97,7 +97,7 @@ func TestDedupBySchedulePreservesOrderAndKeepsCheapest(t *testing.T) {
 		offer("b-other", 300, "JFK", "ORY", "T3", "T4", 500, 1),
 		offer("a-cheap", 250, "JFK", "CDG", "T1", "T2", 480, 0),
 	}
-	got := dedupBySchedule(in)
+	got := dedupBySchedule(in, true)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 schedules, got %d", len(got))
 	}
@@ -134,7 +134,7 @@ func TestDedupKeepsSameOutboundDifferentReturns(t *testing.T) {
 	a := roundTrip("fast-return", 600, "JFK", "CDG", "T1", "T2", 420, 0, 480, 1)
 	b := roundTrip("slow-return", 550, "JFK", "CDG", "T1", "T2", 420, 0, 1200, 2)
 
-	got := dedupBySchedule([]FlightOffer{a, b})
+	got := dedupBySchedule([]FlightOffer{a, b}, true)
 	if len(got) != 2 {
 		t.Fatalf("dedup collapsed distinct return slices: kept %d offers, want 2", len(got))
 	}

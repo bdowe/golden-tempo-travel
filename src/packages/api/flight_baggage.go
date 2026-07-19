@@ -59,8 +59,11 @@ func searchFlightsWithBaggage(ctx context.Context, d *DuffelService, req FlightS
 	// Preliminary rank to decide which offers earn a fee lookup: the K best
 	// candidates that still lack the bag. Unknown-fee offers score on the
 	// bare fare here, which is exactly the "looks cheapest" list the traveler
-	// would otherwise be misled by.
-	offers = RankFlightOffers(offers, req.OptimizeFor)
+	// would otherwise be misled by. collapseUnknown=false keeps every
+	// bag-exclusive fare of a schedule distinct so the effective-cheaper one
+	// isn't dropped by bare-fare dedup before it can be fee-priced; the final
+	// RankFlightOffers below collapses the priced results on effective price.
+	offers = rankFlightOffers(offers, req.OptimizeFor, false)
 	lookup := make([]int, 0, bagFeeTopK)
 	for i := range offers {
 		if len(lookup) >= bagFeeTopK {

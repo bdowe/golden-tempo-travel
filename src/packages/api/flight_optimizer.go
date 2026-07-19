@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -125,21 +126,48 @@ func scheduleSignature(o FlightOffer) string {
 	return strings.Join(parts, "|")
 }
 
+// preferOffer reports whether candidate should replace current as the survivor
+// when two offers collapse onto the same schedule key. A priced offer (included
+// or fee-priced) always beats an unknown-fee one regardless of bare fare: an
+// unknown fare is unpriceable, so it must never hide a schedule's real price.
+// Among offers of the same known-ness, the lower scoring (effective) price wins.
+func preferOffer(cand, cur FlightOffer) bool {
+	cu := cand.BaggageStatus == baggageStatusUnknown
+	ru := cur.BaggageStatus == baggageStatusUnknown
+	if cu != ru {
+		return ru // replace only when the incumbent is the unknown one
+	}
+	return scoringPrice(cand) < scoringPrice(cur)
+}
+
 // dedupBySchedule collapses offers that share an identical schedule, keeping the
-// lowest-priced offer for each. Order of first appearance is preserved so the
-// result is stable before ranking. Offers without segments fall back to a
-// signature of their top-level depart/arrive times so they are never dropped.
-func dedupBySchedule(offers []FlightOffer) []FlightOffer {
+// preferred offer for each (see preferOffer). Order of first appearance is
+// preserved so the result is stable before ranking. Offers without segments
+// fall back to a signature of their top-level depart/arrive times so they are
+// never dropped.
+//
+// collapseUnknown governs bag-exclusive (unknown-fee) offers. On the FINAL rank
+// it is true: leftover unknown variants of a schedule collapse to one (and lose
+// to any priced offer on that schedule). On the PRELIMINARY baggage rank it is
+// false: two same-schedule bag-exclusive fares can have inverted effective
+// (fare+bag) totals, so collapsing by bare fare would drop the effective-cheaper
+// one before it ever earns a fee lookup. Keeping each unknown offer under its
+// own key lets them all survive to fee pricing; the final rank then collapses
+// the priced results on true effective price.
+func dedupBySchedule(offers []FlightOffer, collapseUnknown bool) []FlightOffer {
 	best := make(map[string]int, len(offers)) // signature -> index in result
 	result := make([]FlightOffer, 0, len(offers))
-	for _, o := range offers {
+	for i, o := range offers {
 		sig := scheduleSignature(o)
 		if sig == "" {
 			sig = o.DepartTime + "-" + o.ArriveTime
 		}
 		sig += bagKey(o)
+		if !collapseUnknown && o.BaggageStatus == baggageStatusUnknown {
+			sig += "|u:" + strconv.Itoa(i) // each unknown fare stays distinct
+		}
 		if idx, ok := best[sig]; ok {
-			if scoringPrice(o) < scoringPrice(result[idx]) {
+			if preferOffer(o, result[idx]) {
 				result[idx] = o
 			}
 			continue
@@ -159,11 +187,19 @@ func dedupBySchedule(offers []FlightOffer) []FlightOffer {
 // per-slice fields are unchanged; see scoringDuration/scoringStops.
 // The *_score and Score fields on each offer are populated in place.
 func RankFlightOffers(offers []FlightOffer, optimizeFor string) []FlightOffer {
+	return rankFlightOffers(offers, optimizeFor, true)
+}
+
+// rankFlightOffers is RankFlightOffers with an explicit collapseUnknown flag.
+// The exported wrapper collapses unknowns (the final/default behavior); the
+// preliminary baggage rank passes false so all bag-exclusive variants of a
+// schedule survive to earn a fee lookup (see dedupBySchedule).
+func rankFlightOffers(offers []FlightOffer, optimizeFor string, collapseUnknown bool) []FlightOffer {
 	if len(offers) == 0 {
 		return offers
 	}
 
-	offers = dedupBySchedule(offers)
+	offers = dedupBySchedule(offers, collapseUnknown)
 
 	w := flightPresets[normalizeOptimizeFor(optimizeFor)]
 
