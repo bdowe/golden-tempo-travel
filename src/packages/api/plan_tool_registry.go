@@ -100,6 +100,12 @@ var planToolRegistry = []planTool{
 	{def: addPackingItemTool, enabled: authedOnly, run: runAddPackingItemTool},
 	{def: reviewTripTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
 		run: runReviewTripTool},
+	{def: addAccommodationTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
+		run: runAddAccommodationTool},
+	{def: addTransportSegmentTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
+		run: runAddTransportSegmentTool},
+	{def: moveItineraryItemTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
+		run: runMoveItineraryItemTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the

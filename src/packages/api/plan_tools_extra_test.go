@@ -354,6 +354,163 @@ func TestBookingTodoToolsRefuseAutoRows(t *testing.T) {
 	}
 }
 
+// boundPlanSession is testPlanSession bound to a trip the caller owns — the
+// setup the three trip-acting tools require.
+func boundPlanSession(uid, tripID uuid.UUID) (*planSession, *httptest.ResponseRecorder) {
+	s, rec := testPlanSession(true, uid)
+	s.boundTripID = &tripID
+	s.boundTripOwnerID = uid
+	return s, rec
+}
+
+func TestAgentFixToolsGuardWhenUnbound(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "agent@example.com")
+
+	// Unbound (no open trip) → friendly error, no write.
+	unbound, _ := testPlanSession(true, owner.ID)
+	for name, run := range map[string]func(*planSession, json.RawMessage) (string, bool){
+		"add_accommodation":     runAddAccommodationTool,
+		"add_transport_segment": runAddTransportSegmentTool,
+		"move_itinerary_item":   runMoveItineraryItemTool,
+	} {
+		msg, isErr := run(unbound, json.RawMessage(`{"name":"x","mode":"ferry","item_id":"`+uuid.NewString()+`","day":1}`))
+		if !isErr || !strings.Contains(msg, "No trip is open") {
+			t.Fatalf("unbound %s = %q (err=%v)", name, msg, isErr)
+		}
+	}
+
+	// Unauthed → friendly error, no write.
+	anon, _ := testPlanSession(false, uuid.Nil)
+	tid := uuid.New()
+	anon.boundTripID = &tid
+	for name, run := range map[string]func(*planSession, json.RawMessage) (string, bool){
+		"add_accommodation":     runAddAccommodationTool,
+		"add_transport_segment": runAddTransportSegmentTool,
+		"move_itinerary_item":   runMoveItineraryItemTool,
+	} {
+		msg, isErr := run(anon, json.RawMessage(`{"name":"x","mode":"ferry","item_id":"`+uuid.NewString()+`","day":1}`))
+		if !isErr || !strings.Contains(msg, "isn't signed in") {
+			t.Fatalf("anon %s = %q (err=%v)", name, msg, isErr)
+		}
+	}
+}
+
+func TestAddAccommodationToolWritesBoundTrip(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "agent@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	s, rec := boundPlanSession(owner.ID, trip.ID)
+
+	msg, isErr := runAddAccommodationTool(s,
+		json.RawMessage(`{"name":"Hotel Grande Bretagne","check_in":"2026-08-03","check_out":"2026-08-05"}`))
+	if isErr || !strings.Contains(msg, "Hotel Grande Bretagne") {
+		t.Fatalf("add = %q (err=%v)", msg, isErr)
+	}
+	if !strings.Contains(rec.Body.String(), "trip_updated") {
+		t.Fatal("add_accommodation did not emit trip_updated")
+	}
+	get := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), ownerToken, nil)
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), "Hotel Grande Bretagne") {
+		t.Fatalf("stay not on trip: %d %s", get.Code, get.Body.String())
+	}
+
+	// Missing name rejected, no write.
+	if _, isErr := runAddAccommodationTool(s, json.RawMessage(`{"name":"  "}`)); !isErr {
+		t.Fatal("blank name accepted")
+	}
+}
+
+func TestAddTransportSegmentToolWritesBoundTrip(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "agent@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	s, rec := boundPlanSession(owner.ID, trip.ID)
+
+	msg, isErr := runAddTransportSegmentTool(s,
+		json.RawMessage(`{"mode":"ferry","origin":"Athens","destination":"Naxos","depart_date":"2026-08-04"}`))
+	if isErr || !strings.Contains(msg, "Athens → Naxos") {
+		t.Fatalf("add = %q (err=%v)", msg, isErr)
+	}
+	if !strings.Contains(rec.Body.String(), "trip_updated") {
+		t.Fatal("add_transport_segment did not emit trip_updated")
+	}
+	get := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), ownerToken, nil)
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), "Naxos") {
+		t.Fatalf("segment not on trip: %d %s", get.Code, get.Body.String())
+	}
+
+	// Bad mode rejected, no write.
+	if _, isErr := runAddTransportSegmentTool(s, json.RawMessage(`{"mode":"teleport"}`)); !isErr {
+		t.Fatal("invalid mode accepted")
+	}
+}
+
+func TestMoveItineraryItemToolMovesItem(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "agent@example.com")
+	trip := createTestTrip(t, owner.ID, 2)
+	s, rec := boundPlanSession(owner.ID, trip.ID)
+
+	var itemID uuid.UUID
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT id FROM itinerary_items WHERE trip_id = $1 AND name = 'Place 1'`, trip.ID).Scan(&itemID); err != nil {
+		t.Fatalf("item not found: %v", err)
+	}
+
+	msg, isErr := runMoveItineraryItemTool(s,
+		json.RawMessage(`{"item_id":"`+itemID.String()+`","day":3,"time_of_day":"evening"}`))
+	if isErr || !strings.Contains(msg, "Day 3") {
+		t.Fatalf("move = %q (err=%v)", msg, isErr)
+	}
+	if !strings.Contains(rec.Body.String(), "trip_updated") {
+		t.Fatal("move_itinerary_item did not emit trip_updated")
+	}
+	get := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), ownerToken, nil)
+	body := get.Body.String()
+	if !strings.Contains(body, `"day":3`) || !strings.Contains(body, `"time_of_day":"evening"`) {
+		t.Fatalf("move not persisted: %s", body)
+	}
+
+	// An item on another trip must not be movable through this session.
+	otherTrip := createTestTrip(t, owner.ID, 1)
+	var otherItem uuid.UUID
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT id FROM itinerary_items WHERE trip_id = $1 LIMIT 1`, otherTrip.ID).Scan(&otherItem); err != nil {
+		t.Fatalf("other item not found: %v", err)
+	}
+	if _, isErr := runMoveItineraryItemTool(s,
+		json.RawMessage(`{"item_id":"`+otherItem.String()+`","day":1}`)); !isErr {
+		t.Fatal("moved an item that belongs to another trip")
+	}
+
+	// Bad day rejected.
+	if _, isErr := runMoveItineraryItemTool(s,
+		json.RawMessage(`{"item_id":"`+itemID.String()+`","day":0}`)); !isErr {
+		t.Fatal("day 0 accepted")
+	}
+}
+
+func TestFormatReviewFindingsStructuredTail(t *testing.T) {
+	checkIn, checkOut := "2026-08-03", "2026-08-04"
+	city := "Naxos"
+	day3 := 3
+	itemID := uuid.NewString()
+	findings := []Finding{
+		{Severity: "warn", Category: "lodging", Message: "No lodging booked for the night of Mon, Aug 3.", Day: &day3,
+			Fix: &FindingFix{Action: "add_lodging", CheckIn: &checkIn, CheckOut: &checkOut, City: &city}},
+		{Severity: "warn", Category: "hours", Message: "The Acropolis may be closed on Monday (Day 3).", ItemID: &itemID,
+			Fix: &FindingFix{Action: "move_item", ItemID: &itemID, TargetDay: &day3}},
+	}
+	out := formatReviewFindings(findings)
+	if !strings.Contains(out, "[fix: category=lodging fix=add_lodging check_in=2026-08-03 check_out=2026-08-04 city=Naxos]") {
+		t.Fatalf("lodging tail missing:\n%s", out)
+	}
+	if !strings.Contains(out, "item_id="+itemID) || !strings.Contains(out, "fix=move_item") || !strings.Contains(out, "target_day=3") {
+		t.Fatalf("move tail missing:\n%s", out)
+	}
+}
+
 func TestGetTripToolShowsBookingChecklist(t *testing.T) {
 	resetDB(t)
 	owner, _ := createTestUser(t, "agent@example.com")
