@@ -548,6 +548,31 @@ func initSentry() bool {
 	return true
 }
 
+// shouldWarnSigningSecrets reports whether the app is running in production with
+// NO stable HMAC signing secret configured. In that state both export tokens and
+// unsubscribe tokens fall back to a per-process random key (see export_token.go /
+// unsubscribe_token.go), so every restart/deploy silently invalidates all
+// outstanding one-click unsubscribe links (which RFC 8058 / CAN-SPAM require to
+// stay honorable indefinitely) and 1h export links. Since UNSUBSCRIBE_SIGNING_SECRET
+// falls back to EXPORT_SIGNING_SECRET, either one being set clears the warning.
+// Pure (no env reads) so it unit-tests cleanly.
+func shouldWarnSigningSecrets(goEnv, exportSecret, unsubSecret string) bool {
+	return goEnv == "production" &&
+		strings.TrimSpace(exportSecret) == "" &&
+		strings.TrimSpace(unsubSecret) == ""
+}
+
+// warnIfSigningSecretsUnset emits a loud startup warning (never fatal — a soft
+// launch shouldn't die on this) when running in production without a stable
+// signing secret. Reads the raw envs directly, which is non-invasive: the token
+// files resolve their secret lazily via sync.Once, so this re-read does not force
+// or perturb their initialization.
+func warnIfSigningSecretsUnset() {
+	if shouldWarnSigningSecrets(os.Getenv("GO_ENV"), os.Getenv("EXPORT_SIGNING_SECRET"), os.Getenv("UNSUBSCRIBE_SIGNING_SECRET")) {
+		slog.Warn("signing secrets unset — outstanding unsubscribe/export links will break on restart; set EXPORT_SIGNING_SECRET (openssl rand -hex 32) in production")
+	}
+}
+
 func main() {
 	// slog is the canonical logger; SetDefault also routes the stdlib log
 	// package through the same handler, so existing log.Printf call sites
@@ -605,6 +630,11 @@ func main() {
 		defer dbPool.Close()
 		log.Println("Connected to database; migrations applied")
 	}
+
+	// Loud production warning when no stable signing secret is configured: the
+	// token files fall back to a per-process random key, which breaks every
+	// outstanding unsubscribe/export link on restart. Non-fatal by design.
+	warnIfSigningSecretsUnset()
 
 	// Background price-alert checker (specs/price-alerts); no-ops in
 	// degraded mode or without a Duffel token.
