@@ -787,6 +787,10 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/booking-todos/order", authMiddleware(http.HandlerFunc(reorderBookingTodosHandler))).Methods("PUT")
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(patchBookingTodoHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/booking-todos/{todoId}", authMiddleware(http.HandlerFunc(deleteBookingTodoHandler))).Methods("DELETE")
+	api.Handle("/trips/{id}/checklist", authMiddleware(http.HandlerFunc(listChecklistHandler))).Methods("GET")
+	api.Handle("/trips/{id}/checklist", authMiddleware(http.HandlerFunc(addChecklistItemHandler))).Methods("POST")
+	api.Handle("/trips/{id}/checklist/{itemId}", authMiddleware(http.HandlerFunc(patchChecklistItemHandler))).Methods("PATCH")
+	api.Handle("/trips/{id}/checklist/{itemId}", authMiddleware(http.HandlerFunc(deleteChecklistItemHandler))).Methods("DELETE")
 
 	// Local-source content — curation is admin-only (authMiddleware + adminMiddleware).
 	api.Handle("/admin/local/sources", admin(listLocalSourcesHandler)).Methods("GET")

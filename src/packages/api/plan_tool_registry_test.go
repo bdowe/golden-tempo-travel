@@ -26,10 +26,10 @@ func TestPlanSessionToolsOrderStable(t *testing.T) {
 		{"anonymous", &planSession{}, append(append([]string{}, base...), "create_itinerary")},
 		{"authed", &planSession{authed: true},
 			append(append([]string{}, base...), "create_itinerary", "save_preferences", "get_trip",
-				"add_booking_todo", "update_booking_todo", "remove_booking_todo")},
+				"add_booking_todo", "update_booking_todo", "remove_booking_todo", "add_packing_item")},
 		{"authed trip-bound", &planSession{authed: true, boundTripID: &tid},
 			append(append([]string{}, base...), "update_itinerary_section", "save_preferences", "get_trip",
-				"add_booking_todo", "update_booking_todo", "remove_booking_todo")},
+				"add_booking_todo", "update_booking_todo", "remove_booking_todo", "add_packing_item")},
 	}
 	for _, tc := range cases {
 		tools := planSessionTools(tc.session)

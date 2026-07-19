@@ -238,6 +238,18 @@ type Trip struct {
 	UpdatedBy pgtype.UUID `json:"updated_by"`
 }
 
+type TripChecklistItem struct {
+	ID        uuid.UUID `json:"id"`
+	TripID    uuid.UUID `json:"trip_id"`
+	Category  string    `json:"category"`
+	Title     string    `json:"title"`
+	Checked   bool      `json:"checked"`
+	Position  int32     `json:"position"`
+	Auto      bool      `json:"auto"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type TripCollaborator struct {
 	ID        uuid.UUID          `json:"id"`
 	ChatID    string             `json:"chat_id"`
