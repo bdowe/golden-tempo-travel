@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,6 +219,16 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Per-IP daily account-creation ceiling (abuse_caps.go): stops one network
+	// from minting accounts en masse. Counts only successful creations (bumped
+	// below), so failed/duplicate attempts don't burn the budget. Generic 429.
+	ip := clientIP(r)
+	if registrationCounter.count(ip, time.Now()) >= registrationsPerIPPerDay() {
+		w.Header().Set("Retry-After", "3600")
+		writeJSONError(w, http.StatusTooManyRequests, "too many accounts created from this network today; please try again later")
+		return
+	}
+
 	q := store.New(dbPool)
 	if _, err := q.GetUserByEmail(r.Context(), req.Email); err == nil {
 		writeJSONError(w, http.StatusConflict, "an account with this email already exists")
@@ -248,6 +259,8 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not create account")
 		return
 	}
+	// Count the successful creation toward this IP's daily ceiling.
+	registrationCounter.incr(ip, time.Now())
 
 	session, err := issueSession(r.Context(), q, user.ID)
 	if err != nil {
@@ -277,10 +290,26 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Per-account login lockout (abuse_caps.go): the strict 5/min/IP limiter
+	// alone doesn't stop credential stuffing spread across many IPs, so track
+	// consecutive failures keyed by email and temporarily lock after too many.
+	// The lock fires identically whether or not the email exists — an attacker
+	// probing one address can never tell existence from the 429, preserving the
+	// no-user-enumeration guarantee below.
+	now := time.Now()
+	if loginLockouts.locked(req.Email, now) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(loginLockWindow().Seconds())))
+		writeJSONError(w, http.StatusTooManyRequests, "too many failed login attempts; please wait a few minutes and try again")
+		return
+	}
+
 	q := store.New(dbPool)
 	user, err := q.GetUserByEmail(r.Context(), req.Email)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !checkUserPassword(user, req.Password)) {
-		// Generic message — never reveal whether the email or the password was wrong.
+		// Generic message — never reveal whether the email or the password was
+		// wrong. Both misses count toward the lockout so the counter accrues the
+		// same way for real and non-existent accounts.
+		loginLockouts.recordFailure(req.Email, now)
 		writeJSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
@@ -288,6 +317,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not look up account")
 		return
 	}
+
+	// Successful auth clears the failure streak.
+	loginLockouts.reset(req.Email)
 
 	session, err := issueSession(r.Context(), q, user.ID)
 	if err != nil {

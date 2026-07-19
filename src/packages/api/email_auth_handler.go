@@ -25,6 +25,13 @@ const (
 	verifyTokenTTL = 24 * time.Hour
 )
 
+// emailSend is the delivery seam used by the throttled transactional flows
+// (verification + password reset). Production routes straight to emailService;
+// tests swap it to observe delivery without an SMTP server.
+var emailSend = func(to, subject, body string) error {
+	return emailService.Send(to, subject, body)
+}
+
 func hashEmailToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -88,6 +95,13 @@ func publicAppURL(parts ...string) string {
 // sendVerificationEmail is called fire-and-forget after registration (same
 // pattern as the profile distiller kickoff) and from the resend endpoint.
 func sendVerificationEmail(user store.User) {
+	// Per-address throttle (abuse_caps.go): checked before issuing a token so a
+	// throttled resend doesn't invalidate a still-valid prior token. Keyed by
+	// purpose so verify and reset don't block each other. Anti email-bombing.
+	if !emailSendThrottle.allow("verify:"+strings.ToLower(user.Email), time.Now(), emailMinInterval()) {
+		log.Printf("verification email: throttled for %s (min interval not elapsed)", user.Email)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	q := store.New(dbPool)
@@ -100,7 +114,7 @@ func sendVerificationEmail(user store.User) {
 	body := "Welcome to Golden Tempo Travel!\n\n" +
 		"Confirm your email address by opening this link:\n\n" + link + "\n\n" +
 		"The link expires in 24 hours. If you didn't create an account, you can ignore this email."
-	if err := emailService.Send(user.Email, "Confirm your email — Golden Tempo Travel", body); err != nil {
+	if err := emailSend(user.Email, "Confirm your email — Golden Tempo Travel", body); err != nil {
 		log.Printf("verification email: send to %s failed: %v", user.Email, err)
 	}
 }
@@ -198,6 +212,14 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		u := user
 		safeGo("sendPasswordResetEmail", func() {
+			// Per-address throttle (abuse_caps.go): a rapid second request for
+			// the same address skips the send (and token issue). The handler
+			// still always answers 202, so the throttle is invisible to callers
+			// and can't be used to enumerate accounts. Anti email-bombing.
+			if !emailSendThrottle.allow("reset:"+u.Email, time.Now(), emailMinInterval()) {
+				log.Printf("password reset: throttled for %s (min interval not elapsed)", u.Email)
+				return
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			token, err := issueEmailToken(ctx, store.New(dbPool), u, "reset", resetTokenTTL)
@@ -210,7 +232,7 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 				"If the link doesn't open, use this reset code instead:\n\n    " + token + "\n\n" +
 				"In the app, choose \"Forgot password?\", paste the code, and pick a new password. " +
 				"The link and code are valid for 1 hour and work once. If this wasn't you, ignore this email — your password is unchanged."
-			if err := emailService.Send(u.Email, "Reset your password — Golden Tempo Travel", body); err != nil {
+			if err := emailSend(u.Email, "Reset your password — Golden Tempo Travel", body); err != nil {
 				log.Printf("password reset: send to %s failed: %v", u.Email, err)
 			}
 		})

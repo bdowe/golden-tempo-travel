@@ -30,6 +30,15 @@ const planMaxIterations = 15
 // deadline; exceeding it surfaces as a friendly SSE error, not a hang.
 const planModelCallTimeout = 120 * time.Second
 
+// planMaxDuration is the overall wall-clock ceiling for a single /plan request.
+// The server runs with WriteTimeout:0 so SSE can stream unbounded, and
+// planModelCallTimeout only bounds one model call — so without this a stuck
+// stream (client gone, agent loop wedged) could pin its goroutine and its
+// concurrency slot indefinitely. Deriving the handler context from this closes
+// the request after the ceiling and frees the slot. Generous: a rich multi-tool
+// session with compaction stays well under it.
+const planMaxDuration = 10 * time.Minute
+
 // planMaxMessages / planMaxMessageChars bound the resent conversation history.
 // Every agent-loop iteration (up to planMaxIterations) re-pays input tokens on
 // the full history, so these bounds are a hard cost lever. The working limit
@@ -110,6 +119,12 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Overall wall-clock ceiling on the whole request (see planMaxDuration): a
+	// stuck stream eventually closes and frees its goroutine + concurrency slot.
+	ctx, cancel := context.WithTimeout(r.Context(), planMaxDuration)
+	defer cancel()
+	r = r.WithContext(ctx)
+
 	var req PlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendSSE(w, "error", map[string]string{"message": "invalid request body"})
@@ -159,14 +174,6 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		sendSSE(w, "error", map[string]string{"message": "ANTHROPIC_API_KEY not configured"})
-		return
-	}
-
-	client := newAnthropicClient(apiKey)
-
 	// Resolve the caller once: anonymous sessions get no personalization and no
 	// preference-writing tool; signed-in sessions get both.
 	uid, authed, uerr := userIDFromRequest(r)
@@ -177,7 +184,26 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		sendSSE(w, "error", map[string]string{"message": "The service is temporarily unavailable. Please try again in a moment."})
 		return
 	}
-	ctx := r.Context()
+
+	// Anonymous /plan daily cap (abuse_caps.go): the money fix. Signed-in
+	// callers are exempt and uncounted (their measure-only free cap in
+	// free_cap.go is unchanged); anonymous callers get anonPlanPerDay() free AI
+	// planning runs per IP per UTC day, then a friendly SSE error — never a 500.
+	if !anonPlanAllowed(authed, clientIP(r), time.Now()) {
+		safeGo("recordAnonPlanCap", func() {
+			recordEventOpt(nil, "anon_plan_cap_hit", nil, map[string]any{"per_day": anonPlanPerDay()})
+		})
+		sendSSE(w, "error", map[string]string{"message": "You've reached today's free planning limit. Sign in to keep planning, or check back tomorrow."})
+		return
+	}
+
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		sendSSE(w, "error", map[string]string{"message": "ANTHROPIC_API_KEY not configured"})
+		return
+	}
+
+	client := newAnthropicClient(apiKey)
 
 	// Snapshot the wire history as the client sent it, BEFORE the compaction
 	// block below rewrites req.Messages (or prepends the summary-as-message).
