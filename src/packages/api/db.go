@@ -25,6 +25,12 @@ var embeddedMigrations embed.FS
 // mode (no DATABASE_URL, or the database was unreachable at startup).
 var dbPool *pgxpool.Pool
 
+// dbConfigured records whether a DATABASE_URL was provided at startup, so the
+// health endpoint can distinguish "no database configured" from "configured
+// but unreachable" when dbPool is nil. Set once in main before the server
+// starts; read-only afterwards.
+var dbConfigured bool
+
 // initDB creates and verifies a connection pool. A non-nil error means the
 // database is unreachable; callers treat that as degraded mode, not a crash.
 func initDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
