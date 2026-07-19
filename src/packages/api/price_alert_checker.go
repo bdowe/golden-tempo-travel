@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -301,23 +302,27 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 		log.Printf("price alerts: mark notified %s: %v", a.ID, err)
 		return
 	}
-	// Persist the in-app notification event (specs/price-alerts-v2) inside the
-	// same idempotent block that marked the alert notified, with the same
-	// values the email gets. Best-effort like the email: a failed insert logs
-	// and never blocks the check loop.
+	// Persist the in-app notification (Wave 16) inside the same idempotent block
+	// that marked the alert notified, with the same values the email gets.
+	// Best-effort like the email: a failed insert logs and never blocks the
+	// check loop. This is the CUTOVER writer — the generalized `notifications`
+	// feed replaced alert_events as the notification-center spine (the migration
+	// backfilled history), so the checker no longer writes alert_events; the old
+	// table/endpoints remain intact but dormant.
 	// matched_departure_date names the winning date only for flexible alerts;
 	// for an exact watch it always equals depart_date, so it stays NULL.
 	matchedParam := matched
 	if a.FlexDays == 0 {
 		matchedParam = pgtype.Date{}
 	}
-	if _, err := q.InsertAlertEvent(ctx, store.InsertAlertEventParams{
-		AlertID: a.ID, UserID: a.UserID,
-		Price: effective, Currency: lowest.Currency,
-		PreviousPrice:        alertReferencePrice(a),
-		MatchedDepartureDate: matchedParam,
+	payload := priceDropPayload(a, effective, lowest.Currency, alertReferencePrice(a), matchedParam)
+	if _, err := q.InsertNotification(ctx, store.InsertNotificationParams{
+		UserID:  a.UserID,
+		Type:    "price_drop",
+		Payload: payload,
+		TripID:  a.TripID,
 	}); err != nil {
-		log.Printf("price alerts: insert event %s: %v", a.ID, err)
+		log.Printf("price alerts: insert notification %s: %v", a.ID, err)
 	}
 	go sendAlertEmail(row.OwnerEmail, a, lowest, matchedParam)
 	tripID := tripIDPtr(a)
@@ -465,6 +470,40 @@ func dateString(d pgtype.Date) string {
 
 func pgTimestamptz(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
+}
+
+// priceDropPayload builds the `notifications.payload` JSON for a triggered
+// price-drop. The key set matches the migration backfill exactly (same fields
+// ListAlertEventsByUser used to join in), so a live-written notification and a
+// backfilled one render identically in the client's price_drop tile. Absent
+// values are JSON null (not omitted), mirroring jsonb_build_object.
+func priceDropPayload(a store.PriceAlert, price float64, currency string, previous *float64, matched pgtype.Date) []byte {
+	m := map[string]any{
+		"alert_id":       a.ID.String(),
+		"price":          price,
+		"currency":       currency,
+		"previous_price": previous,
+		"origin":         a.Origin,
+		"destination":    a.Destination,
+		"depart_date":    dateString(a.DepartDate),
+		"return_date":    nil,
+		"matched_date":   nil,
+		"target_price":   a.TargetPrice,
+		"alert_status":   a.Status,
+	}
+	if ret := dateString(a.ReturnDate); ret != "" {
+		m["return_date"] = ret
+	}
+	if matched.Valid {
+		m["matched_date"] = dateString(matched)
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		// A map of scalars/strings cannot fail to marshal; fall back to an empty
+		// object rather than dropping the notification.
+		return []byte(`{}`)
+	}
+	return b
 }
 
 func tripIDPtr(a store.PriceAlert) *uuid.UUID {

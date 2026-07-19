@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/price_alert.dart';
 import '../providers/alerts_provider.dart';
+import '../providers/notifications_provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/spacing.dart';
 import '../utils/money_format.dart';
@@ -130,7 +131,7 @@ class _NotificationBell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(alertUnreadCountProvider).valueOrNull ?? 0;
+    final count = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final bell = IconButton(
       tooltip: 'Notifications',
       icon: const Icon(Icons.notifications_none),

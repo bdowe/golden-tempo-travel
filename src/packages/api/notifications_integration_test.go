@@ -1,0 +1,244 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"travel-route-planner/store"
+)
+
+// insertTestNotification writes one notification row directly (bypassing the
+// checker) and returns it.
+func insertTestNotification(t *testing.T, userID uuid.UUID, typ string, payload map[string]any, tripID *uuid.UUID) store.Notification {
+	t.Helper()
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	var tid pgtype.UUID
+	if tripID != nil {
+		tid = pgtype.UUID{Bytes: *tripID, Valid: true}
+	}
+	n, err := store.New(dbPool).InsertNotification(context.Background(), store.InsertNotificationParams{
+		UserID: userID, Type: typ, Payload: b, TripID: tid,
+	})
+	if err != nil {
+		t.Fatalf("insert notification: %v", err)
+	}
+	return n
+}
+
+func ageNotification(t *testing.T, id uuid.UUID, by time.Duration) {
+	t.Helper()
+	if _, err := dbPool.Exec(context.Background(),
+		`UPDATE notifications SET created_at = created_at - $2::interval WHERE id = $1`,
+		id, by.String()); err != nil {
+		t.Fatalf("age notification: %v", err)
+	}
+}
+
+func decodeNotifList(t *testing.T, body []byte) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode notification list %q: %v", body, err)
+	}
+	return out
+}
+
+func notifUnreadCount(t *testing.T, token string) float64 {
+	t.Helper()
+	rec := doJSON(t, "GET", "/api/v1/notifications/unread-count", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unread-count = %d: %s", rec.Code, rec.Body.String())
+	}
+	n, ok := decode(t, rec)["count"].(float64)
+	if !ok {
+		t.Fatalf("unread-count body wrong: %s", rec.Body.String())
+	}
+	return n
+}
+
+func TestNotificationsListReadAndIsolation(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "notif-owner@example.com")
+	_, otherToken := createTestUser(t, "notif-other@example.com")
+
+	older := insertTestNotification(t, owner.ID, "price_drop", map[string]any{
+		"origin": "BOS", "destination": "CDG", "price": 450.0, "currency": "USD",
+	}, nil)
+	ageNotification(t, older.ID, time.Hour)
+	// A second, different type proves the feed is type-agnostic.
+	insertTestNotification(t, owner.ID, "trip_reminder", map[string]any{
+		"title": "Trip to Paris starts in 3 days",
+	}, nil)
+
+	list := doJSON(t, "GET", "/api/v1/notifications", ownerToken, nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list = %d: %s", list.Code, list.Body.String())
+	}
+	notifs := decodeNotifList(t, list.Body.Bytes())
+	if len(notifs) != 2 {
+		t.Fatalf("notifications = %d, want 2: %s", len(notifs), list.Body.String())
+	}
+	// Newest-first: the un-aged trip_reminder leads.
+	if notifs[0]["type"] != "trip_reminder" || notifs[1]["type"] != "price_drop" {
+		t.Fatalf("not newest-first / wrong types: %s", list.Body.String())
+	}
+	// Payload is echoed verbatim as a typed object.
+	pd, ok := notifs[1]["payload"].(map[string]any)
+	if !ok || pd["origin"] != "BOS" || pd["price"] != 450.0 {
+		t.Fatalf("price_drop payload wrong: %v", notifs[1]["payload"])
+	}
+	if notifs[0]["read_at"] != nil {
+		t.Fatalf("fresh notification must be unread: %v", notifs[0])
+	}
+
+	limited := doJSON(t, "GET", "/api/v1/notifications?limit=1", ownerToken, nil)
+	if got := decodeNotifList(t, limited.Body.Bytes()); len(got) != 1 || got[0]["type"] != "trip_reminder" {
+		t.Fatalf("limit=1 wrong: %s", limited.Body.String())
+	}
+
+	if n := notifUnreadCount(t, ownerToken); n != 2 {
+		t.Fatalf("owner unread = %v, want 2", n)
+	}
+
+	// Isolation: the other user sees nothing and cannot mark the owner's read.
+	otherList := doJSON(t, "GET", "/api/v1/notifications", otherToken, nil)
+	if got := decodeNotifList(t, otherList.Body.Bytes()); len(got) != 0 {
+		t.Fatalf("cross-user list leaked %d notifications", len(got))
+	}
+	if n := notifUnreadCount(t, otherToken); n != 0 {
+		t.Fatalf("cross-user unread = %v, want 0", n)
+	}
+	if rec := doJSON(t, "POST", "/api/v1/notifications/read", otherToken, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("other mark-read = %d, want 204", rec.Code)
+	}
+	if n := notifUnreadCount(t, ownerToken); n != 2 {
+		t.Fatalf("cross-user mark-read affected owner: unread = %v, want 2", n)
+	}
+
+	// Mark-all-read clears the badge and stamps read_at.
+	if rec := doJSON(t, "POST", "/api/v1/notifications/read", ownerToken, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("mark-read = %d, want 204", rec.Code)
+	}
+	if n := notifUnreadCount(t, ownerToken); n != 0 {
+		t.Fatalf("unread after mark-read = %v, want 0", n)
+	}
+	after := decodeNotifList(t, doJSON(t, "GET", "/api/v1/notifications", ownerToken, nil).Body.Bytes())
+	for _, nn := range after {
+		if nn["read_at"] == nil {
+			t.Fatalf("notification still unread after mark-all: %v", nn)
+		}
+	}
+	// Idempotent: nothing unread is still 204.
+	if rec := doJSON(t, "POST", "/api/v1/notifications/read", ownerToken, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("second mark-read = %d, want 204", rec.Code)
+	}
+
+	// Anonymous callers are rejected across the surface.
+	for _, probe := range []struct{ method, path string }{
+		{"GET", "/api/v1/notifications"},
+		{"POST", "/api/v1/notifications/read"},
+		{"GET", "/api/v1/notifications/unread-count"},
+	} {
+		if rec := doJSON(t, probe.method, probe.path, "", nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("anonymous %s %s = %d, want 401", probe.method, probe.path, rec.Code)
+		}
+	}
+}
+
+// Deleting a user cascades their notifications away (ON DELETE CASCADE).
+func TestNotificationsCascadeOnUserDelete(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "notif-cascade@example.com")
+	insertTestNotification(t, owner.ID, "price_drop", map[string]any{"price": 412.0}, nil)
+
+	var before int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM notifications WHERE user_id = $1`, owner.ID).Scan(&before); err != nil || before != 1 {
+		t.Fatalf("notifications before = %d (%v), want 1", before, err)
+	}
+	if _, err := dbPool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, owner.ID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	var after int
+	if err := dbPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM notifications`).Scan(&after); err != nil || after != 0 {
+		t.Fatalf("notifications after user delete = %d (%v), want 0", after, err)
+	}
+}
+
+// The migration backfill turns each alert_events row into a 'price_drop'
+// notification whose payload carries the joined route/date/price fields. The
+// harness already ran the migration once, so we re-run the exact backfill SELECT
+// against freshly-seeded rows to assert its shape (a truthful stand-in for the
+// one-shot migration insert).
+func TestNotificationsBackfillQueryShape(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "notif-backfill@example.com")
+	q := store.New(dbPool)
+
+	depart := time.Now().AddDate(0, 2, 0).Truncate(24 * time.Hour)
+	matched := depart.AddDate(0, 0, -1)
+	usd := "USD"
+	alert, err := q.CreatePriceAlert(context.Background(), store.CreatePriceAlertParams{
+		UserID: owner.ID, Origin: "BOS", Destination: "CDG",
+		DepartDate: pgtype.Date{Time: depart, Valid: true},
+		CabinClass: "economy", Adults: 1, TargetPrice: f64(450),
+		Baggage: baggagePersonalItem, Currency: &usd,
+	})
+	if err != nil {
+		t.Fatalf("seed alert: %v", err)
+	}
+	if _, err := q.InsertAlertEvent(context.Background(), store.InsertAlertEventParams{
+		AlertID: alert.ID, UserID: owner.ID, Price: 412, Currency: "USD",
+		PreviousPrice:        f64(498),
+		MatchedDepartureDate: pgtype.Date{Time: matched, Valid: true},
+	}); err != nil {
+		t.Fatalf("seed alert event: %v", err)
+	}
+
+	// The exact backfill statement from migration 00045_notifications.sql.
+	if _, err := dbPool.Exec(context.Background(), `
+		INSERT INTO notifications (user_id, type, payload, trip_id, read_at, created_at)
+		SELECT ae.user_id, 'price_drop',
+		       jsonb_build_object(
+		           'alert_id', ae.alert_id, 'price', ae.price, 'currency', ae.currency,
+		           'previous_price', ae.previous_price, 'matched_date', ae.matched_departure_date,
+		           'origin', pa.origin, 'destination', pa.destination,
+		           'depart_date', pa.depart_date, 'return_date', pa.return_date,
+		           'target_price', pa.target_price, 'alert_status', pa.status),
+		       pa.trip_id, ae.read_at, ae.occurred_at
+		FROM alert_events ae JOIN price_alerts pa ON pa.id = ae.alert_id`); err != nil {
+		t.Fatalf("backfill insert: %v", err)
+	}
+
+	rows, err := q.ListNotificationsByUser(context.Background(),
+		store.ListNotificationsByUserParams{UserID: owner.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("list notifications: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("backfilled notifications = %d, want 1", len(rows))
+	}
+	if rows[0].Type != "price_drop" {
+		t.Fatalf("backfilled type = %q, want price_drop", rows[0].Type)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(rows[0].Payload, &p); err != nil {
+		t.Fatalf("payload not JSON: %v (%s)", err, rows[0].Payload)
+	}
+	if p["price"] != 412.0 || p["previous_price"] != 498.0 ||
+		p["origin"] != "BOS" || p["destination"] != "CDG" ||
+		p["matched_date"] != matched.Format(dateLayout) ||
+		p["target_price"] != 450.0 || p["alert_status"] != "active" {
+		t.Fatalf("backfilled payload wrong: %v", p)
+	}
+}

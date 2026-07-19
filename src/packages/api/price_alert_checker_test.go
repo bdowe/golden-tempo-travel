@@ -331,9 +331,10 @@ func TestAlertCheckerRunOnce(t *testing.T) {
 	}
 }
 
-// A triggered drop persists exactly one alert_events row with the values the
-// email gets; a non-drop check persists none; a re-check at the same price
-// persists none (the v1 notify idempotency covers events too).
+// A triggered drop persists exactly one notifications row (type 'price_drop')
+// with the values the email gets; a non-drop check persists none; a re-check at
+// the same price persists none (the v1 notify idempotency covers notifications
+// too). Wave 16 cutover: the checker writes `notifications`, not alert_events.
 func TestAlertCheckerInsertsEvents(t *testing.T) {
 	resetDB(t)
 	userA, _ := createTestUser(t, "events-a@example.com")
@@ -373,35 +374,42 @@ func TestAlertCheckerInsertsEvents(t *testing.T) {
 	}
 	c.runOnce(context.Background())
 
-	eventsFor := func(u store.User) []store.ListAlertEventsByUserRow {
+	eventsFor := func(u store.User) []store.Notification {
 		t.Helper()
-		rows, err := q.ListAlertEventsByUser(context.Background(),
-			store.ListAlertEventsByUserParams{UserID: u.ID, Limit: 10})
+		rows, err := q.ListNotificationsByUser(context.Background(),
+			store.ListNotificationsByUserParams{UserID: u.ID, Limit: 10})
 		if err != nil {
-			t.Fatalf("list events: %v", err)
+			t.Fatalf("list notifications: %v", err)
 		}
 		return rows
 	}
 
 	got := eventsFor(userA)
 	if len(got) != 1 {
-		t.Fatalf("triggered drop events = %d, want exactly 1", len(got))
+		t.Fatalf("triggered drop notifications = %d, want exactly 1", len(got))
 	}
 	ev := got[0]
-	if ev.AlertID != alertA.ID || ev.Price != 412 || ev.Currency != "USD" {
-		t.Fatalf("event values wrong: %+v", ev)
+	if ev.Type != "price_drop" {
+		t.Fatalf("notification type = %q, want price_drop", ev.Type)
 	}
-	if ev.PreviousPrice == nil || *ev.PreviousPrice != 498 {
-		t.Fatalf("previous_price = %v, want 498 (the seeded reference)", ev.PreviousPrice)
+	var p map[string]any
+	if err := json.Unmarshal(ev.Payload, &p); err != nil {
+		t.Fatalf("payload not JSON: %v (%s)", err, ev.Payload)
 	}
-	if ev.Origin != "BOS" || ev.Destination != "CDG" || dateString(ev.DepartDate) == "" {
-		t.Fatalf("joined alert context missing: %+v", ev)
+	if p["alert_id"] != alertA.ID.String() || p["price"] != 412.0 || p["currency"] != "USD" {
+		t.Fatalf("payload values wrong: %v", p)
+	}
+	if p["previous_price"] != 498.0 {
+		t.Fatalf("previous_price = %v, want 498 (the seeded reference)", p["previous_price"])
+	}
+	if p["origin"] != "BOS" || p["destination"] != "CDG" || p["depart_date"] == "" {
+		t.Fatalf("route context missing from payload: %v", p)
 	}
 	if ev.ReadAt.Valid {
-		t.Fatalf("fresh event must be unread: %+v", ev)
+		t.Fatalf("fresh notification must be unread: %+v", ev)
 	}
 	if n := len(eventsFor(userB)); n != 0 {
-		t.Fatalf("non-drop check inserted %d events, want 0", n)
+		t.Fatalf("non-drop check inserted %d notifications, want 0", n)
 	}
 
 	// Force both alerts due again and re-check at the same price: no further
@@ -497,20 +505,23 @@ func TestAlertCheckerFlexFanOut(t *testing.T) {
 		t.Fatalf("±1 alert issued %d Duffel searches, want 3 (one per date)", calls)
 	}
 
-	rows, err := q.ListAlertEventsByUser(context.Background(),
-		store.ListAlertEventsByUserParams{UserID: user.ID, Limit: 10})
+	rows, err := q.ListNotificationsByUser(context.Background(),
+		store.ListNotificationsByUserParams{UserID: user.ID, Limit: 10})
 	if err != nil {
-		t.Fatalf("list events: %v", err)
+		t.Fatalf("list notifications: %v", err)
 	}
 	if len(rows) != 1 {
-		t.Fatalf("flex trigger events = %d, want 1", len(rows))
+		t.Fatalf("flex trigger notifications = %d, want 1", len(rows))
 	}
-	ev := rows[0]
-	if ev.Price != 400 {
-		t.Fatalf("event price = %v, want 400 (cheapest date)", ev.Price)
+	var p map[string]any
+	if err := json.Unmarshal(rows[0].Payload, &p); err != nil {
+		t.Fatalf("payload not JSON: %v (%s)", err, rows[0].Payload)
 	}
-	if dateString(ev.MatchedDepartureDate) != fmtd(dayBefore) {
-		t.Fatalf("matched_departure_date = %q, want %q", dateString(ev.MatchedDepartureDate), fmtd(dayBefore))
+	if p["price"] != 400.0 {
+		t.Fatalf("notification price = %v, want 400 (cheapest date)", p["price"])
+	}
+	if p["matched_date"] != fmtd(dayBefore) {
+		t.Fatalf("matched_date = %v, want %q", p["matched_date"], fmtd(dayBefore))
 	}
 
 	alerts, _ := q.ListPriceAlertsByUser(context.Background(), user.ID)
