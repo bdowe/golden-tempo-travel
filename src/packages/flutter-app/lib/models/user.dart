@@ -15,6 +15,13 @@ class UserModel {
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
 
+  /// Email preferences, expressed as opt-INs (true = receiving). Default true
+  /// so older payloads without the fields read as opted-in.
+  @JsonKey(name: 'reminders_enabled')
+  final bool remindersEnabled;
+  @JsonKey(name: 'nudges_enabled')
+  final bool nudgesEnabled;
+
   const UserModel({
     required this.id,
     required this.email,
@@ -22,6 +29,8 @@ class UserModel {
     this.isAdmin = false,
     this.needsOnboarding = false,
     required this.createdAt,
+    this.remindersEnabled = true,
+    this.nudgesEnabled = true,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) =>

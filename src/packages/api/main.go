@@ -701,6 +701,11 @@ func buildRouter() *mux.Router {
 	api.Handle("/auth/account", strict(authMiddleware(http.HandlerFunc(deleteAccountHandler)))).Methods("DELETE")
 	api.Handle("/auth/change-password", strict(authMiddleware(http.HandlerFunc(changePasswordHandler)))).Methods("POST")
 	api.Handle("/auth/logout-all", authMiddleware(http.HandlerFunc(logoutAllHandler))).Methods("POST")
+	api.Handle("/auth/email-preferences", authMiddleware(http.HandlerFunc(patchEmailPreferencesHandler))).Methods("PATCH")
+	// Public, token-gated one-click unsubscribe — NO authMiddleware: the signed
+	// token IS the capability. GET = human clicks the footer link; POST = RFC
+	// 8058 List-Unsubscribe-Post one-click flow fired by the mail client.
+	api.HandleFunc("/unsubscribe/{token}", unsubscribeHandler).Methods("GET", "POST")
 	// Sign in with Google (specs/google-sso). Browser redirect flow + one-time
 	// code exchange; unauthenticated, so the credential routes take the strict tier.
 	api.HandleFunc("/auth/google/availability", googleAvailabilityHandler).Methods("GET")

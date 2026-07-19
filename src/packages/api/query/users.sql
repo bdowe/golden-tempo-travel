@@ -25,5 +25,15 @@ WHERE id = $1;
 UPDATE users SET display_name = $2 WHERE id = $1
 RETURNING *;
 
+-- name: SetUserEmailOptOut :one
+-- Category-partial opt-out setter: a NULL arg leaves that flag untouched, so a
+-- single query handles reminders-only, nudges-only, or all-at-once. Used by
+-- both the one-click unsubscribe link and the account-settings PATCH.
+UPDATE users SET
+    reminders_opt_out = COALESCE(sqlc.narg('reminders_opt_out'), reminders_opt_out),
+    nudges_opt_out    = COALESCE(sqlc.narg('nudges_opt_out'), nudges_opt_out)
+WHERE id = sqlc.arg('id')
+RETURNING *;
+
 -- name: DeleteUser :execrows
 DELETE FROM users WHERE id = $1;

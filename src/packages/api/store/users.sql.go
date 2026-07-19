@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name)
 VALUES ($1, $2, $3)
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out
 `
 
 type CreateUserParams struct {
@@ -36,6 +36,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsAdmin,
 		&i.OnboardedAt,
 		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
 	)
 	return i, err
 }
@@ -53,7 +55,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at FROM users WHERE email = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -69,12 +71,14 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.IsAdmin,
 		&i.OnboardedAt,
 		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at FROM users WHERE id = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -90,6 +94,8 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.IsAdmin,
 		&i.OnboardedAt,
 		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
 	)
 	return i, err
 }
@@ -107,7 +113,7 @@ func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) error
 const markUserOnboarded = `-- name: MarkUserOnboarded :one
 UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
 WHERE id = $1
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out
 `
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
@@ -123,13 +129,51 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, er
 		&i.IsAdmin,
 		&i.OnboardedAt,
 		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
+	)
+	return i, err
+}
+
+const setUserEmailOptOut = `-- name: SetUserEmailOptOut :one
+UPDATE users SET
+    reminders_opt_out = COALESCE($1, reminders_opt_out),
+    nudges_opt_out    = COALESCE($2, nudges_opt_out)
+WHERE id = $3
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out
+`
+
+type SetUserEmailOptOutParams struct {
+	RemindersOptOut *bool     `json:"reminders_opt_out"`
+	NudgesOptOut    *bool     `json:"nudges_opt_out"`
+	ID              uuid.UUID `json:"id"`
+}
+
+// Category-partial opt-out setter: a NULL arg leaves that flag untouched, so a
+// single query handles reminders-only, nudges-only, or all-at-once. Used by
+// both the one-click unsubscribe link and the account-settings PATCH.
+func (q *Queries) SetUserEmailOptOut(ctx context.Context, arg SetUserEmailOptOutParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserEmailOptOut, arg.RemindersOptOut, arg.NudgesOptOut, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.IsAdmin,
+		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
 	)
 	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2 WHERE id = $1
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -150,6 +194,8 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.IsAdmin,
 		&i.OnboardedAt,
 		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
 	)
 	return i, err
 }

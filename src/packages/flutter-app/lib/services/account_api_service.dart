@@ -53,6 +53,26 @@ class AccountApiService {
     throw Exception(_message(res.body, res.statusCode));
   }
 
+  /// Updates email preferences (opt-INs: true = receiving). Pass only the
+  /// stream(s) you're changing; returns the refreshed user.
+  Future<UserModel> updateEmailPreferences({
+    bool? remindersEnabled,
+    bool? nudgesEnabled,
+  }) async {
+    final body = <String, dynamic>{};
+    if (remindersEnabled != null) body['reminders_enabled'] = remindersEnabled;
+    if (nudgesEnabled != null) body['nudges_enabled'] = nudgesEnabled;
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/auth/email-preferences'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return UserModel.fromJson(jsonDecode(res.body));
+    }
+    throw Exception(_message(res.body, res.statusCode));
+  }
+
   Future<void> logoutAll() async {
     final res = await apiClient.httpClient.post(
       Uri.parse('${apiClient.baseUrl}/auth/logout-all'),
