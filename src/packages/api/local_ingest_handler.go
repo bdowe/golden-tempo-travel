@@ -144,7 +144,10 @@ func ingestLocalHandler(w http.ResponseWriter, r *http.Request) {
 	client := newAnthropicClient(apiKey)
 	content, err := extractLocalContent(r.Context(), client, city, req.RawText)
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, "extraction failed: "+err.Error())
+		// Provider/internal detail stays in the server log (tees to Sentry);
+		// the client gets a generic message.
+		ctxLog(r.Context()).Error("local ingest: extraction failed", "error", err, "city", city)
+		writeJSONError(w, http.StatusBadGateway, "extraction failed")
 		return
 	}
 
@@ -171,7 +174,7 @@ func ingestLocalHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// Anti-hallucination: resolve the place on Google. Unmatched pins are kept
 		// as unverified drafts (curator can fix the name) — never silently dropped.
-		if hits, perr := places.SearchPlaces(placeQuery(rec.SearchHint, name, city)); perr == nil && len(hits) > 0 {
+		if hits, perr := places.SearchPlaces(r.Context(), placeQuery(rec.SearchHint, name, city)); perr == nil && len(hits) > 0 {
 			hit := hits[0]
 			params.PlaceID = strPtrOrNil(hit.PlaceID)
 			params.Address = strPtrOrNil(hit.Address)

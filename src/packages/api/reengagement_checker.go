@@ -77,7 +77,9 @@ func (c *reengagementChecker) run(ctx context.Context) {
 	ticker := time.NewTicker(c.interval)
 	defer ticker.Stop()
 	for {
-		c.runOnce(ctx, time.Now())
+		// Guard each tick: a panic in one cycle must not kill the ticker (and
+		// with it the whole process). Log-and-continue to the next tick.
+		safeRun("re-engagement checker tick", func() { c.runOnce(ctx, time.Now()) })
 		select {
 		case <-ctx.Done():
 			return
@@ -151,7 +153,7 @@ func (c *reengagementChecker) sendTripReminder(ctx context.Context, q *store.Que
 		log.Printf("re-engagement: insert %s notification for %s failed: %v", kind, row.UserID, err)
 	}
 	if !row.RemindersOptOut {
-		go sendReminderEmail(row, kind)
+		safeGo("sendReminderEmail", func() { sendReminderEmail(row, kind) })
 	}
 }
 
@@ -191,7 +193,7 @@ func (c *reengagementChecker) sendWeeklyNudge(ctx context.Context, q *store.Quer
 		log.Printf("re-engagement: insert weekly nudge for %s failed: %v", row.ID, err)
 	}
 	if !row.NudgesOptOut {
-		go sendNudgeEmail(row)
+		safeGo("sendNudgeEmail", func() { sendNudgeEmail(row) })
 	}
 }
 

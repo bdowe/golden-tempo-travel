@@ -23,6 +23,13 @@ import (
 // ends the stream gracefully instead of letting a pathological loop burn cost.
 const planMaxIterations = 15
 
+// planModelCallTimeout bounds a single streaming model call. The handler's own
+// context is r.Context() (no server WriteTimeout, since SSE needs unlimited),
+// so without this a hung/slow upstream Anthropic socket would stall the agent
+// loop — and the client's SSE stream — indefinitely. Each call gets its own
+// deadline; exceeding it surfaces as a friendly SSE error, not a hang.
+const planModelCallTimeout = 120 * time.Second
+
 // planMaxMessages / planMaxMessageChars bound the resent conversation history.
 // Every agent-loop iteration (up to planMaxIterations) re-pays input tokens on
 // the full history, so these bounds are a hard cost lever. The working limit
@@ -162,7 +169,14 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve the caller once: anonymous sessions get no personalization and no
 	// preference-writing tool; signed-in sessions get both.
-	uid, authed := userIDFromRequest(r)
+	uid, authed, uerr := userIDFromRequest(r)
+	if uerr != nil {
+		// A token was presented but the DB was unreachable — don't silently
+		// downgrade to anonymous (losing personalization + persistence). Ask
+		// the client to retry rather than proceeding half-authenticated.
+		sendSSE(w, "error", map[string]string{"message": "The service is temporarily unavailable. Please try again in a moment."})
+		return
+	}
 	ctx := r.Context()
 
 	// Snapshot the wire history as the client sent it, BEFORE the compaction
@@ -227,7 +241,7 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	// Also runs the free-cap plan_runs crossing check (free_cap.go) — one
 	// count query, entirely off the SSE hot path, skipped when unauthed or
 	// degraded.
-	go recordPlanSessionStart(planUID, authed)
+	safeGo("recordPlanSessionStart", func() { recordPlanSessionStart(planUID, authed) })
 	defer func() {
 		recordEventOpt(planUID, "plan_session_completed", session.tripID, map[string]any{
 			"authenticated":         authed,
@@ -379,7 +393,8 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			Messages: messages,
 		}
 
-		stream := client.Messages.NewStreaming(ctx, params)
+		callCtx, cancelCall := context.WithTimeout(ctx, planModelCallTimeout)
+		stream := client.Messages.NewStreaming(callCtx, params)
 		resp := anthropic.Message{}
 
 		for stream.Next() {
@@ -393,8 +408,14 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if err := stream.Err(); err != nil {
-			sendSSE(w, "error", map[string]string{"message": err.Error()})
+		streamErr := stream.Err()
+		cancelCall() // the deadline only needs to cover the streaming call above
+		if streamErr != nil {
+			// Redact: the raw Anthropic/transport error can carry internal
+			// detail and is unhelpful to the user. Log it server-side (tees to
+			// Sentry via slog) and send a generic, friendly message.
+			ctxLog(ctx).Error("plan: anthropic stream error", "error", streamErr)
+			sendSSE(w, "error", map[string]string{"message": "The planner hit a problem reaching the AI service. Please try again in a moment."})
 			return
 		}
 		planTokensIn += resp.Usage.InputTokens

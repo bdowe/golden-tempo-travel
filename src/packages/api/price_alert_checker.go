@@ -86,7 +86,9 @@ func (c *alertChecker) run(ctx context.Context) {
 	ticker := time.NewTicker(c.interval)
 	defer ticker.Stop()
 	for {
-		c.runOnce(ctx)
+		// Guard each tick: a panic in one cycle must not kill the ticker (and
+		// with it the whole process). Log-and-continue to the next tick.
+		safeRun("price alert checker tick", func() { c.runOnce(ctx) })
 		select {
 		case <-ctx.Done():
 			return
@@ -324,12 +326,14 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 	}); err != nil {
 		log.Printf("price alerts: insert notification %s: %v", a.ID, err)
 	}
-	go sendAlertEmail(row.OwnerEmail, a, lowest, matchedParam)
+	safeGo("sendAlertEmail", func() { sendAlertEmail(row.OwnerEmail, a, lowest, matchedParam) })
 	tripID := tripIDPtr(a)
-	go recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
-		"origin": a.Origin, "destination": a.Destination,
-		"price": effective, "currency": lowest.Currency,
-		"target_price": a.TargetPrice,
+	safeGo("recordEvent", func() {
+		recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
+			"origin": a.Origin, "destination": a.Destination,
+			"price": effective, "currency": lowest.Currency,
+			"target_price": a.TargetPrice,
+		})
 	})
 }
 

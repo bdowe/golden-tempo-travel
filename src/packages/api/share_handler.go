@@ -108,7 +108,7 @@ func createShareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if role == "editor" {
-		go recordEvent(user.ID, "editor_share_created", &trip.ID, nil)
+		safeGo("recordEvent", func() { recordEvent(user.ID, "editor_share_created", &trip.ID, nil) })
 	}
 	writeJSON(w, http.StatusCreated, ShareResponse{Token: share.Token, Role: share.Role, CreatedAt: share.CreatedAt})
 }

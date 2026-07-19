@@ -107,10 +107,12 @@ func optimizeRouteHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse JSON request body
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		// Parse detail (which can echo raw request bytes) goes to the log only.
+		ctxLog(r.Context()).Error("invalid JSON request body", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{
-			Message: fmt.Sprintf("Invalid JSON: %v", err),
+			Message: "Invalid JSON in request body",
 			Status:  "error",
 		})
 		return
@@ -184,7 +186,7 @@ func optimizeRouteHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create optimizer and process request
 	optimizer := NewRouteOptimizer(request.Locations)
-	result := optimizer.OptimizeRoute(request)
+	result := optimizer.OptimizeRoute(r.Context(), request)
 
 	// Return result
 	w.Header().Set("Content-Type", "application/json")
@@ -202,7 +204,7 @@ func placesSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := placesService.SearchPlaces(query)
+	results, err := placesService.SearchPlaces(r.Context(), query)
 	if err != nil {
 		// Detail goes to the server log only: provider/internal error strings
 		// must never reach an unauthenticated caller.
@@ -227,7 +229,7 @@ func placesAutocompleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := placesService.GetPlaceAutocomplete(input)
+	results, err := placesService.GetPlaceAutocomplete(r.Context(), input)
 	if err != nil {
 		ctxLog(r.Context()).Error("places autocomplete failed", "error", err)
 		http.Error(w, "Failed to get autocomplete", http.StatusInternalServerError)
@@ -250,7 +252,7 @@ func placesDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := placesService.GetPlaceDetails(placeID)
+	result, err := placesService.GetPlaceDetails(r.Context(), placeID)
 	if err != nil {
 		ctxLog(r.Context()).Error("place details failed", "error", err)
 		http.Error(w, "Failed to get place details", http.StatusInternalServerError)
@@ -325,10 +327,12 @@ func flightsSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var request FlightSearchRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		// Parse detail (which can echo raw request bytes) goes to the log only.
+		ctxLog(r.Context()).Error("invalid JSON request body", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(Response{
-			Message: fmt.Sprintf("Invalid JSON: %v", err),
+			Message: "Invalid JSON in request body",
 			Status:  "error",
 		})
 		return
@@ -422,8 +426,9 @@ func airbnbParseHandler(w http.ResponseWriter, r *http.Request) {
 	var req AirbnbParseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		ctxLog(r.Context()).Error("invalid JSON request body", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{Message: fmt.Sprintf("Invalid JSON: %v", err), Status: "error"})
+		json.NewEncoder(w).Encode(Response{Message: "Invalid JSON in request body", Status: "error"})
 		return
 	}
 	if req.URL == "" {
@@ -452,8 +457,9 @@ func airbnbDebugHandler(w http.ResponseWriter, r *http.Request) {
 	var req AirbnbParseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		ctxLog(r.Context()).Error("invalid JSON request body", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(Response{Message: fmt.Sprintf("Invalid JSON: %v", err), Status: "error"})
+		json.NewEncoder(w).Encode(Response{Message: "Invalid JSON in request body", Status: "error"})
 		return
 	}
 	if req.URL == "" {

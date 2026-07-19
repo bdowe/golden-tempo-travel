@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -463,7 +464,7 @@ func (ro *RouteOptimizer) findLocationIndex(locationID string) int {
 
 // OptimizeRoute is the main function to optimize a route
 // resolveLocation resolves a location's coordinates and details from Google Places API
-func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *GooglePlacesService) error {
+func (ro *RouteOptimizer) resolveLocation(ctx context.Context, location *Location, placesService *GooglePlacesService) error {
 	// If we already have coordinates, no need to resolve
 	if location.Latitude != nil && location.Longitude != nil {
 		return nil
@@ -474,13 +475,13 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 
 	// Try to get details by Place ID first
 	if location.PlaceID != "" {
-		placeDetails, err = placesService.GetPlaceDetails(location.PlaceID)
+		placeDetails, err = placesService.GetPlaceDetails(ctx, location.PlaceID)
 		if err != nil {
 			return fmt.Errorf("failed to get place details for place_id %s: %w", location.PlaceID, err)
 		}
 	} else if location.Name != "" {
 		// Search by name if no Place ID
-		searchResults, err := placesService.SearchPlaces(location.Name)
+		searchResults, err := placesService.SearchPlaces(ctx, location.Name)
 		if err != nil {
 			return fmt.Errorf("failed to search for place '%s': %w", location.Name, err)
 		}
@@ -490,7 +491,7 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 
 		// Use the first result and get detailed info
 		firstResult := searchResults[0]
-		placeDetails, err = placesService.GetPlaceDetails(firstResult.PlaceID)
+		placeDetails, err = placesService.GetPlaceDetails(ctx, firstResult.PlaceID)
 		if err != nil {
 			return fmt.Errorf("failed to get place details for '%s': %w", location.Name, err)
 		}
@@ -521,7 +522,7 @@ func (ro *RouteOptimizer) resolveLocation(location *Location, placesService *Goo
 	return nil
 }
 
-func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
+func (ro *RouteOptimizer) OptimizeRoute(ctx context.Context, request RouteRequest) RouteResponse {
 	if len(request.Locations) == 0 {
 		return RouteResponse{
 			Status: "error: no locations provided",
@@ -531,7 +532,7 @@ func (ro *RouteOptimizer) OptimizeRoute(request RouteRequest) RouteResponse {
 	// Resolve locations that don't have coordinates (via the shared
 	// placesService singleton so lookups hit its TTL caches)
 	for i := range request.Locations {
-		if err := ro.resolveLocation(&request.Locations[i], placesService); err != nil {
+		if err := ro.resolveLocation(ctx, &request.Locations[i], placesService); err != nil {
 			return RouteResponse{
 				Status: fmt.Sprintf("error resolving location '%s': %v", request.Locations[i].Name, err),
 			}

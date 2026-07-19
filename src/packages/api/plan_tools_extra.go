@@ -371,7 +371,9 @@ func runAddPackingItemTool(s *planSession, input json.RawMessage) (string, bool)
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_packing_item_added", &tid, map[string]any{"category": item.Category})
+	safeGo("recordEvent", func() {
+		recordEvent(s.uid, "agent_packing_item_added", &tid, map[string]any{"category": item.Category})
+	})
 	return fmt.Sprintf("Added %q to the trip's packing & prep checklist. Keep going for the other items; the traveler will see the list on the trip page.", item.Title), false
 }
 
@@ -440,7 +442,7 @@ func runAddAccommodationTool(s *planSession, input json.RawMessage) (string, boo
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_accommodation_added", &tid, nil)
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_accommodation_added", &tid, nil) })
 	return fmt.Sprintf("Added the stay %q to the trip. It starts unbooked — the traveler can confirm it on the trip page. Mention it briefly.", acc.Name), false
 }
 
@@ -482,7 +484,7 @@ func runAddTransportSegmentTool(s *planSession, input json.RawMessage) (string, 
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_segment_added", &tid, map[string]any{"mode": seg.Mode})
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_segment_added", &tid, map[string]any{"mode": seg.Mode}) })
 	leg := seg.Mode
 	if seg.Origin != nil && seg.Destination != nil {
 		leg = fmt.Sprintf("%s %s → %s", seg.Mode, *seg.Origin, *seg.Destination)
@@ -528,7 +530,7 @@ func runMoveItineraryItemTool(s *planSession, input json.RawMessage) (string, bo
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_item_moved", &tid, nil)
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_item_moved", &tid, nil) })
 	where := fmt.Sprintf("Day %d", *in.Day)
 	if item.TimeOfDay != nil && *item.TimeOfDay != "" {
 		where += " (" + *item.TimeOfDay + ")"
@@ -724,7 +726,7 @@ func runAddBookingTodoTool(s *planSession, input json.RawMessage) (string, bool)
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_booking_todo_added", &tid, map[string]any{"kind": todo.Kind})
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_booking_todo_added", &tid, map[string]any{"kind": todo.Kind}) })
 	return fmt.Sprintf("Added %q to the trip's booking checklist. Mention it briefly; the traveler will see it on the trip page.", todo.Title), false
 }
 
@@ -738,7 +740,7 @@ func touchTripAs(ctx context.Context, tripID, actor uuid.UUID) {
 	// Same "collaborator edited a shared trip" signal as the HTTP paths, for
 	// agent tool edits (booking to-do add/update/remove). Self-gated in SQL, so
 	// owner-actor edits no-op.
-	go notifyCollabEdit(tripID, actor)
+	safeGo("notifyCollabEdit", func() { notifyCollabEdit(tripID, actor) })
 }
 
 // bookingTodoMissingMsg covers both "wrong id" and "auto row" — the queries
@@ -797,7 +799,7 @@ func runUpdateBookingTodoTool(s *planSession, input json.RawMessage) (string, bo
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_booking_todo_updated", &tid, map[string]any{"kind": todo.Kind})
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_booking_todo_updated", &tid, map[string]any{"kind": todo.Kind}) })
 	return fmt.Sprintf("Updated %q on the trip's booking checklist — the traveler's trip page has refreshed.", todo.Title), false
 }
 
@@ -823,6 +825,6 @@ func runRemoveBookingTodoTool(s *planSession, input json.RawMessage) (string, bo
 	}
 	touchTripAs(s.ctx, tid, s.uid)
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
-	go recordEvent(s.uid, "agent_booking_todo_removed", &tid, nil)
+	safeGo("recordEvent", func() { recordEvent(s.uid, "agent_booking_todo_removed", &tid, nil) })
 	return "Removed the item from the trip's booking checklist — the traveler's trip page has refreshed.", false
 }

@@ -97,22 +97,41 @@ func userFromContext(ctx context.Context) (store.User, bool) {
 }
 
 // userIDFromRequest resolves the bearer token to a user ID without failing the
-// request when absent/invalid. Used by endpoints that are open to anonymous
-// callers but persist data only when signed in (e.g. /plan).
-func userIDFromRequest(r *http.Request) (uuid.UUID, bool) {
+// request when the token is absent/invalid. Used by endpoints that are open to
+// anonymous callers but persist data only when signed in (e.g. /plan).
+//
+// The third return value is a DB-availability error: when a token WAS presented
+// but the session lookup failed because the database is unreachable, it returns
+// (zero, false, errDBUnavailable) so the caller can answer "temporarily
+// unavailable" instead of silently downgrading an authenticated user to
+// anonymous (which would drop their personalization and persistence on a blip).
+// Genuinely-absent/expired sessions still return (zero, false, nil) — anonymous.
+func userIDFromRequest(r *http.Request) (uuid.UUID, bool, error) {
 	if dbPool == nil {
-		return uuid.UUID{}, false
+		return uuid.UUID{}, false, nil
 	}
 	token := bearerToken(r)
 	if token == "" {
-		return uuid.UUID{}, false
+		return uuid.UUID{}, false, nil
 	}
 	row, err := store.New(dbPool).GetSessionWithUser(r.Context(), token)
-	if err != nil || row.Session.ExpiresAt.Before(time.Now()) {
-		return uuid.UUID{}, false
+	if err != nil {
+		if dbErrorStatus(err) == http.StatusServiceUnavailable {
+			ctxLog(r.Context()).Error("auth: session lookup failed (db)", "error", err)
+			return uuid.UUID{}, false, errDBUnavailable
+		}
+		return uuid.UUID{}, false, nil // absent/expired session -> anonymous
 	}
-	return row.User.ID, true
+	if row.Session.ExpiresAt.Before(time.Now()) {
+		return uuid.UUID{}, false, nil
+	}
+	return row.User.ID, true, nil
 }
+
+// errDBUnavailable signals that a request could not be resolved because the
+// database was temporarily unreachable — the caller should return 503, not
+// treat the request as anonymous or unauthenticated.
+var errDBUnavailable = errors.New("database temporarily unavailable")
 
 // authMiddleware resolves the bearer token to a user and rejects unauthenticated
 // requests with 401. Wrap only the routes that require authentication.
@@ -129,7 +148,27 @@ func authMiddleware(next http.Handler) http.Handler {
 		}
 		q := store.New(dbPool)
 		row, err := q.GetSessionWithUser(r.Context(), token)
-		if err != nil || row.Session.ExpiresAt.Before(time.Now()) {
+		if err != nil {
+			// A DB-connection failure (Postgres restarting, pool closed, conn
+			// refused) must NOT masquerade as an invalid session — that logs
+			// every user out on a transient blip. Answer 503 (retryable) and
+			// keep 401 strictly for a genuinely absent/expired session.
+			if dbErrorStatus(err) == http.StatusServiceUnavailable {
+				ctxLog(r.Context()).Error("auth: session lookup failed (db)", "error", err)
+				writeJSONError(w, http.StatusServiceUnavailable, "service temporarily unavailable")
+				return
+			}
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSONError(w, http.StatusUnauthorized, "invalid or expired session")
+				return
+			}
+			// Unexpected non-connection error: log and 500 rather than silently
+			// rejecting a possibly-valid session as unauthorized.
+			ctxLog(r.Context()).Error("auth: unexpected session lookup error", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if row.Session.ExpiresAt.Before(time.Now()) {
 			writeJSONError(w, http.StatusUnauthorized, "invalid or expired session")
 			return
 		}
@@ -217,8 +256,8 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Fire-and-forget, like the profile distiller: registration never blocks
 	// or fails on email delivery or analytics.
-	go sendVerificationEmail(user)
-	go recordEvent(user.ID, "user_registered", nil, nil)
+	safeGo("sendVerificationEmail", func() { sendVerificationEmail(user) })
+	safeGo("recordEvent", func() { recordEvent(user.ID, "user_registered", nil, nil) })
 	writeJSON(w, http.StatusCreated, AuthResponse{User: toUserResponse(user), Token: session.ID})
 }
 
@@ -287,6 +326,6 @@ func completeOnboardingHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not complete onboarding")
 		return
 	}
-	go recordEvent(user.ID, "onboarding_completed", nil, nil)
+	safeGo("recordEvent", func() { recordEvent(user.ID, "onboarding_completed", nil, nil) })
 	writeJSON(w, http.StatusOK, toUserResponse(updated))
 }

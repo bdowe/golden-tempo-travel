@@ -397,7 +397,7 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		if todo.Provider != nil {
 			meta["provider"] = *todo.Provider
 		}
-		go recordEvent(user.ID, "booking_marked_booked", &tripID, meta)
+		safeGo("recordEvent", func() { recordEvent(user.ID, "booking_marked_booked", &tripID, meta) })
 	}
 	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toBookingTodoResponse(todo))

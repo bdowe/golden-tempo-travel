@@ -741,7 +741,7 @@ func checkHours(ctx context.Context, d exportData, places *GooglePlacesService) 
 			break
 		}
 		lookups++
-		details, err := places.GetPlaceDetails(placeID)
+		details, err := places.GetPlaceDetails(ctx, placeID)
 		if err != nil || details == nil || details.OpeningHours == nil {
 			continue // best-effort
 		}

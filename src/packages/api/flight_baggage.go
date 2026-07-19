@@ -91,7 +91,8 @@ func fetchBagFees(ctx context.Context, d *DuffelService, offers []FlightOffer, i
 	sem := make(chan struct{}, bagFeeConcurrency)
 	for _, i := range indexes {
 		wg.Add(1)
-		go func(o *FlightOffer) {
+		o := &offers[i]
+		safeGo("flight bag fee lookup", func() {
 			defer wg.Done()
 			select {
 			case sem <- struct{}{}:
@@ -112,7 +113,7 @@ func fetchBagFees(ctx context.Context, d *DuffelService, offers []FlightOffer, i
 			o.BaggageStatus = baggageStatusPaid
 			o.BagFee = fee
 			o.EffectivePrice = o.Price + fee
-		}(&offers[i])
+		})
 	}
 	wg.Wait()
 }

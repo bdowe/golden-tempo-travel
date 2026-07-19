@@ -184,7 +184,7 @@ func updateAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		if acc.Provider != nil {
 			meta["provider"] = *acc.Provider
 		}
-		go recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta)
+		safeGo("recordEvent", func() { recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta) })
 	}
 	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toAccommodationResponse(acc))

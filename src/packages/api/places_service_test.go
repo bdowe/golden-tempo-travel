@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,12 +37,12 @@ func TestSearchPlacesServedFromCache(t *testing.T) {
 	svc.APIKey = "test-key"
 	svc.Client = &http.Client{Transport: rt}
 
-	first, err := svc.SearchPlaces("Louvre Museum Paris")
+	first, err := svc.SearchPlaces(context.Background(), "Louvre Museum Paris")
 	if err != nil {
 		t.Fatalf("first search failed: %v", err)
 	}
 	// Same query modulo case/whitespace must hit the cache, not Google.
-	second, err := svc.SearchPlaces("  louvre museum paris ")
+	second, err := svc.SearchPlaces(context.Background(), "  louvre museum paris ")
 	if err != nil {
 		t.Fatalf("second search failed: %v", err)
 	}
@@ -69,10 +70,10 @@ func TestGetPlaceDetailsServedFromCache(t *testing.T) {
 	svc.APIKey = "test-key"
 	svc.Client = &http.Client{Transport: rt}
 
-	if _, err := svc.GetPlaceDetails("p1"); err != nil {
+	if _, err := svc.GetPlaceDetails(context.Background(), "p1"); err != nil {
 		t.Fatalf("first details call failed: %v", err)
 	}
-	got, err := svc.GetPlaceDetails("p1")
+	got, err := svc.GetPlaceDetails(context.Background(), "p1")
 	if err != nil {
 		t.Fatalf("second details call failed: %v", err)
 	}
@@ -95,10 +96,10 @@ func TestAutocompleteCountersTrackMissAndHit(t *testing.T) {
 	svc.APIKey = "test-key"
 	svc.Client = &http.Client{Transport: rt}
 
-	if _, err := svc.GetPlaceAutocomplete("louvre"); err != nil {
+	if _, err := svc.GetPlaceAutocomplete(context.Background(), "louvre"); err != nil {
 		t.Fatalf("first autocomplete failed: %v", err)
 	}
-	if _, err := svc.GetPlaceAutocomplete(" LOUVRE "); err != nil {
+	if _, err := svc.GetPlaceAutocomplete(context.Background(), " LOUVRE "); err != nil {
 		t.Fatalf("second autocomplete failed: %v", err)
 	}
 	if rt.calls != 1 {
@@ -138,13 +139,13 @@ func TestPlacesServiceSingletonSafeWithoutKey(t *testing.T) {
 
 	svc := NewGooglePlacesService()
 	svc.APIKey = ""
-	if _, err := svc.SearchPlaces("anything"); err == nil || !strings.Contains(err.Error(), "not configured") {
+	if _, err := svc.SearchPlaces(context.Background(), "anything"); err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("SearchPlaces without key: err = %v, want not-configured error", err)
 	}
-	if _, err := svc.GetPlaceAutocomplete("any"); err == nil {
+	if _, err := svc.GetPlaceAutocomplete(context.Background(), "any"); err == nil {
 		t.Fatal("GetPlaceAutocomplete without key must error")
 	}
-	if _, err := svc.GetPlaceDetails("p1"); err == nil {
+	if _, err := svc.GetPlaceDetails(context.Background(), "p1"); err == nil {
 		t.Fatal("GetPlaceDetails without key must error")
 	}
 }
@@ -174,9 +175,9 @@ func TestPlacesTransportErrorsOmitAPIKey(t *testing.T) {
 		name string
 		call func() error
 	}{
-		{"SearchPlaces", func() error { _, err := svc.SearchPlaces("louvre"); return err }},
-		{"GetPlaceAutocomplete", func() error { _, err := svc.GetPlaceAutocomplete("lou"); return err }},
-		{"GetPlaceDetails", func() error { _, err := svc.GetPlaceDetails("p1"); return err }},
+		{"SearchPlaces", func() error { _, err := svc.SearchPlaces(context.Background(), "louvre"); return err }},
+		{"GetPlaceAutocomplete", func() error { _, err := svc.GetPlaceAutocomplete(context.Background(), "lou"); return err }},
+		{"GetPlaceDetails", func() error { _, err := svc.GetPlaceDetails(context.Background(), "p1"); return err }},
 	}
 	for _, c := range calls {
 		err := c.call()

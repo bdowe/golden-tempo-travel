@@ -165,7 +165,7 @@ func findOrCreateGoogleUser(r *http.Request, claims googleClaims) (store.User, e
 		if err != nil {
 			return store.User{}, err
 		}
-		go recordEvent(user.ID, "user_registered", nil, map[string]any{"method": "google"})
+		safeGo("recordEvent", func() { recordEvent(user.ID, "user_registered", nil, map[string]any{"method": "google"}) })
 	} else if err != nil {
 		return store.User{}, err
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+)
+
+// Google Places API base URLs. Package vars (not consts) so tests can point the
+// client at an httptest server — matching the seam other provider services use.
+var (
+	placesTextSearchURL   = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+	placesAutocompleteURL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
+	placesDetailsURL      = "https://maps.googleapis.com/maps/api/place/details/json"
 )
 
 // upstreamCallCounters tracks billable upstream calls vs cache hits for one
@@ -125,12 +134,28 @@ func NewGooglePlacesService() *GooglePlacesService {
 	}
 
 	return &GooglePlacesService{
-		APIKey:            apiKey,
-		Client:            &http.Client{},
+		APIKey: apiKey,
+		// An explicit timeout is essential: SearchPlaces/GetPlaceDetails run
+		// synchronously inside the /plan agent loop, so a hung Google socket
+		// with a zero-value (no-timeout) client would stall the whole SSE
+		// stream forever. This is a hard backstop on top of the per-call
+		// context deadline threaded through each method.
+		Client:            &http.Client{Timeout: 15 * time.Second},
 		searchCache:       newTTLCache[[]PlaceSearchResult](1*time.Hour, 2000),
 		autocompleteCache: newTTLCache[[]PlaceAutocompleteResult](24*time.Hour, 5000),
 		detailsCache:      newTTLCache[*PlaceDetailsResult](24*time.Hour, 5000),
 	}
+}
+
+// doGet issues a context-aware GET so the caller's deadline/cancellation aborts
+// a slow Google call. Paired with the client's Timeout, this guarantees a
+// Places lookup can never block the synchronous /plan agent loop indefinitely.
+func (gps *GooglePlacesService) doGet(ctx context.Context, fullURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	return gps.Client.Do(req)
 }
 
 // placesService is a process-wide singleton reused across requests, matching
@@ -141,8 +166,11 @@ func NewGooglePlacesService() *GooglePlacesService {
 // so degraded mode keeps working.
 var placesService = NewGooglePlacesService()
 
-// SearchPlaces searches for places by text query
-func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult, error) {
+// SearchPlaces searches for places by text query. The context bounds the
+// upstream HTTP call so a caller cancelling (or a request deadline) aborts a
+// slow Google lookup instead of blocking — critical on the synchronous /plan
+// agent path.
+func (gps *GooglePlacesService) SearchPlaces(ctx context.Context, query string) ([]PlaceSearchResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
 	}
@@ -154,13 +182,12 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 	}
 
 	// Use Text Search API
-	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
 	params := url.Values{}
 	params.Add("query", query)
 	params.Add("key", gps.APIKey)
 
 	gps.searchCalls.upstream.Add(1)
-	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
+	resp, err := gps.doGet(ctx, placesTextSearchURL+"?"+params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to search places: %w", redactTransportError(err))
 	}
@@ -216,7 +243,7 @@ func (gps *GooglePlacesService) SearchPlaces(query string) ([]PlaceSearchResult,
 }
 
 // GetPlaceAutocomplete gets autocomplete suggestions for a query
-func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutocompleteResult, error) {
+func (gps *GooglePlacesService) GetPlaceAutocomplete(ctx context.Context, input string) ([]PlaceAutocompleteResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
 	}
@@ -227,13 +254,12 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 		return cached, nil
 	}
 
-	baseURL := "https://maps.googleapis.com/maps/api/place/autocomplete/json"
 	params := url.Values{}
 	params.Add("input", input)
 	params.Add("key", gps.APIKey)
 
 	gps.autocompleteCalls.upstream.Add(1)
-	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
+	resp, err := gps.doGet(ctx, placesAutocompleteURL+"?"+params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get autocomplete: %w", redactTransportError(err))
 	}
@@ -275,7 +301,7 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(input string) ([]PlaceAutoc
 }
 
 // GetPlaceDetails gets detailed information about a place by Place ID
-func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsResult, error) {
+func (gps *GooglePlacesService) GetPlaceDetails(ctx context.Context, placeID string) (*PlaceDetailsResult, error) {
 	if gps.APIKey == "" {
 		return nil, fmt.Errorf("Google Places API key not configured")
 	}
@@ -285,14 +311,13 @@ func (gps *GooglePlacesService) GetPlaceDetails(placeID string) (*PlaceDetailsRe
 		return cached, nil
 	}
 
-	baseURL := "https://maps.googleapis.com/maps/api/place/details/json"
 	params := url.Values{}
 	params.Add("place_id", placeID)
 	params.Add("fields", "place_id,name,formatted_address,geometry,types,rating,price_level,opening_hours,website,formatted_phone_number")
 	params.Add("key", gps.APIKey)
 
 	gps.detailsCalls.upstream.Add(1)
-	resp, err := gps.Client.Get(baseURL + "?" + params.Encode())
+	resp, err := gps.doGet(ctx, placesDetailsURL+"?"+params.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get place details: %w", redactTransportError(err))
 	}

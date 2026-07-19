@@ -122,8 +122,8 @@ func createTripInviteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Fire-and-forget like sendVerificationEmail; degraded SMTP logs the
 	// body, and a send failure never fails the request.
-	go sendInviteEmail(user, invite.Email, token, trip.Title)
-	go recordEvent(user.ID, "invite_sent", &trip.ID, nil)
+	safeGo("sendInviteEmail", func() { sendInviteEmail(user, invite.Email, token, trip.Title) })
+	safeGo("recordEvent", func() { recordEvent(user.ID, "invite_sent", &trip.ID, nil) })
 	writeJSON(w, http.StatusCreated, toInviteResponse(invite))
 }
 
@@ -192,7 +192,7 @@ func revokeTripInviteHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "invite not found")
 		return
 	}
-	go recordEvent(user.ID, "invite_revoked", nil, nil)
+	safeGo("recordEvent", func() { recordEvent(user.ID, "invite_revoked", nil, nil) })
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -298,11 +298,13 @@ func acceptInviteHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not join trip")
 		return
 	}
-	go recordEvent(user.ID, "invite_accepted", &trip.ID, map[string]any{
-		"owner_id": invite.OwnerID.String(),
+	safeGo("recordEvent", func() {
+		recordEvent(user.ID, "invite_accepted", &trip.ID, map[string]any{
+			"owner_id": invite.OwnerID.String(),
+		})
 	})
 	// Tell the owner their invite was redeemed (in-app only; one-time event, no
 	// throttle). Best-effort, like the analytics write above.
-	go notifyInviteAccepted(invite.OwnerID, user, trip)
+	safeGo("notifyInviteAccepted", func() { notifyInviteAccepted(invite.OwnerID, user, trip) })
 	writeJSON(w, http.StatusOK, JoinSharedTripResponse{TripID: trip.ID.String(), Access: "editor"})
 }
