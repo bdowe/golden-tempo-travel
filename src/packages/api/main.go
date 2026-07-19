@@ -678,6 +678,10 @@ func buildRouter() *mux.Router {
 	anonEvents := rateLimitMiddleware(anonEventsLimiter)
 	router.Use(requestIDMiddleware)
 	router.Use(recoveryMiddleware)
+	// metricsMiddleware sits right after recovery so it times the full handler
+	// (recovered panics count as the 500 they return) and folds each request
+	// into the in-process opsMetrics registry (ops_metrics.go).
+	router.Use(metricsMiddleware)
 	router.Use(corsMiddleware)
 	router.Use(bodyLimitMiddleware)
 	router.Use(func(next http.Handler) http.Handler {
@@ -866,6 +870,9 @@ func buildRouter() *mux.Router {
 	api.Handle("/admin/metrics/totals", admin(adminTotalsHandler)).Methods("GET")
 	api.Handle("/admin/metrics/activity", admin(adminActivityHandler)).Methods("GET")
 	api.Handle("/admin/metrics/users", admin(adminUsersHandler)).Methods("GET")
+	// Live in-process request/latency/error + runtime rollup (ops_metrics.go).
+	// No dbPool guard — it must render in degraded mode; admin auth only.
+	api.Handle("/admin/ops/metrics", admin(opsMetricsHandler)).Methods("GET")
 
 	// Public browse endpoints for published local-sourced content.
 	api.HandleFunc("/local/recommendations", localRecommendationsHandler).Methods("GET")
