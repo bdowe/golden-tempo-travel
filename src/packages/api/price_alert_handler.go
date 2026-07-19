@@ -278,9 +278,18 @@ func patchPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Status      *string  `json:"status"`
 		TargetPrice *float64 `json:"target_price"`
+		// ClearTarget reverts a target-mode alert back to any-drop mode
+		// (target_price = NULL). It exists because target_price is a pointer:
+		// nil is indistinguishable from "field omitted", so without an explicit
+		// signal the handler can set/change a target but never clear it.
+		ClearTarget bool `json:"clear_target"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.ClearTarget && req.TargetPrice != nil {
+		writeJSONError(w, http.StatusBadRequest, "cannot both clear_target and set target_price")
 		return
 	}
 
@@ -308,8 +317,14 @@ func patchPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		status = s
 	}
+	// target_price = $4 is written directly (not COALESCE'd), so passing nil
+	// here clears the row back to any-drop mode. baseline_price is untouched by
+	// UpdatePriceAlert, so the any-drop checker path re-baselines correctly.
 	target := current.TargetPrice
-	if req.TargetPrice != nil {
+	switch {
+	case req.ClearTarget:
+		target = nil
+	case req.TargetPrice != nil:
 		if *req.TargetPrice <= 0 {
 			writeJSONError(w, http.StatusBadRequest, "target_price must be positive")
 			return

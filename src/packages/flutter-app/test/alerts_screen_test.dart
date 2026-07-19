@@ -68,13 +68,17 @@ class _FakeAlertsApiService extends AlertsApiService {
     if (body.containsKey('target_price')) {
       patched.add('$id:target=${body['target_price']}');
     }
+    final cleared = body['clear_target'] == true;
+    if (cleared) patched.add('$id:clear');
     return PriceAlert(
       id: a.id,
       origin: a.origin,
       destination: a.destination,
       departDate: a.departDate,
       status: (body['status'] as String?) ?? a.status,
-      targetPrice: (body['target_price'] as double?) ?? a.targetPrice,
+      targetPrice: cleared
+          ? null
+          : (body['target_price'] as double?) ?? a.targetPrice,
       currency: a.currency,
     );
   }
@@ -347,6 +351,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.patched, contains('a1:target=399.0'));
+  });
+
+  testWidgets('edit-target dialog can revert a target alert to any-drop',
+      (tester) async {
+    final service = await _pump(tester, alerts: [_alert(target: 450)]);
+
+    await tester.tap(find.byTooltip('Alert actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit target price'));
+    await tester.pumpAndSettle();
+
+    // The "any drop" affordance only appears for a target-mode alert.
+    await tester.tap(find.text('Watch for any drop instead'));
+    await tester.pumpAndSettle();
+
+    expect(service.patched, contains('a1:clear'));
+  });
+
+  testWidgets('any-drop alert dialog offers no revert affordance',
+      (tester) async {
+    await _pump(tester, alerts: [_alert()]);
+
+    await tester.tap(find.byTooltip('Alert actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Set target price'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Watch for any drop instead'), findsNothing);
   });
 
   test('model round-trips snake_case JSON', () {

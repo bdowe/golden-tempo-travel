@@ -87,11 +87,22 @@ class AlertsNotifier extends StateNotifier<AlertsState> {
     );
   }
 
-  /// Sets the target price (the "notify at or below" threshold). The PATCH
-  /// only accepts a positive value — the backend has no clear-to-any-drop path,
-  /// so an alert with a target stays target-mode.
+  /// Sets the target price (the "notify at or below" threshold) to a positive
+  /// value. To revert a target-mode alert back to any-drop, use [clearTarget].
   Future<void> updateTarget(String id, double target) async {
     final updated = await _service.patch(id, {'target_price': target});
+    state = state.copyWith(
+      alerts: [
+        for (final a in state.alerts) a.id == id ? updated : a,
+      ],
+    );
+  }
+
+  /// Reverts a target-mode alert to any-drop mode (notify on any price drop).
+  /// `clear_target` is the explicit signal the backend needs to null the
+  /// target — a plain omitted `target_price` would just preserve it.
+  Future<void> clearTarget(String id) async {
+    final updated = await _service.patch(id, {'clear_target': true});
     state = state.copyWith(
       alerts: [
         for (final a in state.alerts) a.id == id ? updated : a,
