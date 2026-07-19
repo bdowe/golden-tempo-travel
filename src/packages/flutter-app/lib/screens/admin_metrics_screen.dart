@@ -6,6 +6,7 @@ import '../providers/admin_metrics_provider.dart';
 import '../theme/spacing.dart';
 import '../widgets/daily_count_chart.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/health_pane.dart';
 import '../widgets/page_container.dart';
 import '../widgets/section_header.dart';
 import '../widgets/status_pill.dart';
@@ -32,16 +33,18 @@ class _AdminMetricsScreenState extends ConsumerState<AdminMetricsScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Metrics'),
           bottom: const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(text: 'Overview'),
               Tab(text: 'Trends'),
               Tab(text: 'Activity'),
               Tab(text: 'Users'),
+              Tab(text: 'Health'),
             ],
           ),
         ),
@@ -57,6 +60,7 @@ class _AdminMetricsScreenState extends ConsumerState<AdminMetricsScreen> {
             ),
             const _ActivityPane(),
             const _UsersPane(),
+            const HealthPane(),
           ],
         ),
       ),
