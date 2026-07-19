@@ -169,6 +169,21 @@ smoke: ## Run the end-to-end smoke test (BASE_URL, SMOKE_SEED_MODE, ...)
 		SMOKE_DB_CONTAINER="$(SMOKE_DB_CONTAINER)" \
 		./scripts/smoke.sh
 
+# Postgres backup — dumps the DB (gzip), prunes old dumps, writes the freshness
+# heartbeat /admin/ops/health reads, and best-effort copies off-site via rclone.
+# Wraps dockerize/production/backup.sh; every path/name overrides via env (see
+# that script's header): BACKUP_DIR, RETENTION_DAYS, RCLONE_REMOTE,
+# BACKUP_HEARTBEAT_FILE, COMPOSE_FILE, PG_SERVICE, PG_USER, PG_DB. On prod this
+# runs via the goldentempo-backup systemd timer; this target is for manual/dry runs.
+#   make backup                                        # prod defaults
+#   make backup COMPOSE_FILE=dockerize/development/docker-compose.yml BACKUP_DIR=/tmp/bk
+backup: ## Run a Postgres backup (BACKUP_DIR, RETENTION_DAYS, RCLONE_REMOTE, ...)
+	@BACKUP_DIR="$(BACKUP_DIR)" RETENTION_DAYS="$(RETENTION_DAYS)" \
+		RCLONE_REMOTE="$(RCLONE_REMOTE)" BACKUP_HEARTBEAT_FILE="$(BACKUP_HEARTBEAT_FILE)" \
+		COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_PROJECT="$(COMPOSE_PROJECT)" \
+		PG_SERVICE="$(PG_SERVICE)" PG_USER="$(PG_USER)" PG_DB="$(PG_DB)" \
+		./dockerize/production/backup.sh
+
 # Documentation
 docs: ## Show application URLs and documentation
 	@echo "Application (via gateway):"

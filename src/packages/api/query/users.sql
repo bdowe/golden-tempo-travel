@@ -37,3 +37,13 @@ RETURNING *;
 
 -- name: DeleteUser :execrows
 DELETE FROM users WHERE id = $1;
+
+-- name: ListAdminUsers :many
+-- All admin accounts (is_admin = true), for operational fan-out such as the
+-- ops-health degradation alert. Returns just what an alert needs: id + email +
+-- display name. Stable ordering by creation so the recipient list is
+-- deterministic.
+SELECT id, email, display_name
+FROM users
+WHERE is_admin = true
+ORDER BY created_at ASC;
