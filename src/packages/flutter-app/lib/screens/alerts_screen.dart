@@ -197,7 +197,8 @@ class _AlertCard extends ConsumerWidget {
     final controller = TextEditingController(
       text: alert.targetPrice?.toStringAsFixed(0) ?? '',
     );
-    final target = await showDialog<double>(
+    final hasTarget = alert.targetPrice != null;
+    final result = await showDialog<({double? target, bool clear})>(
       context: context,
       builder: (dialogCtx) {
         String? error;
@@ -224,6 +225,16 @@ class _AlertCard extends ConsumerWidget {
                     errorText: error,
                   ),
                 ),
+                // Only a target-mode alert can be reverted; an any-drop alert
+                // is already there.
+                if (hasTarget) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogCtx)
+                        .pop((target: null, clear: true)),
+                    child: const Text('Watch for any drop instead'),
+                  ),
+                ],
               ],
             ),
             actions: [
@@ -238,7 +249,7 @@ class _AlertCard extends ConsumerWidget {
                     setState(() => error = 'Enter a valid target price');
                     return;
                   }
-                  Navigator.of(dialogCtx).pop(v);
+                  Navigator.of(dialogCtx).pop((target: v, clear: false));
                 },
                 child: const Text('Save'),
               ),
@@ -247,9 +258,14 @@ class _AlertCard extends ConsumerWidget {
         );
       },
     );
-    if (target == null || !context.mounted) return;
+    if (result == null || !context.mounted) return;
     try {
-      await ref.read(alertsProvider.notifier).updateTarget(alert.id, target);
+      final notifier = ref.read(alertsProvider.notifier);
+      if (result.clear) {
+        await notifier.clearTarget(alert.id);
+      } else {
+        await notifier.updateTarget(alert.id, result.target!);
+      }
     } catch (e) {
       if (context.mounted) showSnack(context, '$e');
     }
