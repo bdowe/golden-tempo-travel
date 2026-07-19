@@ -57,11 +57,39 @@ class WeatherReport {
 
   /// The day matching [monthDay] ("MM-DD"), or null when the report has no
   /// entry for that date (undated day, out of the fetched window).
+  ///
+  /// Leap-day fallback: a historical report is keyed off last year's dates, and
+  /// a Feb 29 trip day rolls to the prior (non-leap) year's Mar 1 server-side,
+  /// so the archive holds no "02-29" and an exact match would leave that one day
+  /// with no chip. When the exact key is absent we borrow the nearest adjacent
+  /// calendar day's typical weather (02-29 -> 02-28, then 03-01). The fallback
+  /// only fires when there's no exact entry, so ordinary days are unaffected.
   WeatherDay? dayFor(String monthDay) {
     for (final d in days) {
       if (d.monthDayKey == monthDay) return d;
     }
+    for (final adjacent in _adjacentMonthDays(monthDay)) {
+      for (final d in days) {
+        if (d.monthDayKey == adjacent) return d;
+      }
+    }
     return null;
+  }
+
+  /// Previous- then next-calendar-day "MM-DD" keys for [monthDay], parsed in a
+  /// leap year so "02-29" is valid. Empty when [monthDay] isn't a valid MM-DD.
+  static List<String> _adjacentMonthDays(String monthDay) {
+    if (monthDay.length != 5) return const [];
+    final month = int.tryParse(monthDay.substring(0, 2));
+    final day = int.tryParse(monthDay.substring(3, 5));
+    if (month == null || day == null) return const [];
+    final base = DateTime(2024, month, day); // leap year: 02-29 is valid
+    String key(DateTime d) => '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    return [
+      key(base.subtract(const Duration(days: 1))),
+      key(base.add(const Duration(days: 1))),
+    ];
   }
 
   factory WeatherReport.fromJson(Map<String, dynamic> json) =>

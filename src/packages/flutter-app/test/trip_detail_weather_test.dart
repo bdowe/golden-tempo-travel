@@ -133,6 +133,39 @@ void main() {
     expect(find.textContaining('% rain'), findsNothing);
   });
 
+  test('dayFor falls back to the nearest adjacent day for a missing 02-29',
+      () {
+    // A historical archive keyed off last year has no 02-29 (the leap day rolls
+    // to the prior non-leap year's Mar 1 server-side). dayFor should borrow the
+    // adjacent 02-28 entry so Feb 29 still renders a chip.
+    final report = WeatherReport(
+      kind: 'historical',
+      days: [
+        WeatherDay(date: '2025-02-28', tempMinC: 3, tempMaxC: 9),
+        WeatherDay(date: '2025-03-01', tempMinC: 4, tempMaxC: 10),
+      ],
+    );
+    final resolved = report.dayFor('02-29');
+    expect(resolved, isNotNull);
+    expect(resolved!.date, '2025-02-28'); // previous day preferred over 03-01
+  });
+
+  test('dayFor uses the next day when the previous is also absent', () {
+    final report = WeatherReport(
+      kind: 'historical',
+      days: [WeatherDay(date: '2025-03-01', tempMinC: 4, tempMaxC: 10)],
+    );
+    expect(report.dayFor('02-29')?.date, '2025-03-01');
+  });
+
+  test('dayFor still returns null when no adjacent day exists either', () {
+    final report = WeatherReport(
+      kind: 'historical',
+      days: [WeatherDay(date: '2025-07-04', tempMinC: 18, tempMaxC: 28)],
+    );
+    expect(report.dayFor('02-29'), isNull);
+  });
+
   testWidgets('an undated trip renders no weather chip', (tester) async {
     final undated = Trip(
       id: 't1',

@@ -301,6 +301,75 @@ func TestSearchWithBaggageEffectivePriceRanking(t *testing.T) {
 	}
 }
 
+func TestSearchWithBaggageKeepsEffectiveCheaperOnSharedSchedule(t *testing.T) {
+	// Two bag-exclusive fares on ONE schedule with inverted effective totals:
+	//   P: fare 100 + 80 checked-bag fee = 180 effective
+	//   Q: fare 130 + 20 checked-bag fee = 150 effective
+	// The old preliminary dedup collapsed both to a single "|bag:0" key and kept
+	// P (cheaper BARE fare), so Q never earned a fee lookup and the search
+	// reported 180 when 150 existed. Both must now survive to fee pricing and the
+	// effective-cheaper Q must be the schedule's survivor.
+	depart := "2026-09-01T08:00:00"
+	bs := &baggageStub{
+		searchBody: searchBody(
+			bagSearchOffer("off_p", "100.00", depart, ""),
+			bagSearchOffer("off_q", "130.00", depart, ""),
+		),
+		serviceBody: map[string]string{
+			"off_p": servicesBody(checkedBagService("s1", "80.00", "USD", 3, []string{"seg_1"}, []string{"pas_1"})),
+			"off_q": servicesBody(checkedBagService("s1", "20.00", "USD", 3, []string{"seg_1"}, []string{"pas_1"})),
+		},
+	}
+	d := newBaggageStubService(t, bs)
+
+	offers, err := searchFlightsWithBaggage(context.Background(), d, FlightSearchRequest{
+		Origin: "AAA", Destination: "BBB", DepartDate: "2026-09-01", Adults: 1,
+		Baggage: baggageChecked, OptimizeFor: "cost",
+	})
+	if err != nil {
+		t.Fatalf("searchFlightsWithBaggage: %v", err)
+	}
+	// Both bag-exclusive fares must be fee-priced (neither dropped pre-lookup).
+	if bs.getCount() != 2 {
+		t.Fatalf("offer GETs = %v, want both off_p and off_q priced", bs.gets)
+	}
+	// The shared schedule collapses to exactly one survivor: the cheaper effective.
+	if len(offers) != 1 {
+		t.Fatalf("offers = %d, want 1 (shared schedule collapsed on effective price)", len(offers))
+	}
+	if offers[0].ID != "off_q" || offers[0].EffectivePrice != 150 {
+		t.Fatalf("survivor = %s @ %v, want off_q @ 150 (not off_p @ 180)", offers[0].ID, offers[0].EffectivePrice)
+	}
+	best, ok := lowestOffer(offers)
+	if !ok || best.EffectivePrice != 150 {
+		t.Fatalf("lowestOffer = %+v ok=%v, want effective 150 not 180", best, ok)
+	}
+}
+
+func TestSearchNoBaggageSharedScheduleStillCollapses(t *testing.T) {
+	// Regression: with no baggage tier requested, same-schedule offers still
+	// collapse to the cheapest bare fare and no fee lookups happen at all.
+	depart := "2026-09-01T08:00:00"
+	bs := &baggageStub{searchBody: searchBody(
+		bagSearchOffer("cheap", "100.00", depart, ""),
+		bagSearchOffer("dear", "130.00", depart, ""),
+	)}
+	d := newBaggageStubService(t, bs)
+
+	offers, err := searchFlightsWithBaggage(context.Background(), d, FlightSearchRequest{
+		Origin: "AAA", Destination: "BBB", DepartDate: "2026-09-01", Adults: 1,
+	})
+	if err != nil {
+		t.Fatalf("searchFlightsWithBaggage: %v", err)
+	}
+	if bs.getCount() != 0 {
+		t.Fatalf("no-baggage search made %d fee lookups, want 0", bs.getCount())
+	}
+	if len(offers) != 1 || offers[0].ID != "cheap" {
+		t.Fatalf("no-baggage dedup changed: %+v", offers)
+	}
+}
+
 func TestSearchWithBaggageUnknownDegradesAndSinks(t *testing.T) {
 	bs := &baggageStub{
 		searchBody: searchBody(
