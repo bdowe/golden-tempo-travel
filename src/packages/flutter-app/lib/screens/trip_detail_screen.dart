@@ -42,6 +42,7 @@ import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/add_to_trip_sheet.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
+import '../widgets/budget_section.dart';
 import '../widgets/checklist_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
@@ -3827,6 +3828,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             sliver: SliverToBoxAdapter(
                               child: ChecklistSection(
+                                tripId: trip.id,
+                                canEdit: !_readOnly,
+                                isOffline: _isOffline,
+                              ),
+                            ),
+                          ),
+                          // Budget & expenses: a self-contained per-trip budget
+                          // tracker (own endpoint/provider, not part of the trip
+                          // payload) — a trailing peer section beside Packing.
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            sliver: SliverToBoxAdapter(
+                              child: BudgetSection(
                                 tripId: trip.id,
                                 canEdit: !_readOnly,
                                 isOffline: _isOffline,
