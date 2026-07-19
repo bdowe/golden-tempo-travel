@@ -44,6 +44,7 @@ import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
 import '../widgets/budget_section.dart';
 import '../widgets/checklist_section.dart';
+import '../widgets/trip_review_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
 import '../widgets/local_rec_card.dart';
@@ -3844,6 +3845,27 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                 tripId: trip.id,
                                 canEdit: !_readOnly,
                                 isOffline: _isOffline,
+                              ),
+                            ),
+                          ),
+                          // Trip health: read-only review (own endpoint/
+                          // provider, not part of the trip payload) — a trailing
+                          // peer section. Tapping a finding deep-links to its
+                          // day via the shared _scrollToDay; item-only findings
+                          // resolve to a day through the trip's items.
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            sliver: SliverToBoxAdapter(
+                              child: TripReviewSection(
+                                tripId: trip.id,
+                                isOffline: _isOffline,
+                                onScrollToDay: _scrollToDay,
+                                dayForItem: (itemId) {
+                                  for (final item in trip.items ?? const []) {
+                                    if (item.id == itemId) return item.day;
+                                  }
+                                  return null;
+                                },
                               ),
                             ),
                           ),
