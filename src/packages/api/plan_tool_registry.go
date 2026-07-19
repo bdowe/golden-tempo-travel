@@ -414,6 +414,12 @@ func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (strin
 		"scope":           in.Scope,
 		"is_collaborator": s.uid != s.boundTripOwnerID,
 	})
+	// A collaborator refining the owner's trip in place is the canonical
+	// agent collaborator-edit path. replaceTripSection's TouchTrip doesn't run
+	// through touchedBy, so notify here; the SQL self-gates for owner refines.
+	if s.uid != s.boundTripOwnerID {
+		go notifyCollabEdit(*s.boundTripID, s.uid)
+	}
 	return "Section updated — the traveler's trip page has refreshed.", false
 }
 
