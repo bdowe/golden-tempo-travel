@@ -41,9 +41,11 @@ SELECT
 -- Activity-feed tail, keyset-paginated: the client passes the last row's
 -- created_at back as $1 for the next page. COALESCE keeps sqlc's LEFT-JOIN
 -- nullability simple; the handler decides "anonymous" from user_id being
--- NULL, never from an empty email. ORDER BY created_at DESC has no bare
--- created_at index (only the composite ones from 00026) — a top-N heap scan,
--- fine at sole-admin scale.
+-- NULL, never from an empty email. When exclude_admins is true, rows from
+-- admin users are dropped so the operator's own clicks don't pollute the
+-- funnel/activity feed (anonymous rows survive — NULL is_admin COALESCEs to
+-- false). ORDER BY created_at DESC is served by the bare created_at index
+-- added in 00043.
 SELECT e.id, e.event_type, e.user_id,
        COALESCE(u.email, '')::text AS user_email,
        COALESCE(u.is_admin, false)::boolean AS user_is_admin,
@@ -51,6 +53,7 @@ SELECT e.id, e.event_type, e.user_id,
 FROM analytics_events e
 LEFT JOIN users u ON u.id = e.user_id
 WHERE e.created_at < sqlc.arg(before)
+  AND (NOT sqlc.arg(exclude_admins)::bool OR NOT COALESCE(u.is_admin, false))
 ORDER BY e.created_at DESC
 LIMIT sqlc.arg(page_limit);
 

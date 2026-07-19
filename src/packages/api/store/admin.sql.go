@@ -246,13 +246,15 @@ SELECT e.id, e.event_type, e.user_id,
 FROM analytics_events e
 LEFT JOIN users u ON u.id = e.user_id
 WHERE e.created_at < $1
+  AND (NOT $2::bool OR NOT COALESCE(u.is_admin, false))
 ORDER BY e.created_at DESC
-LIMIT $2
+LIMIT $3
 `
 
 type RecentAnalyticsEventsParams struct {
-	Before    time.Time `json:"before"`
-	PageLimit int32     `json:"page_limit"`
+	Before        time.Time `json:"before"`
+	ExcludeAdmins bool      `json:"exclude_admins"`
+	PageLimit     int32     `json:"page_limit"`
 }
 
 type RecentAnalyticsEventsRow struct {
@@ -269,11 +271,13 @@ type RecentAnalyticsEventsRow struct {
 // Activity-feed tail, keyset-paginated: the client passes the last row's
 // created_at back as $1 for the next page. COALESCE keeps sqlc's LEFT-JOIN
 // nullability simple; the handler decides "anonymous" from user_id being
-// NULL, never from an empty email. ORDER BY created_at DESC has no bare
-// created_at index (only the composite ones from 00026) — a top-N heap scan,
-// fine at sole-admin scale.
+// NULL, never from an empty email. When exclude_admins is true, rows from
+// admin users are dropped so the operator's own clicks don't pollute the
+// funnel/activity feed (anonymous rows survive — NULL is_admin COALESCEs to
+// false). ORDER BY created_at DESC is served by the bare created_at index
+// added in 00043.
 func (q *Queries) RecentAnalyticsEvents(ctx context.Context, arg RecentAnalyticsEventsParams) ([]RecentAnalyticsEventsRow, error) {
-	rows, err := q.db.Query(ctx, recentAnalyticsEvents, arg.Before, arg.PageLimit)
+	rows, err := q.db.Query(ctx, recentAnalyticsEvents, arg.Before, arg.ExcludeAdmins, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
