@@ -916,7 +916,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
-  /// Persists a drag-reorder of the residual "Other bookings" cards.
+  /// Persists a drag-reorder of the Bookings section's residual "Other" cards.
   /// Optimistic: residual display order derives from _bookingTodos list order
   /// (see _groupedBookings), so move the residual entries to the tail in their
   /// new order — grouped todos are slot-matched by key, so nothing else shifts.
@@ -944,6 +944,48 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       if (mounted) setState(() => _bookingTodos = prev);
       _showSnack('Could not reorder: $e');
     }
+  }
+
+  /// The residual booking-todo cards (the Bookings section's "Other"
+  /// sub-group): todos that didn't match a city group. City-matched todos
+  /// render embedded inside their city groups instead. Only called with a
+  /// non-empty [residual] — the section hides the sub-group otherwise.
+  Widget _residualBookingsList(List<BookingTodo> residual, ThemeData theme) {
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      buildDefaultDragHandles: false,
+      itemCount: residual.length,
+      onReorder: (oldIndex, newIndex) =>
+          _reorderResidual(residual, oldIndex, newIndex),
+      itemBuilder: (context, i) {
+        final todo = residual[i];
+        final canDrag = !_readOnly && !_isOffline && residual.length > 1;
+        return Padding(
+          key: ValueKey(todo.id),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: BookingTodoCard(
+            todo: todo,
+            onBookedChanged: (v) => _setBooked(todo, v),
+            onOpen: _openCallbackFor(todo),
+            openLabelOverride:
+                _flightLegs.containsKey(todo.todoKey) ? 'Find flights' : null,
+            onEdit: todo.auto ? null : () => _editTodo(todo),
+            onDelete: todo.auto ? null : () => _deleteTodo(todo),
+            dragHandle: canDrag
+                ? ReorderableDragStartListener(
+                    index: i,
+                    child: Icon(
+                      Icons.drag_indicator,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : null,
+          ),
+        );
+      },
+    );
   }
 
   /// Persists a drag-reorder of the saved-stays list in the bookings hub.
@@ -3610,7 +3652,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   ? const SizedBox.shrink()
                   : LayoutBuilder(builder: (context, constraints) {
                       // City-matched bookings render inside their city group;
-                      // the rest fall through to the "Other bookings" section.
+                      // the rest fall through to the Bookings section's
+                      // "Other" sub-group.
                       final grouped = _groupedBookings([
                         for (final r in _locationGroupRanges(trip)) r.label
                       ]);
@@ -3992,86 +4035,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     onReorderSegments: (_readOnly || _isOffline)
                                         ? null
                                         : _reorderSegments,
+                                    // Residual booking-todos only: city-matched
+                                    // todos render embedded in their city
+                                    // groups above, so the Other sub-group
+                                    // appears only when something didn't match
+                                    // a city (custom or stale todos). Viewers
+                                    // get no checklist at all (the server
+                                    // withholds todos from them).
+                                    otherBookings: grouped.residual.isEmpty
+                                        ? null
+                                        : _residualBookingsList(
+                                            grouped.residual, theme),
+                                    onAddBooking:
+                                        _isOffline ? null : _addBooking,
                                   ),
-                                  // Bookings live embedded in their city groups;
-                                  // this section appears only when something
-                                  // didn't match a city (custom or stale todos).
-                                  // Viewers get no checklist at all (the server
-                                  // withholds todos from them).
-                                  if (grouped.residual.isEmpty && !_readOnly)
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                        onPressed: _isOffline ? null : _addBooking,
-                                        icon: const Icon(Icons.add, size: 18),
-                                        label: const Text('Add booking'),
-                                      ),
-                                    )
-                                  else ...[
-                                    const Divider(height: 32),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                            child: Text('Other bookings',
-                                                style: theme
-                                                    .textTheme.titleMedium)),
-                                        TextButton.icon(
-                                          onPressed: _isOffline ? null : _addBooking,
-                                          icon: const Icon(Icons.add, size: 18),
-                                          label: const Text('Add'),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ReorderableListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      padding: EdgeInsets.zero,
-                                      buildDefaultDragHandles: false,
-                                      itemCount: grouped.residual.length,
-                                      onReorder: (oldIndex, newIndex) =>
-                                          _reorderResidual(grouped.residual,
-                                              oldIndex, newIndex),
-                                      itemBuilder: (context, i) {
-                                        final todo = grouped.residual[i];
-                                        final canDrag = !_readOnly &&
-                                            !_isOffline &&
-                                            grouped.residual.length > 1;
-                                        return Padding(
-                                          key: ValueKey(todo.id),
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 4),
-                                          child: BookingTodoCard(
-                                            todo: todo,
-                                            onBookedChanged: (v) =>
-                                                _setBooked(todo, v),
-                                            onOpen: _openCallbackFor(todo),
-                                            openLabelOverride: _flightLegs
-                                                    .containsKey(todo.todoKey)
-                                                ? 'Find flights'
-                                                : null,
-                                            onEdit: todo.auto
-                                                ? null
-                                                : () => _editTodo(todo),
-                                            onDelete: todo.auto
-                                                ? null
-                                                : () => _deleteTodo(todo),
-                                            dragHandle: canDrag
-                                                ? ReorderableDragStartListener(
-                                                    index: i,
-                                                    child: Icon(
-                                                      Icons.drag_indicator,
-                                                      color: theme.colorScheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                  )
-                                                : null,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
