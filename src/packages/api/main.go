@@ -724,6 +724,13 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/refine", strict(authMiddleware(http.HandlerFunc(refineTripHandler)))).Methods("POST")
 	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(createShareHandler))).Methods("POST")
 	api.Handle("/trips/{id}/share", authMiddleware(http.HandlerFunc(revokeShareHandler))).Methods("DELETE")
+	// Owner-private export: the authed owner/editor mints a short-lived signed
+	// token, then the two PUBLIC token-gated GETs below render the full trip.
+	api.Handle("/trips/{id}/export-token", authMiddleware(http.HandlerFunc(exportTokenHandler))).Methods("POST")
+	// Public, token-gated export routes — NO authMiddleware: the signed export
+	// token IS the authorization (a bad/expired token is a clean 404).
+	api.HandleFunc("/export/{token}/print.html", printViewHandler).Methods("GET")
+	api.HandleFunc("/export/{token}/calendar.ics", calendarHandler).Methods("GET")
 	// Public share read sits behind the general per-IP limiter like everything
 	// else; it is the one endpoint deliberately open to anonymous strangers.
 	api.HandleFunc("/shared/{token}", sharedTripHandler).Methods("GET")
