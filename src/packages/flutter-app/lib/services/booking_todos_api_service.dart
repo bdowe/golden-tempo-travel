@@ -68,7 +68,8 @@ class BookingTodosApiService {
     throw Exception('Failed to update booking todo (${res.statusCode})');
   }
 
-  /// Persists the user's drag order for the residual "Other bookings" list.
+  /// Persists the user's drag order for the Bookings section's residual
+  /// "Other" list.
   /// Sends only that subset; the server renumbers those rows 0..n-1.
   Future<void> reorderTodos(String tripId, List<String> todoIds) async {
     final res = await apiClient.httpClient.put(

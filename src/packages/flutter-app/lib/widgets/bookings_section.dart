@@ -4,12 +4,14 @@ import '../models/trip.dart';
 import '../models/trip_segment.dart';
 import '../theme/spacing.dart';
 import '../utils/tracked_launch.dart';
+import 'section_header.dart';
 import 'status_pill.dart';
 
-/// "Your bookings" hub in trip detail: the stays and transport segments the
-/// user has actually saved (distinct from the auto-derived booking checklist),
-/// plus itinerary-seeded Suggested drafts (auto=true) the user can keep, edit,
-/// or dismiss. Callbacks land in the screen, which persists via the
+/// The unified "Bookings" hub in trip detail: the stays and transport segments
+/// the user has actually saved, plus itinerary-seeded Suggested drafts
+/// (auto=true) the user can keep, edit, or dismiss — and, via the
+/// [otherBookings] slot, the residual booking-todos that didn't match a city
+/// group. Callbacks land in the screen, which persists via the
 /// accommodations/segments endpoints and reloads the trip.
 class BookingsSection extends StatelessWidget {
   final Trip trip;
@@ -47,6 +49,18 @@ class BookingsSection extends StatelessWidget {
   /// entirely (the server already withholds them from viewers).
   final bool readOnly;
 
+  /// Residual booking-todos rendered as the "Other" sub-group. Built by the
+  /// screen — its callbacks (open-link factory, flight-leg labels, todo
+  /// dialogs) are screen-coupled. Null hides the sub-group and its header;
+  /// pass null rather than an empty list widget (see the empty-scroll-view
+  /// note in [build]).
+  final Widget? otherBookings;
+
+  /// Opens the add-booking-todo dialog; rendered as the section's trailing
+  /// "Add booking" footer when not read-only. Null renders it disabled
+  /// (offline), mirroring the reorder callbacks.
+  final VoidCallback? onAddBooking;
+
   const BookingsSection({
     super.key,
     required this.trip,
@@ -65,6 +79,8 @@ class BookingsSection extends StatelessWidget {
     this.onReorderStays,
     this.onReorderSegments,
     this.readOnly = false,
+    this.otherBookings,
+    this.onAddBooking,
   });
 
   static IconData _modeIcon(String mode) => switch (mode) {
@@ -161,6 +177,16 @@ class BookingsSection extends StatelessWidget {
         ),
       );
 
+  Widget _subHeader(ThemeData theme, String label) => Padding(
+        padding:
+            const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xs),
+        child: Text(
+          label,
+          style: theme.textTheme.titleSmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -180,31 +206,34 @@ class BookingsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Your bookings', style: theme.textTheme.titleMedium),
-            ),
-            if (!readOnly) ...[
-              TextButton.icon(
-                onPressed: onAddStay,
-                icon: const Icon(Icons.hotel_outlined, size: 18),
-                label: const Text('Add stay'),
-              ),
-              TextButton.icon(
-                onPressed: onAddSegment,
-                icon: const Icon(Icons.route_outlined, size: 18),
-                label: const Text('Add transport'),
-              ),
-            ],
-          ],
+        SectionHeader(
+          title: 'Bookings',
+          action: readOnly
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton.icon(
+                      onPressed: onAddStay,
+                      icon: const Icon(Icons.hotel_outlined, size: 18),
+                      label: const Text('Add stay'),
+                    ),
+                    TextButton.icon(
+                      onPressed: onAddSegment,
+                      icon: const Icon(Icons.route_outlined, size: 18),
+                      label: const Text('Add transport'),
+                    ),
+                  ],
+                ),
         ),
-        if (visibleStays.isEmpty && visibleSegments.isEmpty)
+        if (visibleStays.isEmpty &&
+            visibleSegments.isEmpty &&
+            otherBookings == null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Text(
-              'Nothing saved yet — add the stay or transport you booked so '
-              'the whole trip lives in one place.',
+              'Nothing saved yet — add the stays, transport, and other '
+              'bookings for your trip so it all lives in one place.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
@@ -212,7 +241,8 @@ class BookingsSection extends StatelessWidget {
         // Only built when non-empty: ReorderableListView is itself a scroll
         // view, and a pair of always-present empty ones would pollute the
         // page's scrollable tree (and every find.byType(CustomScrollView)).
-        if (visibleStays.isNotEmpty)
+        if (visibleStays.isNotEmpty) ...[
+          _subHeader(theme, 'Stays'),
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -292,7 +322,9 @@ class BookingsSection extends StatelessWidget {
               );
             },
           ),
-        if (visibleSegments.isNotEmpty)
+        ],
+        if (visibleSegments.isNotEmpty) ...[
+          _subHeader(theme, 'Transport'),
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -375,6 +407,20 @@ class BookingsSection extends StatelessWidget {
                 ),
               );
             },
+          ),
+        ],
+        if (otherBookings != null) ...[
+          _subHeader(theme, 'Other'),
+          otherBookings!,
+        ],
+        if (!readOnly)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onAddBooking,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add booking'),
+            ),
           ),
       ],
     );

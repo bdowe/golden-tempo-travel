@@ -108,8 +108,10 @@ void main() {
     expect(tester.getTopLeft(find.text('Rome → JFK')).dy,
         greaterThan(tester.getTopLeft(find.text('Trastevere')).dy));
 
-    // Only the unmatched custom todo remains in "Other bookings", as a card.
-    expect(find.text('Other bookings'), findsOneWidget);
+    // Only the unmatched custom todo remains in the Bookings section's
+    // "Other" sub-group, as a card.
+    expect(find.text('Bookings'), findsOneWidget);
+    expect(find.text('Other'), findsOneWidget);
     expect(find.byType(BookingTodoCard), findsOneWidget);
     expect(
         find.widgetWithText(BookingTodoCard, 'Museum tickets'), findsOneWidget);
@@ -148,9 +150,9 @@ void main() {
 
     expect(find.byType(BookingTodoRow), findsNWidgets(2));
 
-    // No unmatched bookings -> no "Other bookings" section, just the inline
-    // add affordance.
-    expect(find.text('Other bookings'), findsNothing);
+    // No unmatched bookings -> no "Other" sub-group, just the section's
+    // "Add booking" footer.
+    expect(find.text('Other'), findsNothing);
     expect(find.text('Add booking'), findsOneWidget);
 
     await tester.tap(find.text('Paris'));

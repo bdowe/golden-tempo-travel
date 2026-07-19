@@ -56,6 +56,8 @@ BookingsSection _section({
   void Function(Accommodation)? onDeleteStay,
   void Function(int, int)? onReorderStays,
   void Function(Accommodation, bool)? onStayBookedChanged,
+  Widget? otherBookings,
+  VoidCallback? onAddBooking,
 }) =>
     BookingsSection(
       trip: _trip(),
@@ -72,6 +74,8 @@ BookingsSection _section({
       onConfirmSegment: (_) {},
       onReorderStays: onReorderStays,
       onStayBookedChanged: onStayBookedChanged,
+      otherBookings: otherBookings,
+      onAddBooking: onAddBooking,
     );
 
 void main() {
@@ -205,5 +209,75 @@ void main() {
       onReorderStays: (_, __) {},
     )));
     expect(find.byIcon(Icons.drag_indicator), findsNothing);
+  });
+
+  testWidgets('sub-headers render only for non-empty groups', (tester) async {
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [_confirmedStay],
+      segments: const [],
+    )));
+    expect(find.text('Bookings'), findsOneWidget);
+    expect(find.text('Stays'), findsOneWidget);
+    expect(find.text('Transport'), findsNothing);
+    expect(find.text('Other'), findsNothing);
+
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [_draftLeg],
+    )));
+    expect(find.text('Stays'), findsNothing);
+    expect(find.text('Transport'), findsOneWidget);
+  });
+
+  testWidgets('otherBookings slot renders under an Other sub-header',
+      (tester) async {
+    const slotKey = Key('other-slot');
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [],
+      otherBookings: const SizedBox(key: slotKey, height: 40),
+    )));
+    expect(find.text('Other'), findsOneWidget);
+    expect(find.byKey(slotKey), findsOneWidget);
+    // A non-null slot counts as content, so no empty hint.
+    expect(find.textContaining('Nothing saved yet'), findsNothing);
+
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [],
+    )));
+    expect(find.text('Other'), findsNothing);
+    expect(find.textContaining('Nothing saved yet'), findsOneWidget);
+  });
+
+  testWidgets('Add booking footer: enabled, disabled offline, hidden read-only',
+      (tester) async {
+    var added = false;
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [],
+      onAddBooking: () => added = true,
+    )));
+    await tester.tap(find.text('Add booking'));
+    expect(added, isTrue);
+
+    // Null callback (offline) renders the footer disabled.
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [],
+    )));
+    final button = tester.widget<TextButton>(
+      find.ancestor(
+          of: find.text('Add booking'), matching: find.bySubtype<TextButton>()),
+    );
+    expect(button.onPressed, isNull);
+
+    await tester.pumpWidget(_wrap(_section(
+      stays: const [],
+      segments: const [],
+      readOnly: true,
+      onAddBooking: () {},
+    )));
+    expect(find.text('Add booking'), findsNothing);
   });
 }
