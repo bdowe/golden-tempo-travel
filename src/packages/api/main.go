@@ -688,6 +688,12 @@ func buildRouter() *mux.Router {
 	anonEvents := rateLimitMiddleware(anonEventsLimiter)
 	router.Use(requestIDMiddleware)
 	router.Use(recoveryMiddleware)
+	// Global concurrency ceiling (abuse_caps.go): a single Pi instance with
+	// WriteTimeout:0 (needed for SSE) has no cap on concurrent in-flight
+	// requests, so a burst could swamp it. Shed excess load early — right after
+	// recovery/requestID — with a non-blocking 503 + Retry-After (/health is
+	// exempt so probes still answer under saturation).
+	router.Use(newConcurrencyLimiter(maxInflightRequests()).middleware)
 	// metricsMiddleware sits right after recovery so it times the full handler
 	// (recovered panics count as the 500 they return) and folds each request
 	// into the in-process opsMetrics registry (ops_metrics.go).
