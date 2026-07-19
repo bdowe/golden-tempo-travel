@@ -148,7 +148,7 @@ func toItineraryItemResponse(it store.ItineraryItem) ItineraryItemResponse {
 // notify, which is acceptable for an in-app signal.
 func touchedBy(tripID uuid.UUID, r *http.Request) store.TouchTripParams {
 	user, _ := userFromContext(r.Context())
-	go notifyCollabEdit(tripID, user.ID)
+	safeGo("notifyCollabEdit", func() { notifyCollabEdit(tripID, user.ID) })
 	return store.TouchTripParams{ID: tripID, UpdatedBy: pgtype.UUID{Bytes: user.ID, Valid: true}}
 }
 

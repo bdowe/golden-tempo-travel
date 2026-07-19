@@ -91,9 +91,11 @@ func joinSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		access = role
-		go recordEvent(user.ID, "collaborator_joined", &trip.ID, map[string]any{
-			"owner_id": share.OwnerID.String(),
-			"role":     role,
+		safeGo("recordEvent", func() {
+			recordEvent(user.ID, "collaborator_joined", &trip.ID, map[string]any{
+				"owner_id": share.OwnerID.String(),
+				"role":     role,
+			})
 		})
 	}
 	writeJSON(w, http.StatusOK, JoinSharedTripResponse{TripID: trip.ID.String(), Access: access})
@@ -159,7 +161,7 @@ func removeCollaboratorHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusNotFound, "trip not found")
 			return
 		}
-		go recordEvent(user.ID, "collaborator_left", &row.ID, nil)
+		safeGo("recordEvent", func() { recordEvent(user.ID, "collaborator_left", &row.ID, nil) })
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -189,8 +191,10 @@ func removeCollaboratorHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "co-planner not found")
 		return
 	}
-	go recordEvent(user.ID, "collaborator_removed", &trip.ID, map[string]any{
-		"collaborator_id": collabID.String(),
+	safeGo("recordEvent", func() {
+		recordEvent(user.ID, "collaborator_removed", &trip.ID, map[string]any{
+			"collaborator_id": collabID.String(),
+		})
 	})
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -239,8 +239,10 @@ func createPriceAlertHandler(w http.ResponseWriter, r *http.Request) {
 	if alert.TargetPrice != nil {
 		mode = "target"
 	}
-	go recordEvent(user.ID, "alert_created", tripIDPtr(alert), map[string]any{
-		"origin": alert.Origin, "destination": alert.Destination, "mode": mode,
+	safeGo("recordEvent", func() {
+		recordEvent(user.ID, "alert_created", tripIDPtr(alert), map[string]any{
+			"origin": alert.Origin, "destination": alert.Destination, "mode": mode,
+		})
 	})
 	writeJSON(w, http.StatusCreated, toPriceAlertResponse(alert))
 }

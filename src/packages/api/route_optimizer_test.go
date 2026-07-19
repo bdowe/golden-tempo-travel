@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func f64(v float64) *float64 { return &v }
 
@@ -21,7 +24,7 @@ func TestOptimizeRoutePreserveOrder(t *testing.T) {
 		},
 	}
 
-	resp := ro.OptimizeRoute(req)
+	resp := ro.OptimizeRoute(context.Background(), req)
 
 	if resp.Status != "success" {
 		t.Fatalf("expected success, got %q", resp.Status)

@@ -112,7 +112,7 @@ func requestVerificationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "already verified"})
 		return
 	}
-	go sendVerificationEmail(user)
+	safeGo("sendVerificationEmail", func() { sendVerificationEmail(user) })
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -196,7 +196,8 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 	q := store.New(dbPool)
 	user, err := q.GetUserByEmail(r.Context(), email)
 	if err == nil {
-		go func(u store.User) {
+		u := user
+		safeGo("sendPasswordResetEmail", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			token, err := issueEmailToken(ctx, store.New(dbPool), u, "reset", resetTokenTTL)
@@ -212,7 +213,7 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 			if err := emailService.Send(u.Email, "Reset your password — Golden Tempo Travel", body); err != nil {
 				log.Printf("password reset: send to %s failed: %v", u.Email, err)
 			}
-		}(user)
+		})
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		log.Printf("password reset: lookup failed for %s: %v", email, err)
 	}

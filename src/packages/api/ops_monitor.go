@@ -92,7 +92,9 @@ func (m *healthMonitor) run(ctx context.Context) {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 	for {
-		m.runOnce(ctx, time.Now())
+		// Guard each tick: a panic in one cycle must not kill the ticker (and
+		// with it the whole process). Log-and-continue to the next tick.
+		safeRun("health monitor tick", func() { m.runOnce(ctx, time.Now()) })
 		select {
 		case <-ctx.Done():
 			return

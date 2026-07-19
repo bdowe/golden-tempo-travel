@@ -342,7 +342,7 @@ func runSearchPlacesTool(s *planSession, input json.RawMessage) (string, bool) {
 	}
 	json.Unmarshal(input, &in)
 
-	results, err := placesService.SearchPlaces(in.Query)
+	results, err := placesService.SearchPlaces(s.ctx, in.Query)
 	if err != nil {
 		return fmt.Sprintf("Error searching places: %v", err), true
 	}
@@ -374,8 +374,10 @@ func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool
 			donePayload["trip_id"] = tripID
 			if parsed, err := uuid.Parse(tripID); err == nil {
 				s.tripID = &parsed
-				go recordEvent(s.uid, "trip_created", &parsed, map[string]any{
-					"item_count": len(in.Locations),
+				safeGo("recordEvent", func() {
+					recordEvent(s.uid, "trip_created", &parsed, map[string]any{
+						"item_count": len(in.Locations),
+					})
 				})
 				// Free-cap active_trips crossing signal — only a
 				// brand-new lineage can move the lineage count; a
@@ -383,7 +385,7 @@ func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool
 				// it unchanged and must never emit
 				// (specs/free-cap-instrumentation).
 				if newLineage {
-					go recordActiveTripsCapSignal(s.uid, parsed)
+					safeGo("recordActiveTripsCapSignal", func() { recordActiveTripsCapSignal(s.uid, parsed) })
 				}
 			}
 			// Distill what this conversation revealed about the traveler
@@ -391,7 +393,9 @@ func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool
 			// context.Background(): the request ctx dies with the handler.
 			if !s.distilled {
 				s.distilled = true
-				go distillTravelerProfile(context.Background(), s.client, s.uid, s.req.Messages)
+				safeGo("distillTravelerProfile", func() {
+					distillTravelerProfile(context.Background(), s.client, s.uid, s.req.Messages)
+				})
 			}
 		}
 	}
@@ -418,15 +422,17 @@ func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (strin
 	}
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": s.boundTripID.String()})
 	s.tripID = s.boundTripID
-	go recordEvent(s.uid, "trip_refined", s.boundTripID, map[string]any{
-		"scope":           in.Scope,
-		"is_collaborator": s.uid != s.boundTripOwnerID,
+	safeGo("recordEvent", func() {
+		recordEvent(s.uid, "trip_refined", s.boundTripID, map[string]any{
+			"scope":           in.Scope,
+			"is_collaborator": s.uid != s.boundTripOwnerID,
+		})
 	})
 	// A collaborator refining the owner's trip in place is the canonical
 	// agent collaborator-edit path. replaceTripSection's TouchTrip doesn't run
 	// through touchedBy, so notify here; the SQL self-gates for owner refines.
 	if s.uid != s.boundTripOwnerID {
-		go notifyCollabEdit(*s.boundTripID, s.uid)
+		safeGo("notifyCollabEdit", func() { notifyCollabEdit(*s.boundTripID, s.uid) })
 	}
 	return "Section updated — the traveler's trip page has refreshed.", false
 }

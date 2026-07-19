@@ -201,7 +201,7 @@ func updateSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		if seg.Provider != nil {
 			meta["provider"] = *seg.Provider
 		}
-		go recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta)
+		safeGo("recordEvent", func() { recordEvent(user.ID, "saved_booking_marked_booked", &tripID, meta) })
 	}
 	_ = store.New(dbPool).TouchTrip(r.Context(), touchedBy(tripID, r))
 	writeJSON(w, http.StatusOK, toSegmentResponse(seg))

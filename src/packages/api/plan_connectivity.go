@@ -224,7 +224,8 @@ func fetchConnectivity(ctx context.Context, legs []connLeg) map[connLeg]connLegR
 			continue
 		}
 		wg.Add(1)
-		go func(leg connLeg) {
+		leg := leg
+		safeGo("connectivity leg lookup", func() {
 			defer wg.Done()
 			select {
 			case sem <- struct{}{}:
@@ -253,7 +254,7 @@ func fetchConnectivity(ctx context.Context, legs []connLeg) map[connLeg]connLegR
 			mu.Lock()
 			results[leg] = res
 			mu.Unlock()
-		}(leg)
+		})
 	}
 	wg.Wait()
 	return results

@@ -179,7 +179,7 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	meta := sanitizeClientEventMetadata(req.Metadata)
-	go func() {
+	safeGo("recordClientEvent", func() {
 		// Best-effort trip validation off the response path: attach-rate
 		// counts DISTINCT trip_id, so a fabricated/foreign UUID must not be
 		// stored. A trip_id survives only when the trip exists and the caller
@@ -199,7 +199,7 @@ func recordClientEventHandler(w http.ResponseWriter, r *http.Request) {
 			cancel()
 		}
 		recordEvent(user.ID, req.EventType, tripID, meta)
-	}()
+	})
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -228,7 +228,7 @@ func recordAnonymousClientEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := sanitizeClientEventMetadata(req.Metadata)
-	go recordEventOpt(nil, req.EventType, nil, meta)
+	safeGo("recordEventOpt", func() { recordEventOpt(nil, req.EventType, nil, meta) })
 	w.WriteHeader(http.StatusAccepted)
 }
 
