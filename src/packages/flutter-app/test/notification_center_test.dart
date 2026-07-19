@@ -158,17 +158,41 @@ void main() {
     expect(find.text('Time to finalize your bookings.'), findsOneWidget);
   });
 
+  testWidgets('collab_edit renders "<who> edited <trip>"', (tester) async {
+    await _pump(tester, [
+      const AppNotification(
+        id: 'c1',
+        type: 'collab_edit',
+        payload: {'actor_name': 'Alice', 'trip_title': 'Athens'},
+        createdAt: '2026-07-16T12:00:00Z',
+      ),
+    ]);
+    expect(find.text('Alice edited "Athens"'), findsOneWidget);
+  });
+
+  testWidgets('invite_accepted renders "<who> joined <trip>"', (tester) async {
+    await _pump(tester, [
+      const AppNotification(
+        id: 'i1',
+        type: 'invite_accepted',
+        payload: {'accepter_name': 'Bob', 'trip_title': 'Lisbon'},
+        createdAt: '2026-07-16T12:00:00Z',
+      ),
+    ]);
+    expect(find.text('Bob joined "Lisbon"'), findsOneWidget);
+  });
+
   testWidgets('unknown type with no title humanizes the type name',
       (tester) async {
     await _pump(tester, [
       const AppNotification(
         id: 'g2',
-        type: 'invite_accepted',
+        type: 'weekly_digest',
         payload: {},
         createdAt: '2026-07-16T12:00:00Z',
       ),
     ]);
-    expect(find.text('Invite Accepted'), findsOneWidget);
+    expect(find.text('Weekly Digest'), findsOneWidget);
   });
 
   testWidgets('empty feed shows the how-to empty state', (tester) async {

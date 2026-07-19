@@ -136,8 +136,19 @@ func toItineraryItemResponse(it store.ItineraryItem) ItineraryItemResponse {
 // touchedBy builds TouchTrip params attributing a content edit to the
 // request's signed-in user (the "Updated by X" line on shared trips). Only
 // use on real user edits — see the TouchTrip query invariant.
+//
+// This is also the single choke point for the "a collaborator edited a shared
+// trip" notification: every HTTP content mutation (itinerary items, budget,
+// checklist, accommodations, segments, booking to-dos) stamps attribution
+// through here, so a fire-and-forget notifyCollabEdit here covers all of them
+// in one place. The write is self-gated in SQL — it no-ops for owner and solo
+// edits and throttles per (trip, actor) — so firing it on every edit is safe
+// and cheap. Firing here (as the params are built, just before the TouchTrip
+// executes) is best-effort by design: a rare rolled-back edit could still
+// notify, which is acceptable for an in-app signal.
 func touchedBy(tripID uuid.UUID, r *http.Request) store.TouchTripParams {
 	user, _ := userFromContext(r.Context())
+	go notifyCollabEdit(tripID, user.ID)
 	return store.TouchTripParams{ID: tripID, UpdatedBy: pgtype.UUID{Bytes: user.ID, Valid: true}}
 }
 

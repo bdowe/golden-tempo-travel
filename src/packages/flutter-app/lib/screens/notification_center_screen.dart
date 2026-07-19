@@ -104,13 +104,20 @@ class _NotificationTile extends StatelessWidget {
     final when =
         relativeTime(DateTime.parse(notification.createdAt).toLocal());
 
-    final content = notification.type == 'price_drop'
-        ? _PriceDropBody(payload: notification.payload, unread: unread)
-        : _GenericBody(
-            type: notification.type,
-            payload: notification.payload,
-            unread: unread,
-          );
+    final content = switch (notification.type) {
+      'price_drop' =>
+        _PriceDropBody(payload: notification.payload, unread: unread),
+      'collab_edit' || 'invite_accepted' => _TripSignalBody(
+          type: notification.type,
+          payload: notification.payload,
+          unread: unread,
+        ),
+      _ => _GenericBody(
+          type: notification.type,
+          payload: notification.payload,
+          unread: unread,
+        ),
+    };
 
     return Card(
       child: Padding(
@@ -289,6 +296,70 @@ class _GenericBody extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// Trip collaboration signals: a co-planner edited a shared trip
+/// (`collab_edit`) or someone accepted an invite (`invite_accepted`). Both read
+/// as "<who> <did what> <trip>" with a leading icon, built from the payload's
+/// actor/trip fields.
+class _TripSignalBody extends StatelessWidget {
+  final String type;
+  final Map<String, dynamic> payload;
+  final bool unread;
+  const _TripSignalBody({
+    required this.type,
+    required this.payload,
+    required this.unread,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tripTitle = payload['trip_title'] is String
+        ? payload['trip_title'] as String
+        : 'a trip';
+    final IconData icon;
+    final String headline;
+    if (type == 'invite_accepted') {
+      final who = payload['accepter_name'] is String
+          ? payload['accepter_name'] as String
+          : 'Someone';
+      icon = Icons.group_add_outlined;
+      headline = '$who joined "$tripTitle"';
+    } else {
+      final who = payload['actor_name'] is String
+          ? payload['actor_name'] as String
+          : 'A collaborator';
+      icon = Icons.edit_outlined;
+      headline = '$who edited "$tripTitle"';
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2, right: AppSpacing.sm),
+          child: Icon(
+            icon,
+            size: 18,
+            color: unread
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            headline,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+              color: unread
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ],
     );
   }

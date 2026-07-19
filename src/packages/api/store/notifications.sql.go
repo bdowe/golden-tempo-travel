@@ -24,6 +24,64 @@ func (q *Queries) CountUnreadNotifications(ctx context.Context, userID uuid.UUID
 	return count, err
 }
 
+const insertCollabEditNotifications = `-- name: InsertCollabEditNotifications :execrows
+WITH src AS (
+    SELECT tr.id AS trip_id, tr.user_id AS owner_id, tr.chat_id,
+           tr.title AS trip_title,
+           COALESCE(a.display_name, 'A collaborator')::text AS actor_name
+    FROM trips tr
+    LEFT JOIN users a ON a.id = $1
+    WHERE tr.id = $2 AND tr.user_id <> $1
+), recipients AS (
+    SELECT src.owner_id AS user_id, src.trip_id, src.trip_title, src.actor_name
+    FROM src
+    UNION
+    SELECT c.user_id, src.trip_id, src.trip_title, src.actor_name
+    FROM src
+    JOIN trip_collaborators c
+      ON c.owner_id = src.owner_id AND c.chat_id = src.chat_id
+    WHERE c.revoked_at IS NULL AND c.user_id <> $1
+), targets AS (
+    SELECT rec.user_id, rec.trip_id, rec.trip_title, rec.actor_name
+    FROM recipients rec
+    WHERE rec.user_id <> $1
+      AND NOT EXISTS (
+          SELECT 1 FROM notifications n
+          WHERE n.user_id = rec.user_id
+            AND n.type = 'collab_edit'
+            AND n.trip_id = rec.trip_id
+            AND n.payload->>'actor_name' = rec.actor_name
+            AND n.created_at > now() - interval '6 hours'
+      )
+)
+INSERT INTO notifications (user_id, type, payload, trip_id)
+SELECT user_id, 'collab_edit',
+       jsonb_build_object('actor_name', actor_name, 'trip_title', trip_title),
+       trip_id
+FROM targets
+`
+
+type InsertCollabEditNotificationsParams struct {
+	ActorID uuid.UUID `json:"actor_id"`
+	TripID  uuid.UUID `json:"trip_id"`
+}
+
+// Fan-out, self-gated, throttled write for "a collaborator edited a shared
+// trip". Resolves the trip's lineage and, ONLY when the actor is not the trip
+// owner (owner edits notify no one), inserts one collab_edit row per recipient
+// — the owner plus every OTHER active collaborator, excluding the actor.
+// Throttle: skip any recipient already told about this (trip, actor) within the
+// last 6h so an editing session coalesces into a single notification per
+// recipient rather than one per keystroke-batch. Owner-only/solo trips and
+// owner self-edits yield zero rows, so callers can fire this on every edit.
+func (q *Queries) InsertCollabEditNotifications(ctx context.Context, arg InsertCollabEditNotificationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertCollabEditNotifications, arg.ActorID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notifications (user_id, type, payload, trip_id)
 VALUES ($1, $2, $3, $4)

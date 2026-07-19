@@ -397,6 +397,10 @@ func touchTripAs(ctx context.Context, tripID, actor uuid.UUID) {
 	_ = store.New(dbPool).TouchTrip(ctx, store.TouchTripParams{
 		ID: tripID, UpdatedBy: pgtype.UUID{Bytes: actor, Valid: true},
 	})
+	// Same "collaborator edited a shared trip" signal as the HTTP paths, for
+	// agent tool edits (booking to-do add/update/remove). Self-gated in SQL, so
+	// owner-actor edits no-op.
+	go notifyCollabEdit(tripID, actor)
 }
 
 // bookingTodoMissingMsg covers both "wrong id" and "auto row" — the queries

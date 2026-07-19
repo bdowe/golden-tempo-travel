@@ -301,5 +301,8 @@ func acceptInviteHandler(w http.ResponseWriter, r *http.Request) {
 	go recordEvent(user.ID, "invite_accepted", &trip.ID, map[string]any{
 		"owner_id": invite.OwnerID.String(),
 	})
+	// Tell the owner their invite was redeemed (in-app only; one-time event, no
+	// throttle). Best-effort, like the analytics write above.
+	go notifyInviteAccepted(invite.OwnerID, user, trip)
 	writeJSON(w, http.StatusOK, JoinSharedTripResponse{TripID: trip.ID.String(), Access: "editor"})
 }
