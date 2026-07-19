@@ -362,6 +362,212 @@ func TestReviewTrip_CheckHoursGate(t *testing.T) {
 	}
 }
 
+// --- structured fix descriptors (Wave 19 PR1) --------------------------------
+
+func TestFix_Lodging(t *testing.T) {
+	trip := store.Trip{ID: uuid.New(), Status: "planned",
+		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-04")} // nights 1,2,3
+	// One stay covering nights 1-2 → only night 3 (Day 3 = 2026-08-03) flagged.
+	acc := []store.Accommodation{{ID: uuid.New(), Name: "Hotel",
+		CheckIn: dateVal(t, "2026-08-01"), CheckOut: dateVal(t, "2026-08-03")}}
+	items := []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Beach", City: strp("Nice"), Day: i32p(3)},
+	}
+	fs := checkLodging(exportData{Trip: trip, Accommodations: acc, Items: items})
+	if len(fs) != 1 || fs[0].Fix == nil {
+		t.Fatalf("expected one lodging finding with a fix, got %+v", fs)
+	}
+	fix := fs[0].Fix
+	if fix.Action != "add_lodging" || fix.CheckIn == nil || fix.CheckOut == nil {
+		t.Fatalf("lodging fix = %+v", fix)
+	}
+	if *fix.CheckIn != "2026-08-03" || *fix.CheckOut != "2026-08-04" {
+		t.Fatalf("check_in/out = %q/%q, want 2026-08-03/2026-08-04", *fix.CheckIn, *fix.CheckOut)
+	}
+	// check_out is exactly check_in + 1 day.
+	ci, _ := time.Parse(dateLayout, *fix.CheckIn)
+	co, _ := time.Parse(dateLayout, *fix.CheckOut)
+	if co.Sub(ci) != 24*time.Hour {
+		t.Fatalf("check_out is not check_in + 1 day: %v", co.Sub(ci))
+	}
+	if fix.City == nil || *fix.City != "Nice" {
+		t.Fatalf("expected city Nice from the night's items, got %v", fix.City)
+	}
+}
+
+func TestFix_TransitGreekFerry(t *testing.T) {
+	trip := store.Trip{ID: uuid.New(),
+		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-03")}
+	items := []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Acropolis", City: strp("Athens"), Day: i32p(1)},
+		{ID: uuid.New(), Name: "Portara", City: strp("Naxos"), Day: i32p(2)},
+	}
+	fs := checkTransit(exportData{Trip: trip, Items: items})
+	if len(fs) != 1 || fs[0].Fix == nil {
+		t.Fatalf("expected one transit finding with a fix, got %+v", fs)
+	}
+	fix := fs[0].Fix
+	if fix.Action != "add_transport" || fix.Label != "Add ferry" {
+		t.Fatalf("greek transit fix = %+v", fix)
+	}
+	if fix.Origin == nil || *fix.Origin != "Athens" || fix.Destination == nil || *fix.Destination != "Naxos" {
+		t.Fatalf("origin/destination = %v/%v", fix.Origin, fix.Destination)
+	}
+	if fix.Mode == nil || *fix.Mode != "ferry" {
+		t.Fatalf("expected ferry mode, got %v", fix.Mode)
+	}
+	// Destination hub's first day (Day 2 = start + 1) drives the leg date.
+	if fix.Date == nil || *fix.Date != "2026-08-02" {
+		t.Fatalf("transit date = %v, want 2026-08-02", fix.Date)
+	}
+
+	// Non-Greek pair → generic transport + flight, no forced ferry label.
+	nonGreek := []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Colosseum", City: strp("Rome"), Day: i32p(1)},
+		{ID: uuid.New(), Name: "Duomo", City: strp("Florence"), Day: i32p(2)},
+	}
+	gf := checkTransit(exportData{Trip: trip, Items: nonGreek})
+	if len(gf) != 1 || gf[0].Fix == nil || gf[0].Fix.Label != "Add transport" ||
+		gf[0].Fix.Mode == nil || *gf[0].Fix.Mode != "flight" {
+		t.Fatalf("non-greek transit fix = %+v", gf)
+	}
+}
+
+func TestFix_BookingsEntityType(t *testing.T) {
+	d := exportData{
+		Trip: store.Trip{ID: uuid.New()},
+		Accommodations: []store.Accommodation{
+			{ID: uuid.New(), Name: "Hotel", Booked: false},
+		},
+		Segments: []store.TripSegment{
+			{ID: uuid.New(), Mode: "flight", Origin: strp("JFK"), Destination: strp("CDG"), Booked: false},
+		},
+	}
+	fs := checkBookings(d)
+	if len(fs) != 2 {
+		t.Fatalf("expected 2 booking findings, got %+v", fs)
+	}
+	byEntity := map[string]*FindingFix{}
+	for _, f := range fs {
+		if f.Fix == nil || f.Fix.Action != "mark_booked" || f.Fix.EntityType == nil {
+			t.Fatalf("booking fix shape = %+v", f.Fix)
+		}
+		if f.Fix.ItemID == nil || *f.Fix.ItemID != *f.ItemID {
+			t.Fatalf("booking fix item_id should mirror the finding's: %+v", f)
+		}
+		byEntity[*f.Fix.EntityType] = f.Fix
+	}
+	if byEntity["accommodation"] == nil || byEntity["segment"] == nil {
+		t.Fatalf("expected one accommodation and one segment fix, got %v", byEntity)
+	}
+}
+
+func TestFix_DatesBeyondSpan(t *testing.T) {
+	trip := store.Trip{ID: uuid.New(), Status: "planned",
+		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-03")} // 3-day span
+	id := uuid.New()
+	items := []store.ItineraryItem{{ID: id, Name: "Way Out", Day: i32p(9)}}
+	fs := checkDates(exportData{Trip: trip, Items: items})
+	if len(fs) != 1 || fs[0].Fix == nil {
+		t.Fatalf("expected one beyond-span finding with a fix, got %+v", fs)
+	}
+	fix := fs[0].Fix
+	if fix.Action != "move_item" || fix.ItemID == nil || *fix.ItemID != id.String() {
+		t.Fatalf("beyond-span fix = %+v", fix)
+	}
+	if fix.TargetDay == nil || *fix.TargetDay != 3 || *fix.TargetDay > 3 {
+		t.Fatalf("target_day = %v, want 3 (within span)", fix.TargetDay)
+	}
+}
+
+func TestFix_OverPacked_LighterDayAndNone(t *testing.T) {
+	tripID := uuid.New()
+	// Day 1 over-packed (7 items); Day 2 light (1 item) → the over-packed fix
+	// moves the last Day-1 item to Day 2.
+	var items []store.ItineraryItem
+	var lastDay1 uuid.UUID
+	for i := 0; i < 7; i++ {
+		id := uuid.New()
+		lastDay1 = id
+		items = append(items, store.ItineraryItem{ID: id, Name: fmt.Sprintf("A%d", i), Day: i32p(1)})
+	}
+	items = append(items, store.ItineraryItem{ID: uuid.New(), Name: "B", Day: i32p(2)})
+	fs := checkDensity(exportData{Trip: store.Trip{ID: tripID}, Items: items})
+	var packed *Finding
+	for i := range fs {
+		if fs[i].Severity == "warn" && strings.Contains(fs[i].Message, "too packed") {
+			packed = &fs[i]
+		}
+	}
+	if packed == nil || packed.Fix == nil {
+		t.Fatalf("expected an over-packed warn with a fix, got %+v", fs)
+	}
+	if packed.Fix.Action != "move_item" || packed.Fix.TargetDay == nil || *packed.Fix.TargetDay != 2 {
+		t.Fatalf("over-packed fix = %+v", packed.Fix)
+	}
+	if packed.Fix.ItemID == nil || *packed.Fix.ItemID != lastDay1.String() {
+		t.Fatalf("expected the last Day-1 item to move, got %v", packed.Fix.ItemID)
+	}
+
+	// No lighter day: Day 1 is the ONLY scheduled day (7 items) → fix stays nil.
+	var solo []store.ItineraryItem
+	for i := 0; i < 7; i++ {
+		solo = append(solo, store.ItineraryItem{ID: uuid.New(), Name: fmt.Sprintf("C%d", i), Day: i32p(1)})
+	}
+	sf := checkDensity(exportData{Trip: store.Trip{ID: tripID}, Items: solo})
+	for _, f := range sf {
+		if strings.Contains(f.Message, "too packed") && f.Fix != nil {
+			t.Fatalf("no lighter day exists — over-packed fix should be nil, got %+v", f.Fix)
+		}
+	}
+}
+
+func TestFix_WeatherRainAddPacking(t *testing.T) {
+	start := time.Now().AddDate(0, 0, 3)
+	trip := store.Trip{ID: uuid.New(), Status: "planned",
+		StartDate: pgtype.Date{Time: start.Truncate(24 * time.Hour), Valid: true},
+		EndDate:   pgtype.Date{Time: start.AddDate(0, 0, 1).Truncate(24 * time.Hour), Valid: true}}
+	d := exportData{Trip: trip, Items: []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Eiffel Tower", City: strp("Paris"), Category: strp("attraction"), Day: i32p(1)},
+	}}
+	weather := weatherStub(t, true, 22, 14)
+	var gotFix bool
+	for _, f := range checkWeather(context.Background(), d, weather) {
+		if strings.Contains(f.Message, "umbrella") {
+			if f.Fix == nil || f.Fix.Action != "add_packing" ||
+				f.Fix.PackingItem == nil || *f.Fix.PackingItem != "Umbrella" {
+				t.Fatalf("rain fix = %+v", f.Fix)
+			}
+			gotFix = true
+		}
+	}
+	if !gotFix {
+		t.Fatal("expected a rain finding carrying an add_packing fix")
+	}
+}
+
+func TestReviewTrip_CleanTripNoFindings(t *testing.T) {
+	// A fully-covered, transport-connected, single-city dated trip with a booked
+	// stay and no over-packing → zero findings (and a JSON "[]", not null).
+	trip := store.Trip{ID: uuid.New(), Status: "planned",
+		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-02")} // 1 night
+	d := exportData{
+		Trip: trip,
+		Items: []store.ItineraryItem{
+			{ID: uuid.New(), Name: "Louvre", City: strp("Paris"), Day: i32p(1)},
+		},
+		Accommodations: []store.Accommodation{{ID: uuid.New(), Name: "Hotel", Booked: true,
+			CheckIn: dateVal(t, "2026-08-01"), CheckOut: dateVal(t, "2026-08-02")}},
+	}
+	fs := reviewTrip(context.Background(), d, reviewOptions{}, reviewDeps{})
+	if len(fs) != 0 {
+		t.Fatalf("clean trip should have no findings, got %+v", fs)
+	}
+	if b, _ := json.Marshal(fs); string(b) != "[]" {
+		t.Fatalf("expected JSON [], got %s", b)
+	}
+}
+
 func TestReviewTrip_DeterministicOrder(t *testing.T) {
 	trip := store.Trip{ID: uuid.New(), Status: "planned",
 		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-03")}
