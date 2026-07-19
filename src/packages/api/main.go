@@ -791,6 +791,12 @@ func buildRouter() *mux.Router {
 	api.Handle("/trips/{id}/checklist", authMiddleware(http.HandlerFunc(addChecklistItemHandler))).Methods("POST")
 	api.Handle("/trips/{id}/checklist/{itemId}", authMiddleware(http.HandlerFunc(patchChecklistItemHandler))).Methods("PATCH")
 	api.Handle("/trips/{id}/checklist/{itemId}", authMiddleware(http.HandlerFunc(deleteChecklistItemHandler))).Methods("DELETE")
+	api.Handle("/trips/{id}/budget", authMiddleware(http.HandlerFunc(getBudgetHandler))).Methods("GET")
+	api.Handle("/trips/{id}/budget", authMiddleware(http.HandlerFunc(putBudgetHandler))).Methods("PUT")
+	api.Handle("/trips/{id}/budget/expenses", authMiddleware(http.HandlerFunc(listExpensesHandler))).Methods("GET")
+	api.Handle("/trips/{id}/budget/expenses", authMiddleware(http.HandlerFunc(addExpenseHandler))).Methods("POST")
+	api.Handle("/trips/{id}/budget/expenses/{expenseId}", authMiddleware(http.HandlerFunc(patchExpenseHandler))).Methods("PATCH")
+	api.Handle("/trips/{id}/budget/expenses/{expenseId}", authMiddleware(http.HandlerFunc(deleteExpenseHandler))).Methods("DELETE")
 
 	// Local-source content — curation is admin-only (authMiddleware + adminMiddleware).
 	api.Handle("/admin/local/sources", admin(listLocalSourcesHandler)).Methods("GET")

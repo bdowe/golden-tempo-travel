@@ -238,6 +238,15 @@ type Trip struct {
 	UpdatedBy pgtype.UUID `json:"updated_by"`
 }
 
+type TripBudget struct {
+	ID           uuid.UUID `json:"id"`
+	TripID       uuid.UUID `json:"trip_id"`
+	TargetAmount *float64  `json:"target_amount"`
+	Currency     string    `json:"currency"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type TripChecklistItem struct {
 	ID        uuid.UUID `json:"id"`
 	TripID    uuid.UUID `json:"trip_id"`
@@ -258,6 +267,18 @@ type TripCollaborator struct {
 	Role      string             `json:"role"`
 	CreatedAt time.Time          `json:"created_at"`
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type TripExpense struct {
+	ID        uuid.UUID `json:"id"`
+	TripID    uuid.UUID `json:"trip_id"`
+	Category  string    `json:"category"`
+	Label     string    `json:"label"`
+	Amount    float64   `json:"amount"`
+	Position  int32     `json:"position"`
+	Auto      bool      `json:"auto"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type TripInvite struct {
