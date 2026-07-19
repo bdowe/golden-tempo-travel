@@ -672,6 +672,7 @@ func buildRouter() *mux.Router {
 	api.HandleFunc("/flights/search", flightsSearchHandler).Methods("POST")
 	api.HandleFunc("/flights/airports", airportsSearchHandler).Methods("GET")
 	api.HandleFunc("/events/search", eventsSearchHandler).Methods("GET")
+	api.HandleFunc("/weather", weatherSearchHandler).Methods("GET")
 	api.HandleFunc("/ferries/search", ferriesSearchHandler).Methods("GET")
 	api.HandleFunc("/events/greece-links", greeceEventsLinksHandler).Methods("GET")
 	api.Handle("/plan", strict(http.HandlerFunc(planHandler))).Methods("POST")

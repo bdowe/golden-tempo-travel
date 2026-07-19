@@ -215,6 +215,38 @@ func (s *WeatherService) fetchDaily(ctx context.Context, geo geoResult, start, e
 	return report, nil
 }
 
+// weatherSearchHandler serves GET /api/v1/weather?city=&start_date=&end_date=,
+// returning the WeatherReport as JSON. Public and keyless, matching the events
+// lookup. Weather is best-effort trip decoration: a geocode miss or a provider
+// hiccup yields a clean empty report (200) rather than a 500 — the client just
+// shows no chip. Only a missing required param is a hard 400.
+func weatherSearchHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	q := r.URL.Query()
+	city := strings.TrimSpace(q.Get("city"))
+	startDate := strings.TrimSpace(q.Get("start_date"))
+	endDate := strings.TrimSpace(q.Get("end_date"))
+	if city == "" || startDate == "" {
+		http.Error(w, "Missing required query parameters 'city' and 'start_date'", http.StatusBadRequest)
+		return
+	}
+	if endDate == "" {
+		endDate = startDate
+	}
+
+	report, err := weatherService.GetTripWeather(r.Context(), city, startDate, endDate)
+	if err != nil {
+		// Best-effort: log the detail server-side, hand the client an empty
+		// report so weather never blocks the itinerary or leaks provider
+		// error strings.
+		ctxLog(r.Context()).Info("weather lookup returned no data", "error", err)
+		json.NewEncoder(w).Encode(WeatherReport{Days: []WeatherDay{}})
+		return
+	}
+	json.NewEncoder(w).Encode(report)
+}
+
 // summarizeWeather renders a report as compact text for the model.
 func summarizeWeather(r WeatherReport) string {
 	var b strings.Builder
