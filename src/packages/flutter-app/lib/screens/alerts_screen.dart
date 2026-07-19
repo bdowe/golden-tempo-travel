@@ -4,6 +4,7 @@ import '../models/price_alert.dart';
 import '../providers/alerts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/spacing.dart';
+import '../utils/money_format.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/offline_banner.dart' show relativeTime;
 import '../widgets/page_container.dart';
@@ -151,10 +152,10 @@ class _AlertCard extends ConsumerWidget {
     final checked = alert.lastCheckedPrice;
     final parts = <String>[];
     if (checked != null) {
-      parts.add('Last seen $cur ${checked.toStringAsFixed(0)}');
+      parts.add('Last seen ${formatMoney(checked, cur)}');
     }
     if (alert.targetPrice != null) {
-      parts.add('target $cur ${alert.targetPrice!.toStringAsFixed(0)}');
+      parts.add('target ${formatMoney(alert.targetPrice!, cur)}');
     } else {
       parts.add('watching for any drop');
     }
@@ -179,8 +180,7 @@ class _AlertCard extends ConsumerWidget {
     final checked = alert.lastCheckedPrice;
     if (base == null || checked == null || checked >= base) return null;
     final cur = alert.currency ?? '';
-    final delta = (base - checked).toStringAsFixed(0);
-    return 'Down $cur $delta from when you started watching';
+    return 'Down ${formatMoney(base - checked, cur)} from when you started watching';
   }
 
   /// "Checked 2 hours ago" from the last check time, if we have one.

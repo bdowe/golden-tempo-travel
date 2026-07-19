@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../utils/money_format.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../models/airbnb_listing.dart';
 import '../models/trip.dart';
@@ -173,7 +174,7 @@ class _AirbnbParserScreenState extends ConsumerState<AirbnbParserScreen> {
         },
         if (listing.pricing.hasPricing)
           'price_note':
-              '${listing.pricing.currency} ${listing.pricing.nightlyRate.toStringAsFixed(0)}/night',
+              '${formatMoney(listing.pricing.nightlyRate, listing.pricing.currency)}/night',
       });
       if (!mounted) return;
       final open = await showDialog<bool>(

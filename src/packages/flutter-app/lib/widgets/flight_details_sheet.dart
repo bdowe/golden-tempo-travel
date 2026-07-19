@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
+import '../utils/money_format.dart';
 import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import '../utils/snack.dart';
@@ -156,7 +157,7 @@ class _BaggageRow extends StatelessWidget {
     switch (offer.baggageStatus) {
       case 'paid':
         note =
-            '+${offer.currency} ${offer.bagFee.toStringAsFixed(0)} bag fee included in price';
+            '+${formatMoney(offer.bagFee, offer.currency)} bag fee included in price';
         noteColor = muted;
       case 'unknown':
         note = 'Your bag is not included — check the fee with the airline';

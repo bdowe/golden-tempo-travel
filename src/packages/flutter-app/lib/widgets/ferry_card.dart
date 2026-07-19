@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/ferry_option.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/money_format.dart';
 import '../utils/tracked_launch.dart';
 
 /// A ferry option: route, date, and (when available) operator/time/price,
@@ -26,8 +27,7 @@ class FerryCard extends StatelessWidget {
     final detail = [
       if (option.operator.isNotEmpty) option.operator,
       if (option.departTime.isNotEmpty) option.departTime,
-      if (option.price > 0)
-        '${option.currency.isEmpty ? '' : '${option.currency} '}${option.price.toStringAsFixed(0)}',
+      if (option.price > 0) formatMoney(option.price, option.currency),
     ].join(' · ');
 
     return Card(

@@ -33,7 +33,7 @@ void main() {
         _offer('b', 180, baggageStatus: 'paid', effectivePrice: 223),
         _offer('c', 190, baggageStatus: 'paid', effectivePrice: 250),
       ];
-      expect(savingsLabelFor(offers, 'a'), 'Saves USD 23 vs next option');
+      expect(savingsLabelFor(offers, 'a'), 'Saves \$23 vs next option');
     });
 
     test('null on bare-fare searches (no baggage status)', () {
@@ -57,7 +57,7 @@ void main() {
             currency: 'EUR'),
         _offer('d', 210, baggageStatus: 'paid', effectivePrice: 260),
       ];
-      expect(savingsLabelFor(offers, 'a'), 'Saves USD 60 vs next option');
+      expect(savingsLabelFor(offers, 'a'), 'Saves \$60 vs next option');
       expect(savingsLabelFor([offers[0], offers[1]], 'a'), isNull);
     });
 
@@ -93,12 +93,12 @@ void main() {
             offer: _offer('a', 200,
                 baggageStatus: 'included', effectivePrice: 200),
             isBest: true,
-            savingsLabel: 'Saves USD 23 vs next option',
+            savingsLabel: 'Saves \$23 vs next option',
           ),
         ),
       ));
       expect(find.text('BEST MATCH'), findsOneWidget);
-      expect(find.text('Saves USD 23 vs next option'), findsOneWidget);
+      expect(find.text('Saves \$23 vs next option'), findsOneWidget);
     });
 
     testWidgets('renders no pill by default', (tester) async {

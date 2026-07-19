@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
+import '../utils/money_format.dart';
 import '../utils/tracked_launch.dart';
 import 'airline_logo.dart';
 import 'flight_details_sheet.dart';
@@ -36,7 +37,7 @@ String? savingsLabelFor(List<FlightOffer> offers, String? bestOfferId) {
   if (nextBest == null) return null;
   final saved = nextBest - best.displayPrice;
   if (saved < 0.5) return null;
-  return 'Saves ${best.currency} ${saved.toStringAsFixed(0)} vs next option';
+  return 'Saves ${formatMoney(saved, best.currency)} vs next option';
 }
 
 /// A single ranked flight offer rendered as a card — airline(s), route, price,
@@ -59,7 +60,7 @@ class FlightOfferCard extends StatelessWidget {
   String? get _bagBadge => switch (offer.baggageStatus) {
         'included' => 'Bag included',
         'paid' =>
-          'incl. bag +${offer.currency} ${offer.bagFee.toStringAsFixed(0)}',
+          'incl. bag +${formatMoney(offer.bagFee, offer.currency)}',
         'unknown' => 'Bag fee unknown',
         _ => null,
       };
@@ -161,7 +162,7 @@ class FlightOfferCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${offer.currency} ${offer.displayPrice.toStringAsFixed(0)}',
+                        formatMoney(offer.displayPrice, offer.currency),
                         style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold, color: accent),
                       ),

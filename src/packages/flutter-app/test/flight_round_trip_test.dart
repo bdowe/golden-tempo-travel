@@ -598,26 +598,26 @@ void main() {
         (tester) async {
       await pumpCard(
           tester, bagOffer(status: 'paid', bagFee: 60, effective: 160));
-      expect(find.text('USD 160'), findsOneWidget);
-      expect(find.text('incl. bag +USD 60'), findsOneWidget);
+      expect(find.text('\$160'), findsOneWidget);
+      expect(find.text('incl. bag +\$60'), findsOneWidget);
     });
 
     testWidgets('included offer shows a bag-included badge', (tester) async {
       await pumpCard(tester, bagOffer(status: 'included', effective: 100));
-      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.text('\$100'), findsOneWidget);
       expect(find.text('Bag included'), findsOneWidget);
     });
 
     testWidgets('unknown fee is called out instead of silently underpricing',
         (tester) async {
       await pumpCard(tester, bagOffer(status: 'unknown'));
-      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.text('\$100'), findsOneWidget);
       expect(find.text('Bag fee unknown'), findsOneWidget);
     });
 
     testWidgets('personal-item searches render no badge', (tester) async {
       await pumpCard(tester, bagOffer());
-      expect(find.text('USD 100'), findsOneWidget);
+      expect(find.text('\$100'), findsOneWidget);
       expect(find.textContaining('Bag'), findsNothing);
     });
   });

@@ -230,8 +230,8 @@ void main() {
     expect(find.text('Price dropped'), findsOneWidget);
     expect(find.text('Paused'), findsOneWidget);
     expect(find.text('Expired'), findsOneWidget);
-    expect(find.textContaining('target USD 450'), findsOneWidget);
-    expect(find.textContaining('Last seen USD 498'), findsNWidgets(4));
+    expect(find.textContaining('target \$450'), findsOneWidget);
+    expect(find.textContaining('Last seen \$498'), findsNWidgets(4));
   });
 
   testWidgets('pause action patches the alert', (tester) async {
@@ -268,8 +268,8 @@ void main() {
     ]);
 
     // Drop line uses price + previous_price.
-    expect(find.textContaining('USD 412, down from USD 498'), findsOneWidget);
-    expect(find.textContaining('USD 210, down from USD 260'), findsOneWidget);
+    expect(find.textContaining('\$412, down from \$498'), findsOneWidget);
+    expect(find.textContaining('\$210, down from \$260'), findsOneWidget);
 
     // Newest first: the JFK→LAX row (newer occurred_at) sits above BOS→CDG.
     final newerY = tester.getTopLeft(find.text('JFK → LAX')).dy;
@@ -280,7 +280,7 @@ void main() {
   testWidgets('event with no previous price shows just the new price',
       (tester) async {
     await _pumpCenter(tester, events: [_event(previousPrice: null, price: 300)]);
-    expect(find.textContaining('USD 300'), findsOneWidget);
+    expect(find.textContaining('\$300'), findsOneWidget);
     expect(find.textContaining('down from'), findsNothing);
   });
 
@@ -329,7 +329,7 @@ void main() {
             .toIso8601String(),
       ),
     ]);
-    expect(find.textContaining('Down USD 86 from when you started watching'),
+    expect(find.textContaining('Down \$86 from when you started watching'),
         findsOneWidget);
     expect(find.textContaining('Checked 2 hours ago'), findsOneWidget);
   });
