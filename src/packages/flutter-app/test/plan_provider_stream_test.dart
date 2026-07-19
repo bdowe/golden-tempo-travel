@@ -13,7 +13,7 @@ class _FakePlanService extends PlanService {
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,
@@ -30,13 +30,13 @@ class _FakePlanService extends PlanService {
 /// assert what the server would receive and how events mutate state.
 class _ScriptedPlanService extends PlanService {
   final List<PlanEvent> events;
-  List<Map<String, String>>? lastHistory;
+  List<Map<String, dynamic>>? lastHistory;
 
   _ScriptedPlanService(this.events) : super('http://unused');
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,

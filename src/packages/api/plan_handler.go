@@ -38,6 +38,26 @@ const (
 	planMaxMessageChars = 20000
 )
 
+// Image attachment caps. Per-image tracks Anthropic's 5 MB decoded limit
+// (base64 is ~4/3 of that); the per-message/per-request counts bound token
+// cost — like message text, every attached image is resent with the history
+// on each agent-loop iteration. The 20 MiB /plan body lane (middleware.go) is
+// the effective aggregate byte bound; these caps exist to fail single-message
+// abuse and Anthropic-side rejections early with a friendly SSE error.
+const (
+	planMaxImagesPerMessage = 4
+	planMaxImagesPerRequest = 12
+	planMaxImageBase64Len   = 6_800_000
+)
+
+// planImageMediaTypes is the allowlist Anthropic accepts for image blocks.
+var planImageMediaTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+}
+
 type PlanRequest struct {
 	Messages []PlanChatMessage `json:"messages"`
 	// Summary is the compacted context from earlier turns, previously handed to
@@ -52,8 +72,19 @@ type PlanRequest struct {
 }
 
 type PlanChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content string      `json:"content"`
+	Images  []PlanImage `json:"images,omitempty"`
+}
+
+// PlanImage is one image attached to a user message. Persisted transcripts
+// keep MediaType but blank Data (savePlanChatSession), so a resumed client can
+// render an "image attached" placeholder without megabytes of base64 living in
+// the JSONB transcript; empty-Data images are skipped when building the model
+// request.
+type PlanImage struct {
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"` // base64, no data: URI prefix
 }
 
 func sendSSE(w http.ResponseWriter, eventType string, data any) {
@@ -84,10 +115,36 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		sendSSE(w, "error", map[string]string{"message": "This conversation is too long to continue. Please start a new chat to keep planning."})
 		return
 	}
+	totalImages := 0
 	for _, m := range req.Messages {
 		if utf8.RuneCountInString(m.Content) > planMaxMessageChars {
 			sendSSE(w, "error", map[string]string{"message": "One of the messages is too long for the planner. Please shorten it and try again."})
 			return
+		}
+		if len(m.Images) > 0 && m.Role != "user" {
+			sendSSE(w, "error", map[string]string{"message": "Images can only be attached to your own messages."})
+			return
+		}
+		if len(m.Images) > planMaxImagesPerMessage {
+			sendSSE(w, "error", map[string]string{"message": "A message can include at most 4 images. Please remove some and try again."})
+			return
+		}
+		totalImages += len(m.Images)
+		if totalImages > planMaxImagesPerRequest {
+			sendSSE(w, "error", map[string]string{"message": "This conversation has too many images to continue. Please start a new chat to keep planning."})
+			return
+		}
+		for _, img := range m.Images {
+			// Empty Data is the stripped placeholder shape from a resumed
+			// transcript — valid on the wire, skipped at conversion time.
+			if img.Data != "" && !planImageMediaTypes[img.MediaType] {
+				sendSSE(w, "error", map[string]string{"message": "That image format isn't supported. Please use a JPEG, PNG, GIF, or WebP image."})
+				return
+			}
+			if len(img.Data) > planMaxImageBase64Len {
+				sendSSE(w, "error", map[string]string{"message": "One of the images is too large. Please attach images under 5 MB."})
+				return
+			}
 		}
 	}
 	if utf8.RuneCountInString(req.Summary) > planMaxMessageChars {
@@ -255,7 +312,25 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	var messages []anthropic.MessageParam
 	for _, m := range req.Messages {
 		if m.Role == "user" {
-			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
+			var blocks []anthropic.ContentBlockParamUnion
+			for _, img := range m.Images {
+				if img.Data == "" {
+					continue // stripped placeholder from a resumed transcript
+				}
+				blocks = append(blocks, anthropic.NewImageBlockBase64(img.MediaType, img.Data))
+			}
+			// Image-only messages carry no text block. A resumed image-only
+			// message whose pixels were stripped would otherwise be empty —
+			// the API rejects both empty content arrays and empty text
+			// blocks — so it gets a marker keeping the transcript coherent.
+			text := m.Content
+			if strings.TrimSpace(text) == "" && len(blocks) == 0 {
+				text = "[attached an image that is no longer available]"
+			}
+			if strings.TrimSpace(text) != "" {
+				blocks = append(blocks, anthropic.NewTextBlock(text))
+			}
+			messages = append(messages, anthropic.NewUserMessage(blocks...))
 		} else {
 			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
 		}

@@ -59,7 +59,23 @@ func savePlanChatSession(ctx context.Context, uid uuid.UUID, chatID, summary str
 	if dbPool == nil || len(msgs) == 0 {
 		return
 	}
-	payload, err := json.Marshal(msgs)
+	// Persist images as markers only: the transcript is upserted wholesale
+	// twice per turn, so inlined base64 would rewrite megabytes to the JSONB
+	// column every message. MediaType survives so a resumed client can render
+	// an "image attached" placeholder; the empty Data round-trips as the
+	// placeholder shape plan_handler.go skips at conversion time.
+	persistable := append([]PlanChatMessage(nil), msgs...)
+	for i, m := range persistable {
+		if len(m.Images) == 0 {
+			continue
+		}
+		stripped := make([]PlanImage, len(m.Images))
+		for j, img := range m.Images {
+			stripped[j] = PlanImage{MediaType: img.MediaType}
+		}
+		persistable[i].Images = stripped
+	}
+	payload, err := json.Marshal(persistable)
 	if err != nil {
 		log.Printf("failed to marshal chat session %s: %v", chatID, err)
 		return

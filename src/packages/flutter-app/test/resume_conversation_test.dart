@@ -8,7 +8,7 @@ import 'package:travel_route_planner/services/plan_service.dart';
 /// Records every streamPlan call (history, chatId, summary) and replies with
 /// one text delta — the seam for asserting what a resumed session sends.
 class _RecordingPlanService extends PlanService {
-  final List<List<Map<String, String>>> histories = [];
+  final List<List<Map<String, dynamic>>> histories = [];
   final List<String?> chatIds = [];
   final List<String?> summaries = [];
 
@@ -16,7 +16,7 @@ class _RecordingPlanService extends PlanService {
 
   @override
   Stream<PlanEvent> streamPlan(
-    List<Map<String, String>> messages, {
+    List<Map<String, dynamic>> messages, {
     String? bearerToken,
     String? chatId,
     String? tripId,
