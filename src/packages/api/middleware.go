@@ -84,8 +84,8 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 // tens of KB; /plan resends the whole chat history so it gets a wider lane.
 //
 // The /plan lane must comfortably cover everything plan_handler.go's own
-// rune caps admit: planMaxMessages (40) x planMaxMessageChars (20,000 runes)
-// of 4-byte UTF-8 is ~3.2 MiB of content plus JSON framing. Image attachments
+// rune caps admit: planMaxMessages (60) x planMaxMessageChars (20,000 runes)
+// of 4-byte UTF-8 is ~4.6 MiB of content plus JSON framing. Image attachments
 // widen the lane: the client downscales to ~100-300 KB base64 per image, but
 // the per-image cap admits up to ~6.8 MB, so this body cap — not the
 // planMaxImagesPerRequest count — is the effective aggregate byte bound for
