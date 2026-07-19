@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"time"
+
+	"travel-route-planner/store"
 )
 
 // Postgres-backed tests for GET /trips/{id}/review. A deliberately-broken trip
@@ -123,5 +127,101 @@ func TestTripReview_NonOwner404(t *testing.T) {
 	rec := doJSON(t, "GET", "/api/v1/trips/"+id+"/review", strangerToken, nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("non-owner review = %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestTripReview_HoursFindings drives the ?check_hours=true path against a fake
+// Google Places double: a place scheduled to a weekday it's closed on surfaces
+// an "hours" finding, and the check does not run without the query flag.
+func TestTripReview_HoursFindings(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	trip := createTestTrip(t, owner.ID, 0)
+	id := trip.ID.String()
+
+	// 2026-08-03 is a Monday; the place is "Closed" on Mondays in the double.
+	rec := doJSON(t, "PATCH", "/api/v1/trips/"+id, ownerToken, map[string]any{
+		"start_date": "2026-08-03", "end_date": "2026-08-05", "status": "planned",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch trip = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// An item with a place_id, scheduled to Day 1 (the Monday).
+	pid := "p1"
+	day := int32(1)
+	if _, err := store.New(dbPool).CreateItineraryItem(context.Background(), store.CreateItineraryItemParams{
+		TripID: trip.ID, Position: 0, Name: "Musée Rodin", PlaceID: &pid,
+		Latitude: 48.85, Longitude: 2.31, Day: &day,
+	}); err != nil {
+		t.Fatalf("insert item: %v", err)
+	}
+
+	// Point the shared Places singleton at the closed-Monday double.
+	svc, _ := placesDouble(t, closedMondayDetailsJSON)
+	prev := placesService
+	placesService = svc
+	t.Cleanup(func() { placesService = prev })
+
+	// Without the flag: no hours check.
+	if got := reviewCategories(t, id, ownerToken); got["hours"] {
+		t.Fatalf("hours finding present without ?check_hours: %v", got)
+	}
+
+	// With the flag: the closed-weekday warning appears.
+	rec = doJSON(t, "GET", "/api/v1/trips/"+id+"/review?check_hours=true", ownerToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET review = %d: %s", rec.Code, rec.Body.String())
+	}
+	var gotHours bool
+	for _, f := range listOf(t, decode(t, rec), "findings") {
+		if f["category"] == "hours" {
+			gotHours = true
+		}
+	}
+	if !gotHours {
+		t.Fatalf("expected an hours finding with ?check_hours=true: %s", rec.Body.String())
+	}
+}
+
+// TestTripReview_WeatherFindings exercises the always-on weather check against a
+// rainy forecast double: an outdoor item on a rainy trip day yields a weather
+// finding.
+func TestTripReview_WeatherFindings(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	trip := createTestTrip(t, owner.ID, 0)
+	id := trip.ID.String()
+
+	// Near-future dates so the forecast (not archive) path runs and its dates
+	// line up exactly with the trip days.
+	start := time.Now().AddDate(0, 0, 3)
+	rec := doJSON(t, "PATCH", "/api/v1/trips/"+id, ownerToken, map[string]any{
+		"start_date": start.Format(dateLayout),
+		"end_date":   start.AddDate(0, 0, 1).Format(dateLayout),
+		"status":     "planned",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch trip = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// An outdoor attraction in Paris on Day 1.
+	city := "Paris"
+	category := "attraction"
+	day := int32(1)
+	if _, err := store.New(dbPool).CreateItineraryItem(context.Background(), store.CreateItineraryItemParams{
+		TripID: trip.ID, Position: 0, Name: "Eiffel Tower", City: &city, Category: &category,
+		Latitude: 48.85, Longitude: 2.35, Day: &day,
+	}); err != nil {
+		t.Fatalf("insert item: %v", err)
+	}
+
+	// Point the shared weather singleton at a rainy, mild forecast double.
+	prev := weatherService
+	weatherService = weatherStub(t, true, 22, 14)
+	t.Cleanup(func() { weatherService = prev })
+
+	if got := reviewCategories(t, id, ownerToken); !got["weather"] {
+		t.Fatalf("expected a weather finding for a rainy outdoor day, got %v", got)
 	}
 }

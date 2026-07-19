@@ -162,6 +162,82 @@ var addPackingItemTool = anthropic.ToolParam{
 	},
 }
 
+var reviewTripTool = anthropic.ToolParam{
+	Name:        "review_trip",
+	Description: anthropic.String("Run an automated health check on the trip currently open in this conversation. It flags real problems in the saved plan — unscheduled items, nights with no lodging, missing transport between cities, over-budget spend, unconfirmed bookings, likely rain on outdoor days, and temperature extremes — all derived from the saved trip plus a live weather lookup (nothing invented). Use it when the traveler asks whether their trip is ready or what they're missing, or proactively before wrapping up. After reviewing, offer to fix issues with update_itinerary_section, add_booking_todo, or add_packing_item. No arguments — it reviews the open trip."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{},
+	},
+}
+
+// runReviewTripTool reviews the session's bound trip and narrates the findings.
+// It defaults CheckHours off: the operating-hours check spends real Google
+// money, and a conversational review shouldn't silently bill — the traveler can
+// still run the hours-aware review from the trip page (?check_hours=true).
+func runReviewTripTool(s *planSession, input json.RawMessage) (string, bool) {
+	if !s.authed {
+		return "The traveler isn't signed in, so there's no saved trip to review. Keep planning here in the conversation.", true
+	}
+	if s.boundTripID == nil {
+		return "No trip is open in this conversation to review. Ask the traveler to open one of their saved trips, then try again.", true
+	}
+	if dbPool == nil {
+		return "Trip review is unavailable right now (persistence offline).", true
+	}
+	data, ok := loadExportData(s.ctx, *s.boundTripID)
+	if !ok {
+		return "Could not load that trip to review it.", true
+	}
+
+	// Budget lives outside exportData; load it exactly like the review handler
+	// so checkBudget sees the same numbers.
+	q := store.New(dbPool)
+	var budget *store.TripBudget
+	if b, err := q.GetBudgetByTrip(s.ctx, *s.boundTripID); err == nil {
+		budget = &b
+	}
+	var br *BudgetResponse
+	if expenses, err := q.ListExpensesByTrip(s.ctx, *s.boundTripID); err == nil {
+		resp := buildBudgetResponse(budget, expenses)
+		br = &resp
+	}
+
+	findings := reviewTrip(s.ctx, data,
+		reviewOptions{CheckHours: false, Budget: br},
+		reviewDeps{Weather: weatherService})
+	return formatReviewFindings(findings), false
+}
+
+// formatReviewFindings renders findings for the model to narrate: grouped by
+// severity, each line already carrying its day number where relevant.
+func formatReviewFindings(findings []Finding) string {
+	if len(findings) == 0 {
+		return "Trip review found no issues — the saved plan looks complete: every day has something, nights are covered, and transport and bookings are in order. Reassure the traveler briefly."
+	}
+	bySev := map[string][]Finding{}
+	for _, f := range findings {
+		bySev[f.Severity] = append(bySev[f.Severity], f)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Trip review found %d thing(s) worth flagging:\n", len(findings))
+	for _, grp := range []struct{ key, header string }{
+		{"critical", "Critical"},
+		{"warn", "Needs attention"},
+		{"info", "Heads-up"},
+	} {
+		fs := bySev[grp.key]
+		if len(fs) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s:\n", grp.header)
+		for _, f := range fs {
+			b.WriteString("- " + f.Message + "\n")
+		}
+	}
+	b.WriteString("Summarize these for the traveler in plain language and offer to fix them — you can update the itinerary, add booking to-dos, or add packing items.")
+	return b.String()
+}
+
 func runAddPackingItemTool(s *planSession, input json.RawMessage) (string, bool) {
 	var in struct {
 		TripID   string `json:"trip_id"`

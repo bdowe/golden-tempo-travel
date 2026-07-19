@@ -43,10 +43,12 @@ func getTripReviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	br := buildBudgetResponse(budget, expenses)
 
-	// PR3 wires the operating-hours check behind ?check_hours=true; accepted
-	// (and tolerantly parsed) now so the surface is stable.
+	// ?check_hours=true opts into the billable, live-Google operating-hours
+	// check; weather enrichment always runs (keyless + cached).
 	checkHours, _ := strconv.ParseBool(r.URL.Query().Get("check_hours"))
 
-	findings := reviewTrip(data, reviewOptions{CheckHours: checkHours, Budget: &br})
+	findings := reviewTrip(r.Context(), data,
+		reviewOptions{CheckHours: checkHours, Budget: &br},
+		reviewDeps{Weather: weatherService, Places: placesService})
 	writeJSON(w, http.StatusOK, ReviewResponse{Findings: findings})
 }

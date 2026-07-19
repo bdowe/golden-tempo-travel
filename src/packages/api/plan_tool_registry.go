@@ -98,6 +98,8 @@ var planToolRegistry = []planTool{
 	{def: updateBookingTodoTool, enabled: authedOnly, run: runUpdateBookingTodoTool},
 	{def: removeBookingTodoTool, enabled: authedOnly, run: runRemoveBookingTodoTool},
 	{def: addPackingItemTool, enabled: authedOnly, run: runAddPackingItemTool},
+	{def: reviewTripTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
+		run: runReviewTripTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the
