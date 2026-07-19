@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -64,6 +65,30 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if _, err := boundedString("name", name, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateCoords(req.Latitude, req.Longitude); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("address", req.Address, maxAddressLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("city", req.City, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("day_trip_from", req.DayTripFrom, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("local_source_name", req.LocalSourceName, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	var category *string
 	if req.Category != nil {
 		c := strings.ToLower(strings.TrimSpace(*req.Category))
@@ -84,8 +109,8 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var day *int32
 	if req.Day != nil {
-		if *req.Day < 1 {
-			writeJSONError(w, http.StatusBadRequest, "day must be >= 1")
+		if *req.Day < 1 || *req.Day > maxItineraryDay {
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("day must be between 1 and %d", maxItineraryDay))
 			return
 		}
 		d := int32(*req.Day)
@@ -137,6 +162,11 @@ func addItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 	items, err := q.GetItineraryItemsByTrip(ctx, tripID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not load itinerary")
+		return
+	}
+	if len(items) >= maxItemsPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("itinerary is full (max %d items) — remove one first", maxItemsPerTrip()))
 		return
 	}
 	pos := insertPositionForDay(items, req.Day)
@@ -230,11 +260,31 @@ func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	if err := validateCoords(req.Latitude, req.Longitude); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("address", req.Address, maxAddressLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("city", req.City, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("day_trip_from", req.DayTripFrom, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	params := store.UpdateItineraryItemParams{ID: itemID, TripID: tripID}
 	if req.Name != nil {
 		n := strings.TrimSpace(*req.Name)
 		if n == "" {
 			writeJSONError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		if _, err := boundedString("name", n, maxNameLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		params.Name = &n
@@ -256,8 +306,8 @@ func patchItineraryItemHandler(w http.ResponseWriter, r *http.Request) {
 		params.TimeOfDay = &t
 	}
 	if req.Day != nil {
-		if *req.Day < 1 {
-			writeJSONError(w, http.StatusBadRequest, "day must be >= 1")
+		if *req.Day < 1 || *req.Day > maxItineraryDay {
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("day must be between 1 and %d", maxItineraryDay))
 			return
 		}
 		d := int32(*req.Day)
