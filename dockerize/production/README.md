@@ -1,4 +1,4 @@
-# Production stack — goldentempo.co
+# Production stack — goldentempotravel.com
 
 Runs the prebuilt GHCR images on a VPS behind **Cloudflare** (proxied DNS,
 SSL mode **Full (strict)**). The gateway terminates TLS with a **Cloudflare
@@ -20,7 +20,7 @@ Cloudflare edge IPs.
 └── backups/                  # backup.sh output (gzipped pg_dump custom format)
 
 /etc/goldentempo/certs/
-├── origin.crt                # Cloudflare Origin CA certificate (goldentempo.co + *.goldentempo.co)
+├── origin.crt                # Cloudflare Origin CA certificate (goldentempotravel.com + *.goldentempotravel.com)
 └── origin.key                # its private key (chmod 600, root-owned)
 ```
 
@@ -136,10 +136,10 @@ fresh scratch volume first, then swap it under the live stack and confirm
 ## Sanity checks after a deploy
 
 ```bash
-curl -fsS https://goldentempo.co/health              # gateway
-curl -fsS https://goldentempo.co/api/v1/health       # API through the proxy
-curl -sI  http://goldentempo.co/                     # 301 → https apex
-curl -sI  https://www.goldentempo.co/                # 301 → apex
+curl -fsS https://goldentempotravel.com/health              # gateway
+curl -fsS https://goldentempotravel.com/api/v1/health       # API through the proxy
+curl -sI  http://goldentempotravel.com/                     # 301 → https apex
+curl -sI  https://www.goldentempotravel.com/                # 301 → apex
 ```
 
 For the full end-to-end journey (register → trip → item → share/OG → export →
@@ -151,7 +151,7 @@ against production:
 # sql seed mode is local-only (needs the postgres container); against prod use
 # plan mode (the AI planner builds a real trip — costs a little Anthropic spend)
 # or existing mode with a trip you own (SMOKE_TRIP_ID + SMOKE_TOKEN=<bearer>).
-make smoke BASE_URL=https://goldentempo.co SMOKE_SEED_MODE=plan
+make smoke BASE_URL=https://goldentempotravel.com SMOKE_SEED_MODE=plan
 ```
 
 Green means the traveler journey works end to end; the run also prints a
