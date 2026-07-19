@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -238,6 +239,22 @@ func addBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "title is required")
 		return
 	}
+	if _, err := boundedString("title", req.Title, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("subtitle", req.Subtitle, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("provider", req.Provider, maxProviderLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := boundedOptional("search_url", req.SearchURL, maxURLLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	depart, err := parseDateParam(req.DepartDate)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "depart_date must be YYYY-MM-DD")
@@ -246,6 +263,12 @@ func addBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 	ret, err := parseDateParam(req.ReturnDate)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "return_date must be YYYY-MM-DD")
+		return
+	}
+	if existing, err := store.New(dbPool).ListBookingTodosByTrip(r.Context(), tripID); err == nil &&
+		len(existing) >= maxBookingTodosPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("booking todo limit reached (max %d) — remove one first", maxBookingTodosPerTrip()))
 		return
 	}
 
@@ -350,7 +373,19 @@ func patchBookingTodoHandler(w http.ResponseWriter, r *http.Request) {
 				writeJSONError(w, http.StatusBadRequest, "title cannot be empty")
 				return
 			}
+			if _, err := boundedString("title", t, maxNameLen); err != nil {
+				writeJSONError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			title = &t
+		}
+		if err := boundedOptional("subtitle", req.Subtitle, maxNameLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := boundedOptional("search_url", req.SearchURL, maxURLLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
 		}
 		depart, derr := parseDateParam(req.DepartDate)
 		if derr != nil {

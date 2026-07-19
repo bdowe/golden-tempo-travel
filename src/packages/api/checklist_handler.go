@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -89,9 +90,19 @@ func addChecklistItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "title is required")
 		return
 	}
+	if _, err := boundedString("title", title, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	category, valid := normalizeChecklistCategory(req.Category)
 	if !valid {
 		writeJSONError(w, http.StatusBadRequest, "category must be one of: clothing, documents, electronics, health, general")
+		return
+	}
+	if n, err := store.New(dbPool).CountChecklistItemsByTrip(r.Context(), trip.ID); err == nil &&
+		int(n) >= maxChecklistItemsPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("checklist is full (max %d items) — remove one first", maxChecklistItemsPerTrip()))
 		return
 	}
 
@@ -153,6 +164,10 @@ func patchChecklistItemHandler(w http.ResponseWriter, r *http.Request) {
 		t := strings.TrimSpace(*req.Title)
 		if t == "" {
 			writeJSONError(w, http.StatusBadRequest, "title cannot be empty")
+			return
+		}
+		if _, err := boundedString("title", t, maxNameLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		params.Title = &t

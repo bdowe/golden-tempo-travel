@@ -218,6 +218,14 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "password must be at least 8 characters")
 		return
 	}
+	// Cap the optional display name, mirroring the account-update path's 60-rune
+	// limit (account_handler.go). Empty/absent falls back to a default below.
+	if req.DisplayName != nil {
+		if _, err := boundedString("display_name", *req.DisplayName, maxDisplayNameLen); err != nil {
+			writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+	}
 
 	// Per-IP daily account-creation ceiling (abuse_caps.go): stops one network
 	// from minting accounts en masse. Counts only successful creations (bumped

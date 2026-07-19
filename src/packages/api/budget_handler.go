@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -204,6 +205,10 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "label is required")
 		return
 	}
+	if _, err := boundedString("label", label, maxNameLen); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if req.Amount < 0 {
 		writeJSONError(w, http.StatusBadRequest, "amount cannot be negative")
 		return
@@ -215,6 +220,12 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := store.New(dbPool)
+	if existing, err := q.ListExpensesByTrip(r.Context(), trip.ID); err == nil &&
+		len(existing) >= maxExpensesPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("expense limit reached (max %d) — remove one first", maxExpensesPerTrip()))
+		return
+	}
 	expense, err := q.CreateExpense(r.Context(), store.CreateExpenseParams{
 		TripID:   trip.ID,
 		Category: category,
@@ -272,6 +283,10 @@ func patchExpenseHandler(w http.ResponseWriter, r *http.Request) {
 		l := strings.TrimSpace(*req.Label)
 		if l == "" {
 			writeJSONError(w, http.StatusBadRequest, "label cannot be empty")
+			return
+		}
+		if _, err := boundedString("label", l, maxNameLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		params.Label = &l

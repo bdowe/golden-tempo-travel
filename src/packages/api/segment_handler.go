@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,27 @@ import (
 
 var allowedSegmentModes = map[string]bool{
 	"flight": true, "train": true, "bus": true, "car": true, "ferry": true, "other": true,
+}
+
+// validateSegmentInput bounds the free-text fields shared by the add + patch
+// paths. `notes` is the biggest megabyte sink, so it gets the note ceiling.
+func validateSegmentInput(req *AddSegmentRequest) error {
+	if err := boundedOptional("origin", req.Origin, maxNameLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("destination", req.Destination, maxNameLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("provider", req.Provider, maxProviderLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("url", req.URL, maxURLLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("price_note", req.PriceNote, maxNoteLen); err != nil {
+		return err
+	}
+	return boundedOptional("notes", req.Notes, maxNoteLen)
 }
 
 type SegmentResponse struct {
@@ -103,6 +125,10 @@ func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "mode must be one of: flight, train, bus, car, ferry, other")
 		return
 	}
+	if err := validateSegmentInput(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	depart, err := parseDateParam(req.DepartDate)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "depart_date must be YYYY-MM-DD")
@@ -115,6 +141,12 @@ func addSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if depart.Valid && arrive.Valid && arrive.Time.Before(depart.Time) {
 		writeJSONError(w, http.StatusBadRequest, "arrive_date must not be before depart_date")
+		return
+	}
+	if existing, err := store.New(dbPool).ListSegmentsByTrip(r.Context(), tripID); err == nil &&
+		len(existing) >= maxSegmentsPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("segment limit reached (max %d) — remove one first", maxSegmentsPerTrip()))
 		return
 	}
 
@@ -161,6 +193,10 @@ func updateSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))
 	if mode != "" && !allowedSegmentModes[mode] {
 		writeJSONError(w, http.StatusBadRequest, "mode must be one of: flight, train, bus, car, ferry, other")
+		return
+	}
+	if err := validateSegmentInput(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	depart, err := parseDateParam(req.DepartDate)

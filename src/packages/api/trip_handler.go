@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -235,6 +236,15 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, 
 			newLineage = false
 		case exists:
 			newLineage = false
+		}
+	}
+
+	// Runaway guard: a brand-new lineage counts against the per-user trip cap.
+	// Version saves of an existing lineage are exempt (they don't grow the
+	// lineage count). Generous by default — a normal user never hits it.
+	if newLineage {
+		if n, cerr := q.CountActiveTripLineagesByOwner(ctx, userID); cerr == nil && int(n) >= maxTripsPerUser() {
+			return "", false, fmt.Errorf("trip limit reached (%d trips) — delete an old trip first", maxTripsPerUser())
 		}
 	}
 
@@ -512,6 +522,18 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Status != nil && !allowedStatuses[*req.Status] {
 		writeJSONError(w, http.StatusBadRequest, "status must be 'draft' or 'planned'")
 		return
+	}
+	if req.Title != nil {
+		t := strings.TrimSpace(*req.Title)
+		if t == "" {
+			writeJSONError(w, http.StatusBadRequest, "title cannot be empty")
+			return
+		}
+		if _, err := boundedString("title", t, maxNameLen); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		req.Title = &t
 	}
 
 	start, err := parseDateParam(req.StartDate)

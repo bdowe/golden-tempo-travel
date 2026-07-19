@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,28 @@ import (
 
 	"travel-route-planner/store"
 )
+
+// validateAccommodationInput bounds the free-text/coordinate fields shared by
+// the add + patch paths. Length ceilings are generous — this blocks megabyte
+// sinks, not normal input.
+func validateAccommodationInput(req *AddAccommodationRequest) error {
+	if _, err := boundedString("name", req.Name, maxNameLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("provider", req.Provider, maxProviderLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("url", req.URL, maxURLLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("address", req.Address, maxAddressLen); err != nil {
+		return err
+	}
+	if err := boundedOptional("price_note", req.PriceNote, maxNoteLen); err != nil {
+		return err
+	}
+	return validateCoords(req.Latitude, req.Longitude)
+}
 
 type AccommodationResponse struct {
 	ID        string   `json:"id"`
@@ -99,6 +122,10 @@ func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if err := validateAccommodationInput(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	checkIn, err := parseDateParam(req.CheckIn)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "check_in must be YYYY-MM-DD")
@@ -107,6 +134,12 @@ func addAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 	checkOut, err := parseDateParam(req.CheckOut)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "check_out must be YYYY-MM-DD")
+		return
+	}
+	if existing, err := store.New(dbPool).ListAccommodationsByTrip(r.Context(), tripID); err == nil &&
+		len(existing) >= maxAccommodationsPerTrip() {
+		writeJSONError(w, http.StatusUnprocessableEntity,
+			fmt.Sprintf("accommodation limit reached (max %d) — remove one first", maxAccommodationsPerTrip()))
 		return
 	}
 
@@ -148,6 +181,10 @@ func updateAccommodationHandler(w http.ResponseWriter, r *http.Request) {
 	var req AddAccommodationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := validateAccommodationInput(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	checkIn, err := parseDateParam(req.CheckIn)
