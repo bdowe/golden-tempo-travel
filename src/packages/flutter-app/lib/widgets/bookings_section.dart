@@ -386,7 +386,20 @@ class BookingsSection extends StatelessWidget {
 /// to editing.
 class AddStaySheet extends StatefulWidget {
   final Accommodation? initial;
-  const AddStaySheet({super.key, this.initial});
+
+  /// Optional prefills for a fresh (non-edit) sheet, used by the Trip Health
+  /// "Add a stay" fix. Ignored when [initial] is set. Dates are YYYY-MM-DD.
+  final String? initialName;
+  final String? initialCheckIn;
+  final String? initialCheckOut;
+
+  const AddStaySheet({
+    super.key,
+    this.initial,
+    this.initialName,
+    this.initialCheckIn,
+    this.initialCheckOut,
+  });
 
   @override
   State<AddStaySheet> createState() => _AddStaySheetState();
@@ -413,6 +426,14 @@ class _AddStaySheetState extends State<AddStaySheet> {
       _priceNote.text = a.priceNote ?? '';
       _checkIn = a.checkIn == null ? null : DateTime.tryParse(a.checkIn!);
       _checkOut = a.checkOut == null ? null : DateTime.tryParse(a.checkOut!);
+    } else {
+      if (widget.initialName != null) _name.text = widget.initialName!;
+      _checkIn = widget.initialCheckIn == null
+          ? null
+          : DateTime.tryParse(widget.initialCheckIn!);
+      _checkOut = widget.initialCheckOut == null
+          ? null
+          : DateTime.tryParse(widget.initialCheckOut!);
     }
   }
 
@@ -558,7 +579,22 @@ class _AddStaySheetState extends State<AddStaySheet> {
 /// labels flip to editing.
 class AddSegmentSheet extends StatefulWidget {
   final TripSegment? initial;
-  const AddSegmentSheet({super.key, this.initial});
+
+  /// Optional prefills for a fresh (non-edit) sheet, used by the Trip Health
+  /// "Add transport" fix. Ignored when [initial] is set. Date is YYYY-MM-DD.
+  final String? initialOrigin;
+  final String? initialDestination;
+  final String? initialMode;
+  final String? initialDepartDate;
+
+  const AddSegmentSheet({
+    super.key,
+    this.initial,
+    this.initialOrigin,
+    this.initialDestination,
+    this.initialMode,
+    this.initialDepartDate,
+  });
 
   @override
   State<AddSegmentSheet> createState() => _AddSegmentSheetState();
@@ -586,6 +622,15 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
       _mode = s.mode;
       _departDate =
           s.departDate == null ? null : DateTime.tryParse(s.departDate!);
+    } else {
+      if (widget.initialOrigin != null) _origin.text = widget.initialOrigin!;
+      if (widget.initialDestination != null) {
+        _destination.text = widget.initialDestination!;
+      }
+      if (widget.initialMode != null) _mode = widget.initialMode!;
+      _departDate = widget.initialDepartDate == null
+          ? null
+          : DateTime.tryParse(widget.initialDepartDate!);
     }
   }
 
