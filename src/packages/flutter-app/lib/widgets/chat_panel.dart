@@ -12,6 +12,8 @@ import '../providers/plan_provider.dart';
 import '../services/dictation_controller.dart';
 import '../services/image_attachment_pipeline.dart';
 import '../theme/app_colors.dart';
+import '../utils/clipboard_images_stub.dart'
+    if (dart.library.js_interop) '../utils/clipboard_images_web.dart';
 import '../utils/tracked_launch.dart';
 import 'result_summary_chip.dart';
 
@@ -68,6 +70,10 @@ class ChatPanel extends ConsumerStatefulWidget {
 class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final _inputFocus = FocusNode();
+
+  /// Removes the web paste listener (no-op off web).
+  late final void Function() _cancelPasteListener;
 
   /// Voice dictation for this composer (specs/voice-dictation): writes
   /// transcripts into [_controller]; the user reviews and sends normally.
@@ -99,6 +105,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     super.initState();
     _dictation = ref.read(dictationControllerFactoryProvider)(_controller);
     _dictation.addListener(_onDictationChanged);
+    // Paste-from-clipboard (web only): focus-gated so exactly one mounted
+    // panel handles a paste, and pastes outside the composer are untouched.
+    _cancelPasteListener = listenForPastedImages(
+      () => mounted && _inputFocus.hasFocus,
+      (files) {
+        if (mounted) _addFiles(files);
+      },
+    );
   }
 
   void _onDictationChanged() {
@@ -112,10 +126,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   @override
   void dispose() {
+    _cancelPasteListener();
     _dictation.removeListener(_onDictationChanged);
     _dictation.dispose();
     _controller.dispose();
     _scrollController.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 
@@ -297,6 +313,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         _InputBar(
           controller: _controller,
+          focusNode: _inputFocus,
           isStreaming: isStreaming,
           hint: widget.inputHint,
           onSend: _send,
@@ -1105,6 +1122,7 @@ class _StreamingCursorState extends State<_StreamingCursor>
 
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool isStreaming;
   final String hint;
   final VoidCallback onSend;
@@ -1113,6 +1131,7 @@ class _InputBar extends StatelessWidget {
 
   const _InputBar({
     required this.controller,
+    required this.focusNode,
     required this.isStreaming,
     required this.hint,
     required this.onSend,
@@ -1145,6 +1164,7 @@ class _InputBar extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
               maxLines: null,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),

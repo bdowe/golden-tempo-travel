@@ -47,6 +47,9 @@ ChatGPT.
       message; nothing is sent.
 - [ ] The same attachment experience works in both the main planning chat and
       the trip-refine chat panel.
+- [ ] On the web app, pasting an image from the clipboard (e.g. a screenshot)
+      while the message field is focused attaches it like a drop; pasting
+      plain text still pastes text normally.
 - [ ] Resuming a saved conversation shows an "image" placeholder where images
       were attached; the conversation can continue normally.
 
@@ -110,7 +113,8 @@ No new endpoints. The existing plan-streaming request is extended:
 
 ## Out of Scope
 
-- Camera capture and paste-from-clipboard (paste is a candidate follow-up).
+- Camera capture; paste-from-clipboard on native desktop/mobile (web paste
+  shipped as a follow-up — native needs a clipboard plugin dependency).
 - Image pixels surviving chat resume (placeholder only; no object storage).
 - Images on trip itineraries, bookings, or anywhere outside the chat.
 - Image generation or editing by the agent.
