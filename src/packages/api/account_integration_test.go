@@ -25,6 +25,42 @@ func TestAccountDisplayNameUpdate(t *testing.T) {
 	}
 }
 
+// The client syncs its resolved locale here so background email (which has no
+// request to negotiate from) knows what language to write in.
+func TestAccountLocaleRoundTrip(t *testing.T) {
+	resetDB(t)
+	_, token := createTestUser(t, "me@example.com")
+
+	// Never-set locale is absent rather than an empty string.
+	if _, present := decode(t, doJSON(t, "GET", "/api/v1/auth/me", token, nil))["locale"]; present {
+		t.Fatal("locale should be omitted before it is ever set")
+	}
+
+	// Regional tags fold to the base language.
+	rec := doJSON(t, "PATCH", "/api/v1/auth/account", token, map[string]any{"locale": "es-MX"})
+	if rec.Code != http.StatusOK || decode(t, rec)["locale"] != "es" {
+		t.Fatalf("patch locale = %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decode(t, doJSON(t, "GET", "/api/v1/auth/me", token, nil))["locale"]; got != "es" {
+		t.Fatalf("/auth/me locale = %v, want es", got)
+	}
+
+	// A locale-only patch must not disturb the display name, and vice versa.
+	rec = doJSON(t, "PATCH", "/api/v1/auth/account", token, map[string]any{"display_name": "Brian D"})
+	if body := decode(t, rec); body["display_name"] != "Brian D" || body["locale"] != "es" {
+		t.Fatalf("display-name patch clobbered locale: %s", rec.Body.String())
+	}
+
+	if rec := doJSON(t, "PATCH", "/api/v1/auth/account", token, map[string]any{
+		"locale": "klingon",
+	}); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unsupported locale = %d, want 422", rec.Code)
+	}
+	if rec := doJSON(t, "PATCH", "/api/v1/auth/account", token, map[string]any{}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty patch = %d, want 400", rec.Code)
+	}
+}
+
 func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 	resetDB(t)
 	user, tokenA := createTestUser(t, "me@example.com")

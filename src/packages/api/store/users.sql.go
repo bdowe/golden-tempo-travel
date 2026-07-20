@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name)
 VALUES ($1, $2, $3)
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale
 `
 
 type CreateUserParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.RemindersOptOut,
 		&i.NudgesOptOut,
 		&i.LastWeeklyNudgeAt,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -56,7 +57,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at FROM users WHERE email = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -75,12 +76,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.RemindersOptOut,
 		&i.NudgesOptOut,
 		&i.LastWeeklyNudgeAt,
+		&i.Locale,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at FROM users WHERE id = $1
+SELECT id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -99,6 +101,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.RemindersOptOut,
 		&i.NudgesOptOut,
 		&i.LastWeeklyNudgeAt,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -153,7 +156,7 @@ func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) error
 const markUserOnboarded = `-- name: MarkUserOnboarded :one
 UPDATE users SET onboarded_at = COALESCE(onboarded_at, now())
 WHERE id = $1
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale
 `
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
@@ -172,6 +175,7 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, er
 		&i.RemindersOptOut,
 		&i.NudgesOptOut,
 		&i.LastWeeklyNudgeAt,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -181,7 +185,7 @@ UPDATE users SET
     reminders_opt_out = COALESCE($1, reminders_opt_out),
     nudges_opt_out    = COALESCE($2, nudges_opt_out)
 WHERE id = $3
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale
 `
 
 type SetUserEmailOptOutParams struct {
@@ -209,36 +213,7 @@ func (q *Queries) SetUserEmailOptOut(ctx context.Context, arg SetUserEmailOptOut
 		&i.RemindersOptOut,
 		&i.NudgesOptOut,
 		&i.LastWeeklyNudgeAt,
-	)
-	return i, err
-}
-
-const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
-UPDATE users SET display_name = $2 WHERE id = $1
-RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at
-`
-
-type UpdateUserDisplayNameParams struct {
-	ID          uuid.UUID `json:"id"`
-	DisplayName *string   `json:"display_name"`
-}
-
-func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUserDisplayName, arg.ID, arg.DisplayName)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Email,
-		&i.PasswordHash,
-		&i.DisplayName,
-		&i.IsAdmin,
-		&i.OnboardedAt,
-		&i.EmailVerifiedAt,
-		&i.RemindersOptOut,
-		&i.NudgesOptOut,
-		&i.LastWeeklyNudgeAt,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -255,4 +230,43 @@ type UpdateUserPasswordParams struct {
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
 	return err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users SET
+    display_name = COALESCE($1, display_name),
+    locale       = COALESCE($2, locale)
+WHERE id = $3
+RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale
+`
+
+type UpdateUserProfileParams struct {
+	DisplayName *string   `json:"display_name"`
+	Locale      *string   `json:"locale"`
+	ID          uuid.UUID `json:"id"`
+}
+
+// Partial account update: a NULL arg leaves that column untouched, so one query
+// serves a display-name edit, a locale sync, or both. Same shape as
+// SetUserEmailOptOut below. Locale is never cleared back to NULL — the client
+// always resolves "System default" to a concrete language before syncing.
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile, arg.DisplayName, arg.Locale, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.IsAdmin,
+		&i.OnboardedAt,
+		&i.EmailVerifiedAt,
+		&i.RemindersOptOut,
+		&i.NudgesOptOut,
+		&i.LastWeeklyNudgeAt,
+		&i.Locale,
+	)
+	return i, err
 }

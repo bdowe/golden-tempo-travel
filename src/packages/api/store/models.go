@@ -358,4 +358,5 @@ type User struct {
 	RemindersOptOut   bool               `json:"reminders_opt_out"`
 	NudgesOptOut      bool               `json:"nudges_opt_out"`
 	LastWeeklyNudgeAt pgtype.Timestamptz `json:"last_weekly_nudge_at"`
+	Locale            *string            `json:"locale"`
 }
