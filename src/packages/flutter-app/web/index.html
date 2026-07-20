@@ -144,6 +144,61 @@
     });
   </script>
 
+  <script>
+    // Password-manager autofill shim. Flutter web only gives the *focused*
+    // text field a real DOM rect; its AutofillGroup siblings are left at
+    // 0x0 (upstream flutter/flutter#61301, #127694), and 1Password/Bitwarden
+    // refuse to fill zero-size inputs (anti-phishing visibility check) — so
+    // picking a login filled only the focused field. Give the siblings a
+    // plausible on-screen rect stacked around the focused field; they stay
+    // visually transparent and click-through, and values the extension
+    // writes into them reach Flutter through the engine's own listeners.
+    // Only elements currently at 0x0 are touched, so the engine's own
+    // styling of the focused element always wins and the MutationObserver
+    // settles instead of looping.
+    (function () {
+      var scheduled = false;
+      function sizeAutofillSiblings() {
+        scheduled = false;
+        var focused = document.querySelector(
+            'form input.flt-text-editing, form textarea.flt-text-editing');
+        if (!focused || !focused.form) return;
+        var rect = focused.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        var fields = Array.prototype.filter.call(
+            focused.form.querySelectorAll('input, textarea'),
+            function (el) { return el.type !== 'submit'; });
+        var focusedIdx = fields.indexOf(focused);
+        fields.forEach(function (el, i) {
+          if (el === focused || el.offsetWidth > 0 || el.offsetHeight > 0) {
+            return;
+          }
+          var y = rect.top + (i - focusedIdx) * (rect.height + 40);
+          el.style.position = 'absolute';
+          el.style.top = '0px';
+          el.style.left = '0px';
+          el.style.transform =
+              'translate(' + rect.left + 'px, ' + y + 'px)';
+          el.style.width = rect.width + 'px';
+          el.style.height = rect.height + 'px';
+          el.style.pointerEvents = 'none';
+        });
+      }
+      function schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(sizeAutofillSiblings);
+      }
+      new MutationObserver(schedule).observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class'],
+      });
+      document.addEventListener('focusin', schedule, true);
+    })();
+  </script>
+
   <!-- Flutter initialization: build-generated bootstrap (inlines the loader,
        the build config, and the injected service-worker version — verified in
        build/web/flutter_bootstrap.js). Replaces the deprecated
