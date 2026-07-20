@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../constants/app_info.dart';
 import '../models/local_guide.dart';
 import '../providers/auth_provider.dart';
@@ -18,9 +17,6 @@ import '../widgets/gradient_app_bar.dart';
 import '../widgets/live_trip_card.dart';
 import '../widgets/page_container.dart';
 import '../widgets/section_header.dart';
-import 'route_optimizer_screen.dart';
-import 'airbnb_parser_screen.dart';
-import 'flight_search_screen.dart';
 import 'guides_screen.dart';
 import 'local_guide_detail_screen.dart';
 import 'trip_detail_screen.dart';
@@ -38,7 +34,6 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final user = ref.watch(authProvider).user;
     final recentTrip = ref.watch(recentTripProvider);
     // Populated app-wide: AppShell's IndexedStack keeps TripsListScreen
@@ -138,78 +133,6 @@ class HomeScreen extends ConsumerWidget {
                 // error, or when there are none, so the section (header
                 // included) only appears when there is something to show.
                 const _LocalGuidesRow(),
-
-                // Remaining manual tools, collapsed by default.
-                Card(
-                  elevation: 2,
-                  clipBehavior: Clip.antiAlias,
-                  child: ExpansionTile(
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    tilePadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(Icons.explore_outlined,
-                          color: AppColors.brand, size: 26),
-                    ),
-                    title: Text(
-                      'Planning toolkit',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _ToolRow(
-                          icon: MdiIcons.mapMarkerMultiple,
-                          color: AppColors.toolRoute,
-                          title: 'Route Optimizer',
-                          description:
-                              'Map out the smartest path between your stops in a city',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const RouteOptimizerScreen()),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _ToolRow(
-                          icon: MdiIcons.airplane,
-                          color: AppColors.toolFlights,
-                          title: 'Find Flights',
-                          description:
-                              'Compare flights by price, schedule, and stops',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const FlightSearchScreen()),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _ToolRow(
-                          icon: Icons.home_work_outlined,
-                          color: AppColors.toolAirbnb,
-                          title: 'Airbnb Lookup',
-                          description:
-                              'Paste an Airbnb link to preview photos, pricing, and details',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const AirbnbParserScreen()),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
 
                 const SizedBox(height: 16),
               ],
@@ -637,72 +560,6 @@ class _GuideImageFallback extends StatelessWidget {
       decoration: BoxDecoration(gradient: AppColors.brandGradient),
       alignment: Alignment.center,
       child: const Icon(Icons.menu_book, size: 28, color: Colors.white70),
-    );
-  }
-}
-
-class _ToolRow extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String description;
-  final VoidCallback onTap;
-
-  const _ToolRow({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.description,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 26),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      description,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, size: 16, color: color),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
