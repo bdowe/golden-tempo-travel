@@ -182,9 +182,10 @@ func findOrCreateGoogleUser(r *http.Request, claims googleClaims) (store.User, e
 	return q.GetUserByID(ctx, user.ID)
 }
 
-// googleExchangeHandler swaps the one-time handoff code for a real session.
-// Response shape matches login so the app can adopt it directly.
-func googleExchangeHandler(w http.ResponseWriter, r *http.Request) {
+// ssoExchangeHandler swaps the one-time handoff code for a real session.
+// Response shape matches login so the app can adopt it directly. Provider-
+// agnostic: the 'sso' tokens Google and Apple callbacks issue are identical.
+func ssoExchangeHandler(w http.ResponseWriter, r *http.Request) {
 	if dbPool == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
 		return

@@ -94,11 +94,15 @@ TRANSCRIPTION_BASE_URL=...      # Default https://api.groq.com/openai/v1
 TRANSCRIPTION_MODEL=...         # Default whisper-large-v3-turbo
 GOOGLE_OAUTH_CLIENT_ID=...      # Sign in with Google (server-side OAuth), with...
 GOOGLE_OAUTH_CLIENT_SECRET=...  # ...this; register <PUBLIC_BASE_URL>/api/v1/auth/google/callback as redirect URI
+APPLE_TEAM_ID=...               # Sign in with Apple (specs/apple-sso): Team ID, plus...
+APPLE_CLIENT_ID=...             # ...the Services ID, ...
+APPLE_KEY_ID=...                # ...the .p8 key id, and...
+APPLE_PRIVATE_KEY=...           # ...the .p8 PEM base64-encoded onto one line
 SENTRY_DSN=...                  # Optional error alerting; empty => Sentry fully inert
 DATABASE_URL=...                # Postgres connection; absent/unreachable => degraded mode (no persistence)
 ```
 
-Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected. Without `TICKETMASTER_API_KEY`, the `/events/search` endpoint (and the `/plan` agent's `search_events` tool) returns a configured-error; the rest of the API is unaffected. Without `TRANSCRIPTION_API_KEY`, the dictation fallback is disabled (`/transcribe/availability` reports it) and the mic only appears in browsers with built-in speech recognition. Without the `GOOGLE_OAUTH_*` pair, the Google button is hidden and `/auth/google` answers 503; email+password auth is unaffected. `FERRYHOPPER_AFFILIATE_ID` is optional — ferry links work without it (just unattributed). `.env.sample` documents further optional vars: `SMTP_*` (verification/reset email; empty => tokens are logged instead), `PUBLIC_BASE_URL`/`PUBLIC_APP_PATH`, `ALLOWED_ORIGINS` (CORS, dev-only), `BOOKING_AFFILIATE_ID`, `PORT`, price-alert cadence (`ALERT_*`), free-cap tuning (`FREE_*`), `ANTHROPIC_BASE_URL` (test seam), and `SENTRY_RELEASE`.
+Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/plan` handler also calls `search_places` internally, which will fail without the key. Without `DUFFEL_ACCESS_TOKEN`, the `/flights/*` endpoints return a configured-error; the rest of the API is unaffected. Without `TICKETMASTER_API_KEY`, the `/events/search` endpoint (and the `/plan` agent's `search_events` tool) returns a configured-error; the rest of the API is unaffected. Without `TRANSCRIPTION_API_KEY`, the dictation fallback is disabled (`/transcribe/availability` reports it) and the mic only appears in browsers with built-in speech recognition. Without the `GOOGLE_OAUTH_*` pair, the Google button is hidden and `/auth/google` answers 503; likewise the four `APPLE_*` vars gate the Apple button and `/auth/apple`; email+password auth is unaffected either way. `FERRYHOPPER_AFFILIATE_ID` is optional — ferry links work without it (just unattributed). `.env.sample` documents further optional vars: `SMTP_*` (verification/reset email; empty => tokens are logged instead), `PUBLIC_BASE_URL`/`PUBLIC_APP_PATH`, `ALLOWED_ORIGINS` (CORS, dev-only), `BOOKING_AFFILIATE_ID`, `PORT`, price-alert cadence (`ALERT_*`), free-cap tuning (`FREE_*`), `ANTHROPIC_BASE_URL` (test seam), and `SENTRY_RELEASE`.
 
 ## API Endpoints
 
@@ -120,7 +124,8 @@ Without `GOOGLE_PLACES_API_KEY`, place search endpoints return errors. The `/pla
 | GET | `/api/v1/admin/local/coverage` | **Admin.** Per-city published/draft counts |
 | GET | `/api/v1/admin/metrics` | **Admin.** Phase-1 funnel metrics; siblings `/admin/metrics/{timeseries,totals,activity,users}` power the tabbed analytics dashboard |
 | POST | `/api/v1/transcribe` | Voice-dictation fallback: audio clip → text via OpenAI-compatible transcription (Groq default); `GET /api/v1/transcribe/availability` gates the mic UI |
-| GET | `/api/v1/auth/google` | Sign in with Google: server-side OAuth redirect flow (specs/google-sso); callback lands on `/sso/<one-time code>`, exchanged via `POST /auth/google/exchange`; `GET /auth/google/availability` gates the button |
+| GET | `/api/v1/auth/google` | Sign in with Google: server-side OAuth redirect flow (specs/google-sso); callback lands on `/sso/<one-time code>`, exchanged via `POST /auth/sso/exchange` (`/auth/google/exchange` is a legacy alias); `GET /auth/google/availability` gates the button |
+| GET | `/api/v1/auth/apple` | Sign in with Apple (specs/apple-sso): same flow with a **POST** form_post callback, ES256 client-secret JWT, no PKCE; `GET /auth/apple/availability` gates the button |
 | GET | `/api/v1/chats` | Resumable (in-progress) plan conversations; excludes chats that produced a trip |
 | GET/DELETE | `/api/v1/chats/{chatId}` | Full transcript for resume / dismiss a conversation |
 | POST | `/api/v1/plan` | SSE stream; Claude claude-sonnet-4-6 agent loop over a 16-tool registry (see `plan_tool_registry.go`) — notably `search_places`, `search_local_recommendations`, `search_flights`, `search_events`, `create_itinerary` / `update_itinerary_section` (mutually exclusive by session), `save_preferences`, and booking-todo tools |
