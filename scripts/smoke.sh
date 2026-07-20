@@ -141,9 +141,10 @@ PASSWORD=""
 ACCOUNT_DELETED=0
 cleanup() {
   if [ -n "$TOKEN" ] && [ "$ACCOUNT_DELETED" = 0 ]; then
-    curl -sS -o /dev/null --max-time "$SMOKE_TIMEOUT" -X DELETE "$API/auth/account" \
-      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-      -d "$(jq -n --arg p "$PASSWORD" '{password:$p}')" >/dev/null 2>&1 || true
+    # Via req so a 429 gets one Retry-After retry: a die() mid-run lands here
+    # with the strict per-IP bucket still hot, which used to strand the user.
+    req DELETE /auth/account "$(jq -n --arg p "$PASSWORD" '{password:$p}')" \
+      "Authorization: Bearer $TOKEN" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
