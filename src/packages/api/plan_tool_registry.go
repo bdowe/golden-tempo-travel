@@ -50,6 +50,9 @@ type planSession struct {
 	// connectivityCalls counts check_flight_connectivity uses, capped per
 	// session to bound Duffel spend.
 	connectivityCalls int
+	// travelMode is the traveler's stated mode for this trip (set_travel_mode);
+	// create_itinerary persists it onto the trip. Empty = never stated.
+	travelMode string
 }
 
 // planTool is one registry entry.
@@ -106,6 +109,9 @@ var planToolRegistry = []planTool{
 		run: runAddTransportSegmentTool},
 	{def: moveItineraryItemTool, enabled: func(s *planSession) bool { return s.authed && s.boundTripID != nil },
 		run: runMoveItineraryItemTool},
+	// No enabled gate: anonymous/unbound sessions record the mode on the
+	// session so the plan itself avoids the wrong transport.
+	{def: setTravelModeTool, run: runSetTravelModeTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the
@@ -368,7 +374,7 @@ func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool
 	// Persist the trip only for signed-in callers; anonymous sessions
 	// stay ephemeral (no trip_id in the done event).
 	if s.authed {
-		if tripID, newLineage, err := persistTrip(s.ctx, s.uid, s.req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, in.Locations); err != nil {
+		if tripID, newLineage, err := persistTrip(s.ctx, s.uid, s.req.ChatID, in.Title, in.Summary, in.StartDate, in.EndDate, s.travelMode, in.Locations); err != nil {
 			log.Printf("failed to persist trip: %v", err)
 		} else {
 			donePayload["trip_id"] = tripID

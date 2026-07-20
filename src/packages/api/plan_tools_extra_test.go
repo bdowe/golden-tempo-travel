@@ -396,6 +396,45 @@ func TestAgentFixToolsGuardWhenUnbound(t *testing.T) {
 	}
 }
 
+func TestSetTravelModeTool(t *testing.T) {
+	resetDB(t)
+
+	// Invalid mode → error, session untouched.
+	anon, _ := testPlanSession(false, uuid.Nil)
+	if msg, isErr := runSetTravelModeTool(anon, json.RawMessage(`{"mode":"teleport"}`)); !isErr {
+		t.Fatalf("invalid mode accepted: %q", msg)
+	}
+	if anon.travelMode != "" {
+		t.Fatalf("session mode after invalid input = %q", anon.travelMode)
+	}
+
+	// Anonymous/unbound → success, session-only, promises to apply at save.
+	msg, isErr := runSetTravelModeTool(anon, json.RawMessage(`{"mode":"car"}`))
+	if isErr || anon.travelMode != "car" {
+		t.Fatalf("anon set = %q (err=%v, mode=%q)", msg, isErr, anon.travelMode)
+	}
+	if !strings.Contains(msg, "do not search or suggest flights") ||
+		!strings.Contains(msg, "saved with the itinerary") {
+		t.Fatalf("anon note = %q", msg)
+	}
+
+	// Bound trip → row updated immediately + trip_updated SSE.
+	owner, ownerToken := createTestUser(t, "agent@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	s, rec := boundPlanSession(owner.ID, trip.ID)
+	msg, isErr = runSetTravelModeTool(s, json.RawMessage(`{"mode":"train"}`))
+	if isErr || s.travelMode != "train" {
+		t.Fatalf("bound set = %q (err=%v, mode=%q)", msg, isErr, s.travelMode)
+	}
+	if !strings.Contains(rec.Body.String(), "trip_updated") {
+		t.Fatal("set_travel_mode did not emit trip_updated")
+	}
+	get := doJSON(t, "GET", "/api/v1/trips/"+trip.ID.String(), ownerToken, nil)
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"travel_mode":"train"`) {
+		t.Fatalf("travel_mode not on trip: %d %s", get.Code, get.Body.String())
+	}
+}
+
 func TestAddAccommodationToolWritesBoundTrip(t *testing.T) {
 	resetDB(t)
 	owner, ownerToken := createTestUser(t, "agent@example.com")

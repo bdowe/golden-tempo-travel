@@ -90,8 +90,11 @@ func bookingSearchURL(kind, destination string, origin *string, departDate, retu
 		if strings.TrimSpace(o) == "" || strings.TrimSpace(destination) == "" {
 			return "", ""
 		}
+		// No mode filter: the candidate list must include ground providers
+		// (rome2rio) so a ground-trip preference is honorable; the fallback
+		// stays links[0] = google_flights, preserving legacy behavior when no
+		// (or an unknown) provider is preferred.
 		links := transportLinks(TransportQuery{
-			Mode:        "flight",
 			Origin:      o,
 			Destination: destination,
 			DepartDate:  strPtrVal(departDate),

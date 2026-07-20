@@ -53,7 +53,7 @@ type FindingFix struct {
 	CheckIn         *string `json:"check_in,omitempty"`  // YYYY-MM-DD
 	CheckOut        *string `json:"check_out,omitempty"` // YYYY-MM-DD
 	Date            *string `json:"date,omitempty"`      // YYYY-MM-DD
-	Mode            *string `json:"mode,omitempty"`      // ferry|flight|train|bus
+	Mode            *string `json:"mode,omitempty"`      // ferry|flight|train|bus|car
 	PackingItem     *string `json:"packing_item,omitempty"`
 	PackingCategory *string `json:"packing_category,omitempty"`
 }
@@ -450,7 +450,23 @@ func checkTransit(d exportData) []Finding {
 		greek := isGreekLocation(origin) || isGreekLocation(dest)
 		label, mode := "Add transport", "flight"
 		if greek {
+			// Island legs stay ferry regardless of the trip's travel mode —
+			// you can't drive between islands.
 			label, mode = "Add ferry", "ferry"
+		} else if tm := d.Trip.TravelMode; tm != nil && allowedSegmentModes[*tm] {
+			// 'mixed' fails the allowedSegmentModes check and keeps the
+			// flight default — intended.
+			mode = *tm
+			switch *tm {
+			case "car":
+				label = "Add drive"
+			case "train":
+				label = "Add train"
+			case "bus":
+				label = "Add bus"
+			case "ferry":
+				label = "Add ferry"
+			}
 		}
 		fix := &FindingFix{
 			Action: "add_transport", Label: label,

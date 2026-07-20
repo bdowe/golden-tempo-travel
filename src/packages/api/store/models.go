@@ -243,17 +243,18 @@ type TravelerPreference struct {
 }
 
 type Trip struct {
-	ID        uuid.UUID   `json:"id"`
-	UserID    uuid.UUID   `json:"user_id"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
-	Title     string      `json:"title"`
-	StartDate pgtype.Date `json:"start_date"`
-	EndDate   pgtype.Date `json:"end_date"`
-	Status    string      `json:"status"`
-	ChatID    *string     `json:"chat_id"`
-	Summary   *string     `json:"summary"`
-	UpdatedBy pgtype.UUID `json:"updated_by"`
+	ID         uuid.UUID   `json:"id"`
+	UserID     uuid.UUID   `json:"user_id"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+	Title      string      `json:"title"`
+	StartDate  pgtype.Date `json:"start_date"`
+	EndDate    pgtype.Date `json:"end_date"`
+	Status     string      `json:"status"`
+	ChatID     *string     `json:"chat_id"`
+	Summary    *string     `json:"summary"`
+	UpdatedBy  pgtype.UUID `json:"updated_by"`
+	TravelMode *string     `json:"travel_mode"`
 }
 
 type TripBudget struct {

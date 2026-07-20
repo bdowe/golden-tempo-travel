@@ -197,6 +197,71 @@ func TestPlanCreateItineraryPersistsTrip(t *testing.T) {
 	waitForEventCount(t, user.ID, "trip_created", 1)
 }
 
+// set_travel_mode before create_itinerary: the session-recorded mode lands on
+// the persisted trip, and the tools array offers set_travel_mode at the tail
+// (cache-prefix regression guard).
+func TestPlanSetTravelModePersistsWithItinerary(t *testing.T) {
+	resetDB(t)
+	fa := newFakeAnthropic(t,
+		toolTurn("set_travel_mode", `{"mode":"car"}`),
+		toolTurn("create_itinerary", `{
+			"title":"Nantucket Drive","summary":"A driving trip to Nantucket.",
+			"locations":[
+				{"name":"Whaling Museum","latitude":41.2835,"longitude":-70.0995,"day":1,"city":"Nantucket","category":"attraction","time_of_day":"morning"}
+			]}`),
+		textTurn("Saved your Nantucket road trip!"))
+
+	user, token := createTestUser(t, "driver@example.com")
+
+	rec := doJSON(t, "POST", "/api/v1/plan", token, PlanRequest{
+		ChatID:   "chat-nantucket",
+		Messages: []PlanChatMessage{{Role: "user", Content: "we're driving to Nantucket"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d, want 200", rec.Code)
+	}
+	events := planEvents(t, rec.Body.String())
+	if errs := eventsOfType(events, "error"); len(errs) != 0 {
+		t.Fatalf("unexpected error events: %v", errs)
+	}
+	dones := eventsOfType(events, "done")
+	if len(dones) != 1 {
+		t.Fatalf("done events = %d, want 1", len(dones))
+	}
+	tripID, _ := eventData(dones[0])["trip_id"].(string)
+	if tripID == "" {
+		t.Fatal("done event carries no trip_id")
+	}
+
+	tripRec := doJSON(t, "GET", "/api/v1/trips/"+tripID, token, nil)
+	if tripRec.Code != http.StatusOK {
+		t.Fatalf("GET trip = %d: %s", tripRec.Code, tripRec.Body.String())
+	}
+	if trip := decode(t, tripRec); trip["travel_mode"] != "car" {
+		t.Fatalf("persisted travel_mode = %v, want car", trip["travel_mode"])
+	}
+
+	// Registry-tail guard: the tools array offered to the model must end with
+	// set_travel_mode — new tools may only append (prompt-cache prefix rule).
+	reqs := fa.requestBodies()
+	if len(reqs) == 0 {
+		t.Fatal("no model requests recorded")
+	}
+	var body struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(reqs[0], &body); err != nil {
+		t.Fatalf("unmarshal request body: %v", err)
+	}
+	if n := len(body.Tools); n == 0 || body.Tools[n-1].Name != "set_travel_mode" {
+		t.Fatalf("tools tail = %+v, want set_travel_mode last", body.Tools)
+	}
+
+	waitForEventCount(t, user.ID, "trip_created", 1)
+}
+
 // (c, trip-bound) update_itinerary_section on a bound trip replaces the
 // section in the DB and streams a trip_updated event with the trip's id.
 func TestPlanBoundSessionUpdatesSectionAndStreamsTripUpdated(t *testing.T) {

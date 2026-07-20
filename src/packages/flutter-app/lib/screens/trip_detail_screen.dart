@@ -599,8 +599,58 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// cities, plus home-airport outbound/return. Legs already covered by a
   /// confirmed (user-entered) row are skipped so drafts never duplicate real
   /// bookings.
+  /// The trip's stated non-flight travel mode ('car'|'train'|'bus'|'ferry')
+  /// when set, else null. Such trips derive their legs in that mode with
+  /// Rome2Rio route links instead of flight defaults; flight/mixed and unset
+  /// keep the legacy Greek-ferry-else-flight behavior.
+  static String? _groundModeOf(Trip trip) {
+    final tm = trip.travelMode;
+    return (tm == 'car' || tm == 'train' || tm == 'bus' || tm == 'ferry')
+        ? tm
+        : null;
+  }
+
+  static IconData _travelModeIcon(String? mode) {
+    switch (mode) {
+      case 'car':
+        return Icons.directions_car;
+      case 'train':
+        return Icons.train;
+      case 'bus':
+        return Icons.directions_bus;
+      case 'ferry':
+        return Icons.directions_boat;
+      case 'mixed':
+        return Icons.alt_route;
+      case 'flight':
+        return Icons.flight;
+      default:
+        return Icons.explore_outlined; // unset: "how are you traveling?"
+    }
+  }
+
+  static String _travelModeLabel(String? mode) {
+    switch (mode) {
+      case 'car':
+        return 'Driving';
+      case 'train':
+        return 'By train';
+      case 'bus':
+        return 'By bus';
+      case 'ferry':
+        return 'By ferry';
+      case 'mixed':
+        return 'Mixed modes';
+      case 'flight':
+        return 'Flying';
+      default:
+        return 'Travel mode';
+    }
+  }
+
   Map<String, dynamic> _deriveBookingDrafts(Trip trip) {
     final ranges = _locationGroupRanges(trip);
+    final ground = _groundModeOf(trip);
     final confirmedStays = _confirmedStays(trip);
     final confirmedSegments = (trip.segments ?? const <TripSegment>[])
         .where((s) => !s.auto)
@@ -646,7 +696,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         'auto_key': key,
         'mode': _isGreekIsland(origin) && _isGreekIsland(destination)
             ? 'ferry'
-            : 'flight',
+            : (ground ?? 'flight'),
         'origin': origin,
         'destination': destination,
         if (when != null) 'depart_date': _fmt(when),
@@ -738,6 +788,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     var pos = 0;
     final home = _homeAirport;
     final hasHome = home != null && home.isNotEmpty && ranges.isNotEmpty;
+    final ground = _groundModeOf(trip);
 
     // Adds a transport (flight) todo and records its leg so the booking item can
     // open Find Flights prefilled. Coords (when known) resolve an endpoint to its
@@ -789,12 +840,36 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       ferryLegs[key] = (origin: origin, destination: destination, date: date);
     }
 
+    // Adds a ground transport todo (car/train/bus trip) that opens a Rome2Rio
+    // route search. Deliberately NOT registered in [legs]/[ferryLegs]: the card
+    // then opens the server-built search_url with no "Find flights" override.
+    void addGround(String origin, String destination, DateTime? when) {
+      final date = when == null ? null : _fmt(when);
+      final key =
+          'transport:${origin.toLowerCase()}>>${destination.toLowerCase()}';
+      todos.add({
+        'kind': 'transport',
+        'todo_key': key,
+        'title': '$origin → $destination',
+        if (when != null) 'subtitle': _fmtShortDt(when),
+        'provider': 'rome2rio',
+        'position': pos++,
+        'origin': origin,
+        'destination': destination,
+        if (date != null) 'depart_date': date,
+        'passengers': 1,
+      });
+    }
+
     // A leg between two Greek ports/islands (incl. Athens/Piraeus) is a ferry;
-    // the long-haul home<->Greece legs stay flights.
+    // a stated ground travel mode makes every other leg ground; otherwise the
+    // long-haul default is a flight.
     void addLeg(String origin, String destination, DateTime? when,
         {_Coord? originCoord, _Coord? destCoord}) {
       if (_isGreekIsland(origin) && _isGreekIsland(destination)) {
         addFerry(origin, destination, when);
+      } else if (ground != null) {
+        addGround(origin, destination, when);
       } else {
         addFlight(origin, destination, when,
             originCoord: originCoord, destCoord: destCoord);
@@ -803,8 +878,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
     // Outbound: home airport -> first city, on the trip's start date.
     if (hasHome) {
-      addFlight(home, ranges.first.label, ranges.first.start,
-          destCoord: ranges.first.coord);
+      if (ground != null) {
+        addGround(home, ranges.first.label, ranges.first.start);
+      } else {
+        addFlight(home, ranges.first.label, ranges.first.start,
+            destCoord: ranges.first.coord);
+      }
     }
 
     for (var i = 0; i < ranges.length; i++) {
@@ -833,8 +912,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
     // Return: last city -> home airport, on the trip's end date.
     if (hasHome) {
-      addFlight(ranges.last.label, home, ranges.last.end,
-          originCoord: ranges.last.coord);
+      if (ground != null) {
+        addGround(ranges.last.label, home, ranges.last.end);
+      } else {
+        addFlight(ranges.last.label, home, ranges.last.end,
+            originCoord: ranges.last.coord);
+      }
     }
 
     _flightLegs = legs;
@@ -1047,7 +1130,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (_guardOffline()) return;
     final added = await showDialog<bool>(
       context: context,
-      builder: (_) => _AddBookingTodoDialog(tripId: widget.tripId),
+      builder: (_) => _AddBookingTodoDialog(
+        tripId: widget.tripId,
+        groundMode: _trip == null ? null : _groundModeOf(_trip!),
+      ),
     );
     if (added == true) await _load();
   }
@@ -1079,7 +1165,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       {String? title,
       String? startDate,
       String? endDate,
-      String? status}) async {
+      String? status,
+      String? travelMode}) async {
     if (_guardOffline()) return;
     try {
       final updated = await ref.read(tripsApiServiceProvider).patchTrip(
@@ -1088,9 +1175,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             startDate: startDate,
             endDate: endDate,
             status: status,
+            travelMode: travelMode,
           );
       if (mounted) setState(() => _trip = updated);
       ref.read(tripsProvider.notifier).loadTrips(); // keep list in sync
+      // A mode change re-derives the auto-seeded transport rows immediately,
+      // so e.g. Suggested flight legs heal to car without a reload.
+      if (travelMode != null) {
+        await _syncBookingTodos(updated);
+        await _syncBookingDrafts(updated);
+      }
     } catch (e) {
       _showSnack('Update failed: $e');
     }
@@ -1412,10 +1506,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   Future<void> _addSegment() async {
     if (_guardOffline()) return;
+    // A stated travel mode prefills the form ('mixed' doesn't pick a side).
+    final tm = _trip?.travelMode;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const AddSegmentSheet(),
+      builder: (_) => AddSegmentSheet(initialMode: tm == 'mixed' ? null : tm),
     );
     if (body == null) return;
     try {
@@ -3467,6 +3563,33 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   )
                 else
                   StatusPill(status: trip.status),
+                if (trip.canEdit)
+                  PopupMenuButton<String>(
+                    tooltip: 'Travel mode',
+                    enabled: !_isOffline,
+                    onSelected: (v) => _patch(travelMode: v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'flight', child: Text('Flying')),
+                      PopupMenuItem(value: 'car', child: Text('Driving')),
+                      PopupMenuItem(value: 'train', child: Text('Train')),
+                      PopupMenuItem(value: 'bus', child: Text('Bus')),
+                      PopupMenuItem(value: 'ferry', child: Text('Ferry')),
+                      PopupMenuItem(
+                          value: 'mixed', child: Text('Mixed modes')),
+                    ],
+                    child: Chip(
+                      avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
+                      label: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(_travelModeLabel(trip.travelMode)),
+                        const Icon(Icons.arrow_drop_down, size: 18),
+                      ]),
+                    ),
+                  )
+                else if (trip.travelMode != null)
+                  Chip(
+                    avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
+                    label: Text(_travelModeLabel(trip.travelMode)),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -4303,7 +4426,12 @@ class _AddBookingTodoDialog extends ConsumerStatefulWidget {
   /// otherwise the existing link is kept.
   final BookingTodo? existing;
 
-  const _AddBookingTodoDialog({required this.tripId, this.existing});
+  /// The trip's stated non-flight travel mode ('car'|'train'|'bus'|'ferry'):
+  /// new transport todos then prefer the Rome2Rio link over Google Flights.
+  final String? groundMode;
+
+  const _AddBookingTodoDialog(
+      {required this.tripId, this.existing, this.groundMode});
 
   @override
   ConsumerState<_AddBookingTodoDialog> createState() =>
@@ -4406,7 +4534,9 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
         // (re)built from a destination.
         if (!isEdit || _nn(_destination.text) != null) ...{
           if (_kind == 'stay') 'provider': 'airbnb',
-          if (isTransport) 'provider': 'google_flights',
+          if (isTransport)
+            'provider':
+                widget.groundMode != null ? 'rome2rio' : 'google_flights',
         },
         'guests': 1,
         'passengers': 1,
