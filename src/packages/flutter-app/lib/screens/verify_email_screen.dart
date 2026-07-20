@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/gradient_app_bar.dart';
 
@@ -16,7 +17,10 @@ class VerifyEmailScreen extends ConsumerStatefulWidget {
 
 class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   bool _loading = true;
-  String? _error;
+
+  /// Set when the token was rejected. Holds no message: the copy lives in the
+  /// localizations and is picked in [build] (specs/i18n-spanish).
+  bool _failed = false;
 
   @override
   void initState() {
@@ -32,7 +36,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'Link expired or already used';
+          _failed = true;
         });
       }
     }
@@ -45,11 +49,12 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final Widget body;
     if (_loading) {
       body = const CircularProgressIndicator();
     } else {
-      final failed = _error != null;
+      final failed = _failed;
       body = ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
@@ -65,7 +70,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              failed ? 'Link expired or already used' : 'Email verified ✓',
+              failed ? l10n.verifyLinkExpiredTitle : l10n.verifySuccessTitle,
               style: theme.textTheme.headlineSmall
                   ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
@@ -73,8 +78,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             const SizedBox(height: 8),
             Text(
               failed
-                  ? 'Request a new verification email from your account.'
-                  : 'You\'re all set — thanks for confirming your address.',
+                  ? l10n.verifyLinkExpiredBody
+                  : l10n.verifySuccessBody,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -83,14 +88,14 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Continue'),
+              child: Text(l10n.verifyContinue),
             ),
           ],
         ),
       );
     }
     return Scaffold(
-      appBar: const GradientAppBar(title: Text('Verify email')),
+      appBar: GradientAppBar(title: Text(l10n.verifyTitle)),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

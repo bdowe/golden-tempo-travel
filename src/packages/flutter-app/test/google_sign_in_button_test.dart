@@ -6,6 +6,8 @@ import 'package:travel_route_planner/services/auth_service.dart';
 import 'package:travel_route_planner/services/auth_storage.dart';
 import 'package:travel_route_planner/widgets/google_sign_in_button.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// AuthService with a scripted availability answer.
 class _FakeAuthService extends AuthService {
   final bool available;
@@ -33,8 +35,8 @@ Widget _wrap({required bool available}) {
       authServiceProvider.overrideWithValue(_FakeAuthService(available: available)),
       authStorageProvider.overrideWithValue(_FakeAuthStorage()),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: GoogleSignInButton()),
+    child: localizedTestApp(
+      home: const Scaffold(body: GoogleSignInButton()),
     ),
   );
 }

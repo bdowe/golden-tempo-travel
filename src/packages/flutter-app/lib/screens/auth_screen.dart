@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/sso_buttons.dart';
@@ -133,13 +134,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ),
     );
     if (done == true && mounted) {
-      showSnack(context, 'Password updated — sign in with your new password');
+      showSnack(context, context.l10n.authPasswordUpdatedSnack);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final auth = ref.watch(authProvider);
 
     return Scaffold(
@@ -168,7 +170,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     const BrandLogo.mark(size: 72),
                     const SizedBox(height: 16),
                     Text(
-                      _isLogin ? 'Welcome back' : 'Create your account',
+                      _isLogin ? l10n.authWelcomeBack : l10n.authCreateAccountTitle,
                       style: theme.textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
@@ -182,12 +184,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         AutofillHints.username,
                         AutofillHints.email,
                       ],
-                      decoration: const InputDecoration(labelText: 'Email'),
+                      decoration:
+                          InputDecoration(labelText: l10n.authEmailLabel),
                       validator: (v) {
                         final value = (v ?? '').trim();
-                        if (value.isEmpty) return 'Email is required';
+                        if (value.isEmpty) return l10n.authEmailRequired;
                         if (!value.contains('@') || !value.contains('.')) {
-                          return 'Enter a valid email';
+                          return l10n.authEmailInvalid;
                         }
                         return null;
                       },
@@ -203,11 +206,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ],
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _submit(),
-                      decoration: const InputDecoration(labelText: 'Password'),
+                      decoration:
+                          InputDecoration(labelText: l10n.authPasswordLabel),
                       validator: (v) {
-                        if ((v ?? '').isEmpty) return 'Password is required';
+                        if ((v ?? '').isEmpty) return l10n.authPasswordRequired;
                         if (!_isLogin && v!.length < 8) {
-                          return 'Password must be at least 8 characters';
+                          return l10n.authPasswordTooShort;
                         }
                         return null;
                       },
@@ -217,8 +221,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       TextFormField(
                         controller: _displayNameController,
                         autofillHints: const [AutofillHints.name],
-                        decoration: const InputDecoration(
-                          labelText: 'Display name (optional)',
+                        decoration: InputDecoration(
+                          labelText: l10n.authDisplayNameLabel,
                         ),
                       ),
                     ],
@@ -242,7 +246,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(_isLogin ? 'Sign in' : 'Create account'),
+                          : Text(_isLogin
+                              ? l10n.authSignIn
+                              : l10n.authCreateAccount),
                     ),
                     if (!_isLogin) ...[
                       const SizedBox(height: 12),
@@ -252,13 +258,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     TextButton(
                       onPressed: auth.loading ? null : _toggleMode,
                       child: Text(_isLogin
-                          ? "Don't have an account? Sign up"
-                          : 'Already have an account? Sign in'),
+                          ? l10n.authNoAccountPrompt
+                          : l10n.authHaveAccountPrompt),
                     ),
                     if (_isLogin)
                       TextButton(
                         onPressed: auth.loading ? null : _forgotPassword,
-                        child: const Text('Forgot password?'),
+                        child: Text(l10n.authForgotPassword),
                       ),
                     const SsoButtons(),
                   ],
@@ -298,7 +304,7 @@ class _RequestResetDialogState extends State<_RequestResetDialog> {
   Future<void> _send() async {
     final email = _email.text.trim();
     if (email.isEmpty || !email.contains('@')) {
-      setState(() => _error = 'Enter a valid email');
+      setState(() => _error = context.l10n.authEmailInvalid);
       return;
     }
     setState(() {
@@ -320,13 +326,13 @@ class _RequestResetDialogState extends State<_RequestResetDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Reset your password'),
+      title: Text(l10n.authResetDialogTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-              'We\'ll email you a reset code if this address has an account.'),
+          Text(l10n.authResetDialogBody),
           const SizedBox(height: 12),
           TextField(
             controller: _email,
@@ -334,7 +340,7 @@ class _RequestResetDialogState extends State<_RequestResetDialog> {
             autocorrect: false,
             autofillHints: const [AutofillHints.email],
             decoration: InputDecoration(
-              labelText: 'Email',
+              labelText: l10n.authEmailLabel,
               errorText: _error,
             ),
           ),
@@ -343,11 +349,11 @@ class _RequestResetDialogState extends State<_RequestResetDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _sending ? null : _send,
-          child: Text(_sending ? 'Sending…' : 'Send code'),
+          child: Text(_sending ? l10n.authSending : l10n.authSendCode),
         ),
       ],
     );
@@ -378,11 +384,11 @@ class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
 
   Future<void> _save() async {
     if (_code.text.trim().isEmpty) {
-      setState(() => _error = 'Paste the code from the email');
+      setState(() => _error = context.l10n.authCodeRequired);
       return;
     }
     if (_password.text.length < 8) {
-      setState(() => _error = 'Password must be at least 8 characters');
+      setState(() => _error = context.l10n.authPasswordTooShort);
       return;
     }
     setState(() {
@@ -404,19 +410,20 @@ class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Enter your reset code'),
+      title: Text(l10n.authEnterCodeTitle),
       content: AutofillGroup(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Check your inbox for the code we just sent.'),
+            Text(l10n.authEnterCodeBody),
             const SizedBox(height: 12),
             TextField(
               controller: _code,
               autocorrect: false,
               autofillHints: const [AutofillHints.oneTimeCode],
-              decoration: const InputDecoration(labelText: 'Reset code'),
+              decoration: InputDecoration(labelText: l10n.authResetCodeLabel),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -424,7 +431,7 @@ class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
               obscureText: true,
               autofillHints: const [AutofillHints.newPassword],
               decoration: InputDecoration(
-                labelText: 'New password',
+                labelText: l10n.authNewPasswordLabel,
                 errorText: _error,
               ),
             ),
@@ -434,11 +441,11 @@ class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Saving…' : 'Set new password'),
+          child: Text(_saving ? l10n.authSaving : l10n.authSetNewPassword),
         ),
       ],
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/auth_provider.dart';
 import 'apple_sign_in_button.dart';
 import 'google_sign_in_button.dart';
@@ -25,7 +26,8 @@ class SsoButtons extends ConsumerWidget {
             const Expanded(child: Divider()),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('or', style: theme.textTheme.bodySmall),
+              child: Text(context.l10n.ssoDividerOr,
+                  style: theme.textTheme.bodySmall),
             ),
             const Expanded(child: Divider()),
           ],

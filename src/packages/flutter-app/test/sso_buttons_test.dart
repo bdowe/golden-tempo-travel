@@ -6,6 +6,8 @@ import 'package:travel_route_planner/services/auth_service.dart';
 import 'package:travel_route_planner/services/auth_storage.dart';
 import 'package:travel_route_planner/widgets/sso_buttons.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// AuthService with scripted availability per provider.
 class _FakeAuthService extends AuthService {
   final bool google;
@@ -31,15 +33,16 @@ class _FakeAuthStorage extends AuthStorage {
   Future<void> clearToken() async {}
 }
 
-Widget _wrap({required bool google, required bool apple}) {
+Widget _wrap({required bool google, required bool apple, Locale? locale}) {
   return ProviderScope(
     overrides: [
       authServiceProvider
           .overrideWithValue(_FakeAuthService(google: google, apple: apple)),
       authStorageProvider.overrideWithValue(_FakeAuthStorage()),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: SsoButtons()),
+    child: localizedTestApp(
+      home: const Scaffold(body: SsoButtons()),
+      locale: locale,
     ),
   );
 }
@@ -83,5 +86,19 @@ void main() {
     expect(find.text('or'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.text('Continue with Apple'), findsOneWidget);
+  });
+
+  // Spanish ships ahead of enablement (specs/i18n-spanish): the translations
+  // are complete and rendering long before `es` reaches kSupportedLocales, so
+  // a regression in the .arb files fails here rather than in PR 7.
+  testWidgets('renders Spanish copy under an es locale', (tester) async {
+    await tester.pumpWidget(
+        _wrap(google: true, apple: true, locale: const Locale('es')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continuar con Google'), findsOneWidget);
+    expect(find.text('Continuar con Apple'), findsOneWidget);
+    expect(find.text('o'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsNothing);
   });
 }

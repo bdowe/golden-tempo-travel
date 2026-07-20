@@ -12,6 +12,8 @@ import 'package:travel_route_planner/screens/auth_screen.dart';
 import 'package:travel_route_planner/services/alerts_api_service.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 
+import 'support/l10n_test_app.dart';
+
 class _FakeAuthNotifier extends StateNotifier<AuthState>
     implements AuthNotifier {
   _FakeAuthNotifier(UserModel? user)
@@ -126,7 +128,7 @@ Future<_FakeAlertsApiService> _pump(
         alertsApiServiceProvider.overrideWithValue(service),
         ...extraOverrides,
       ],
-      child: const MaterialApp(home: AlertsScreen()),
+      child: localizedTestApp(home: const AlertsScreen()),
     ),
   );
   await tester.pumpAndSettle();

@@ -1,11 +1,9 @@
 {
   "@@locale": "en",
-
   "appTitle": "Golden Tempo Travel",
   "@appTitle": {
     "description": "Product name. Not translated — it is a brand name."
   },
-
   "languageSectionTitle": "Language",
   "@languageSectionTitle": {
     "description": "Header of the language group in account settings."
@@ -26,7 +24,6 @@
   "@languageChangeNote": {
     "description": "Explains that switching language does not retranslate existing saved content."
   },
-
   "commonSave": "Save",
   "commonCancel": "Cancel",
   "commonDelete": "Delete",
@@ -36,22 +33,182 @@
   "commonNext": "Next",
   "commonDone": "Done",
   "commonSeeAll": "See all",
-
   "citiesTwo": "{first} & {second}",
   "@citiesTwo": {
     "description": "Destination summary for a trip with exactly two hub cities.",
     "placeholders": {
-      "first": { "type": "String", "example": "Mexico City" },
-      "second": { "type": "String", "example": "Puerto Vallarta" }
+      "first": {
+        "type": "String",
+        "example": "Mexico City"
+      },
+      "second": {
+        "type": "String",
+        "example": "Puerto Vallarta"
+      }
     }
   },
   "citiesMore": "{first} & {second} +{count} more",
   "@citiesMore": {
     "description": "Destination summary for a trip with more than two hub cities; count is how many are not named.",
     "placeholders": {
-      "first": { "type": "String", "example": "Tokyo" },
-      "second": { "type": "String", "example": "Kyoto" },
-      "count": { "type": "int", "example": "2" }
+      "first": {
+        "type": "String",
+        "example": "Tokyo"
+      },
+      "second": {
+        "type": "String",
+        "example": "Kyoto"
+      },
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
     }
-  }
+  },
+  "prefsTitle": "Travel profile",
+  "prefsBudget": "Budget",
+  "prefsPace": "Pace",
+  "prefsInterests": "Interests",
+  "prefsAddInterest": "Add an interest",
+  "prefsHomeAirport": "Home airport",
+  "prefsHomeAirportHelp": "Used as the default origin when planning flights.",
+  "prefsProfileNotes": "Profile notes",
+  "prefsProfileNotesHelp": "Your AI agent keeps these notes as it learns about you. Edit or clear them anytime.",
+  "prefsProfileNotesHint": "Nothing noted yet — the agent adds to this as you plan trips.",
+  "prefsSaved": "Preferences saved",
+  "prefsSaveFailed": "Could not save preferences",
+  "prefsBudgetLow": "budget",
+  "@prefsBudgetLow": {
+    "description": "Budget level option shown on a chip; the stored API value stays 'budget'."
+  },
+  "prefsBudgetMid": "mid",
+  "prefsBudgetLuxury": "luxury",
+  "prefsPaceRelaxed": "relaxed",
+  "@prefsPaceRelaxed": {
+    "description": "Trip pace option shown on a chip; the stored API value stays 'relaxed'."
+  },
+  "prefsPaceBalanced": "balanced",
+  "prefsPacePacked": "packed",
+  "prefsInterestMuseums": "museums",
+  "@prefsInterestMuseums": {
+    "description": "Suggested interest chip; the stored API value stays 'museums'."
+  },
+  "prefsInterestFood": "food",
+  "prefsInterestNightlife": "nightlife",
+  "prefsInterestNature": "nature",
+  "prefsInterestHistory": "history",
+  "prefsInterestArt": "art",
+  "prefsInterestShopping": "shopping",
+  "prefsInterestOutdoors": "outdoors",
+  "prefsInterestBeaches": "beaches",
+  "prefsInterestArchitecture": "architecture",
+  "ssoContinueWithGoogle": "Continue with Google",
+  "ssoContinueWithApple": "Continue with Apple",
+  "ssoDividerOr": "or",
+  "authWelcomeBack": "Welcome back",
+  "authCreateAccountTitle": "Create your account",
+  "authEmailLabel": "Email",
+  "authEmailRequired": "Email is required",
+  "authEmailInvalid": "Enter a valid email",
+  "authPasswordLabel": "Password",
+  "authPasswordRequired": "Password is required",
+  "authPasswordTooShort": "Password must be at least 8 characters",
+  "authDisplayNameLabel": "Display name (optional)",
+  "authSignIn": "Sign in",
+  "authCreateAccount": "Create account",
+  "authNoAccountPrompt": "Don't have an account? Sign up",
+  "authHaveAccountPrompt": "Already have an account? Sign in",
+  "authForgotPassword": "Forgot password?",
+  "authPasswordUpdatedSnack": "Password updated — sign in with your new password",
+  "authResetDialogTitle": "Reset your password",
+  "authResetDialogBody": "We'll email you a reset code if this address has an account.",
+  "authSending": "Sending…",
+  "authSendCode": "Send code",
+  "authEnterCodeTitle": "Enter your reset code",
+  "authEnterCodeBody": "Check your inbox for the code we just sent.",
+  "authResetCodeLabel": "Reset code",
+  "authNewPasswordLabel": "New password",
+  "authCodeRequired": "Paste the code from the email",
+  "authSaving": "Saving…",
+  "authSetNewPassword": "Set new password",
+  "resetAppBarTitle": "Reset password",
+  "resetSuccessTitle": "Password updated",
+  "resetSuccessBody": "Sign in with your new password. Any other sessions were signed out.",
+  "resetSignInButton": "Sign in",
+  "resetChooseTitle": "Choose a new password",
+  "resetNewPasswordLabel": "New password",
+  "resetPasswordRequired": "Password is required",
+  "resetPasswordTooShort": "Password must be at least 8 characters",
+  "resetConfirmLabel": "Confirm new password",
+  "resetConfirmRequired": "Confirm your new password",
+  "resetPasswordsMismatch": "Passwords don't match",
+  "resetSetNewPassword": "Set new password",
+  "landingSignIn": "Sign in",
+  "landingHeroTagline": "Plan less. Travel more.",
+  "landingHeroSubtitle": "Your AI travel companion — describe the trip you want and get a full day-by-day itinerary with routes, places, and flights.",
+  "landingHaveAccount": "I already have an account",
+  "landingGetStarted": "Get started",
+  "landingFeaturesTitle": "Everything you need to plan the trip",
+  "landingFeatureAgentTitle": "AI Travel Agent",
+  "landingFeatureAgentDescription": "Describe your dream trip and get a complete itinerary in seconds.",
+  "landingPrivacyPolicy": "Privacy Policy",
+  "landingTermsOfService": "Terms of Service",
+  "landingCopyright": "© 2026 Golden Tempo LLC",
+  "verifyTitle": "Verify email",
+  "verifySuccessTitle": "Email verified ✓",
+  "verifySuccessBody": "You're all set — thanks for confirming your address.",
+  "verifyLinkExpiredTitle": "Link expired or already used",
+  "verifyLinkExpiredBody": "Request a new verification email from your account.",
+  "verifyContinue": "Continue",
+  "ssoTitle": "Signing you in",
+  "ssoFailedTitle": "Sign-in didn't complete",
+  "ssoErrorCancelled": "Sign-in was cancelled or failed. Please try again.",
+  "ssoErrorExpired": "This sign-in link expired. Please try again.",
+  "ssoBackToSignIn": "Back to sign in",
+  "settingsTitle": "Account settings",
+  "settingsProfileSection": "Profile",
+  "settingsDisplayName": "Display name",
+  "settingsSaveName": "Save name",
+  "settingsNameUpdated": "Name updated",
+  "settingsPasswordSection": "Password",
+  "settingsCurrentPassword": "Current password",
+  "settingsNewPassword": "New password (8+ characters)",
+  "settingsChangePassword": "Change password",
+  "settingsPasswordChanged": "Password changed — other devices were signed out",
+  "settingsSessionsSection": "Sessions",
+  "settingsSessionsHelp": "Signs you out on every device, including this one.",
+  "settingsSignOutEverywhere": "Sign out everywhere",
+  "settingsEmailPrefsSection": "Email preferences",
+  "settingsTripReminders": "Trip reminders",
+  "settingsTripRemindersSubtitle": "Nudges about upcoming trips and things left to book.",
+  "settingsWeeklyIdeas": "Weekly planning ideas",
+  "settingsWeeklyIdeasSubtitle": "A weekly email with destination ideas and inspiration.",
+  "settingsLegalSection": "Legal",
+  "settingsPrivacyPolicy": "Privacy Policy",
+  "settingsTermsOfService": "Terms of Service",
+  "settingsDangerZoneSection": "Danger zone",
+  "settingsDeleteAccount": "Delete account",
+  "settingsDeleteAccountTitle": "Delete account?",
+  "settingsDeleteAccountBody": "This permanently deletes your account, trips, preferences and alerts. There is no undo.",
+  "settingsConfirmPassword": "Confirm your password",
+  "settingsDeleteForever": "Delete forever",
+  "quizTitle": "Set up your travel profile",
+  "quizSkip": "Skip",
+  "quizFinish": "Finish",
+  "quizStyleTitle": "What's your travel style?",
+  "quizStyleSubtitle": "Helps the planner match stays and activities to you.",
+  "quizInterestsTitle": "What do you love doing on a trip?",
+  "quizInterestsSubtitle": "Pick as many as you like.",
+  "quizCompanionsTitle": "Who do you usually travel with?",
+  "quizCompanionSolo": "solo",
+  "quizCompanionPartner": "partner",
+  "quizCompanionFriends": "friends",
+  "quizCompanionFamily": "family with kids",
+  "quizCompanionVaries": "it varies",
+  "quizHomeAirportTitle": "Where do you fly from?",
+  "quizTripsTitle": "Any trips you're dreaming about?",
+  "quizTripsSubtitle": "Places, seasons, occasions — the planner will keep them in mind.",
+  "quizTripsHint": "e.g. Japan for cherry blossom season, a Greek island hop next summer…",
+  "quizSaveFailed": "Could not save your answers — try again, or skip for now.",
+  "quizProfileUpdated": "Travel profile updated"
 }

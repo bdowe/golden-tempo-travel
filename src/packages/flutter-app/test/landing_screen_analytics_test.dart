@@ -7,6 +7,8 @@ import 'package:travel_route_planner/screens/landing_screen.dart';
 import 'package:travel_route_planner/services/analytics_api_service.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Counts landing-view records instead of hitting the network.
 class _CountingAnalytics implements AnalyticsApiService {
   int landingViews = 0;
@@ -41,7 +43,7 @@ class _CountingAnalytics implements AnalyticsApiService {
 Widget _harness(_CountingAnalytics analytics) {
   return ProviderScope(
     overrides: [analyticsApiServiceProvider.overrideWithValue(analytics)],
-    child: const MaterialApp(home: LandingScreen()),
+    child: localizedTestApp(home: const LandingScreen()),
   );
 }
 
@@ -70,7 +72,7 @@ void main() {
     final analytics = _ThrowingAnalytics();
     await tester.pumpWidget(ProviderScope(
       overrides: [analyticsApiServiceProvider.overrideWithValue(analytics)],
-      child: const MaterialApp(home: LandingScreen()),
+      child: localizedTestApp(home: const LandingScreen()),
     ));
     expect(find.text('Plan less. Travel more.'), findsOneWidget);
   });

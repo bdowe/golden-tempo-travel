@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/gradient_app_bar.dart';
 
@@ -62,7 +63,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: const GradientAppBar(title: Text('Reset password')),
+      appBar: GradientAppBar(title: Text(context.l10n.resetAppBarTitle)),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -76,6 +77,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   }
 
   Widget _buildSuccess(ThemeData theme) {
+    final l10n = context.l10n;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -84,14 +86,14 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             size: 64, color: theme.colorScheme.primary),
         const SizedBox(height: 16),
         Text(
-          'Password updated',
+          l10n.resetSuccessTitle,
           style: theme.textTheme.headlineSmall
               ?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Sign in with your new password. Any other sessions were signed out.',
+        Text(
+          l10n.resetSuccessBody,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
@@ -100,13 +102,14 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
           ),
-          child: const Text('Sign in'),
+          child: Text(l10n.resetSignInButton),
         ),
       ],
     );
   }
 
   Widget _buildForm(ThemeData theme) {
+    final l10n = context.l10n;
     return Form(
       key: _formKey,
       child: AutofillGroup(
@@ -115,7 +118,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Choose a new password',
+              l10n.resetChooseTitle,
               style: theme.textTheme.headlineSmall
                   ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
@@ -125,11 +128,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               controller: _passwordController,
               obscureText: true,
               autofillHints: const [AutofillHints.newPassword],
-              decoration: const InputDecoration(labelText: 'New password'),
+              decoration:
+                  InputDecoration(labelText: l10n.resetNewPasswordLabel),
               validator: (v) {
-                if ((v ?? '').isEmpty) return 'Password is required';
+                if ((v ?? '').isEmpty) return l10n.resetPasswordRequired;
                 if (v!.length < 8) {
-                  return 'Password must be at least 8 characters';
+                  return l10n.resetPasswordTooShort;
                 }
                 return null;
               },
@@ -140,11 +144,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               obscureText: true,
               autofillHints: const [AutofillHints.newPassword],
               decoration:
-                  const InputDecoration(labelText: 'Confirm new password'),
+                  InputDecoration(labelText: l10n.resetConfirmLabel),
               validator: (v) {
-                if ((v ?? '').isEmpty) return 'Confirm your new password';
+                if ((v ?? '').isEmpty) return l10n.resetConfirmRequired;
                 if (v != _passwordController.text) {
-                  return 'Passwords don\'t match';
+                  return l10n.resetPasswordsMismatch;
                 }
                 return null;
               },
@@ -169,7 +173,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Set new password'),
+                  : Text(l10n.resetSetNewPassword),
             ),
           ],
         ),
