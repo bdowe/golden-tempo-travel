@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,12 +26,66 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _displayNameController = TextEditingController();
   late bool _isLogin = widget.initialIsLogin;
 
+  // Auto-submit after a password-manager autofill. An extension fill is
+  // distinctive: both fields jump from empty to a full value in one change
+  // event, within milliseconds of each other. Manual typing changes one
+  // character at a time and human paste-then-paste is seconds apart, so
+  // neither matches. Each auto-submit consumes the fill timestamps — a
+  // failed attempt is never retried without a fresh fill gesture (keeps us
+  // clear of the server-side login lockout).
+  static const _fillWindow = Duration(milliseconds: 500);
+  String _prevEmail = '';
+  String _prevPassword = '';
+  DateTime? _emailFillAt;
+  DateTime? _passwordFillAt;
+  Timer? _autoSubmitTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.addListener(() => _onCredentialChanged(isEmail: true));
+    _passwordController.addListener(() => _onCredentialChanged(isEmail: false));
+  }
+
   @override
   void dispose() {
+    _autoSubmitTimer?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     _displayNameController.dispose();
     super.dispose();
+  }
+
+  void _onCredentialChanged({required bool isEmail}) {
+    final value = isEmail ? _emailController.text : _passwordController.text;
+    final prev = isEmail ? _prevEmail : _prevPassword;
+    if (value == prev) return;
+    final oneShotFill = prev.isEmpty && value.length > 1;
+    final fillAt = oneShotFill ? DateTime.now() : null;
+    if (isEmail) {
+      _prevEmail = value;
+      _emailFillAt = fillAt;
+    } else {
+      _prevPassword = value;
+      _passwordFillAt = fillAt;
+    }
+    _maybeAutoSubmit();
+  }
+
+  void _maybeAutoSubmit() {
+    if (!_isLogin) return;
+    final emailAt = _emailFillAt;
+    final passwordAt = _passwordFillAt;
+    if (emailAt == null || passwordAt == null) return;
+    if (emailAt.difference(passwordAt).abs() > _fillWindow) return;
+    if (ref.read(authProvider).loading) return;
+    _autoSubmitTimer?.cancel();
+    _autoSubmitTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted || !_isLogin) return;
+      _emailFillAt = null;
+      _passwordFillAt = null;
+      _submit();
+    });
   }
 
   Future<void> _submit() async {
