@@ -143,6 +143,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final auth = ref.watch(authProvider);
 
     return Scaffold(
+      // Transparent AppBar so the implied back arrow gives a way back to the
+      // landing page underneath (this screen is always pushed on top of it).
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
