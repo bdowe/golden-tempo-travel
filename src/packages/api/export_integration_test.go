@@ -355,3 +355,50 @@ func TestExportCalendar_InvalidTokenIs404(t *testing.T) {
 		t.Fatalf("invalid calendar token: got %d want 404", rec.Code)
 	}
 }
+
+func TestExportEventCalendar_SingleEventAndOpaque404s(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "one-event@example.com")
+	trip := exportFixtureTrip(t, owner.ID, "Greek Islands")
+	token, _ := newExportToken(trip.ID)
+
+	stays, err := store.New(dbPool).ListAccommodationsByTrip(context.Background(), trip.ID)
+	if err != nil || len(stays) != 1 {
+		t.Fatalf("fixture stays: %v (%d)", err, len(stays))
+	}
+	stayID := stays[0].ID.String()
+
+	rec := doJSON(t, "GET", "/api/v1/export/"+token+"/event/stay/"+stayID+".ics", "", nil)
+	if rec.Code != 200 {
+		t.Fatalf("event stay.ics: got %d want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/calendar") {
+		t.Fatalf("event content-type: %q", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, `attachment; filename="stay-hotel-grande-bretagne.ics"`) {
+		t.Fatalf("event content-disposition: %q", cd)
+	}
+	body := rec.Body.String()
+	if n := strings.Count(body, "BEGIN:VEVENT"); n != 1 {
+		t.Fatalf("expected exactly 1 VEVENT, got %d\n%s", n, body)
+	}
+	if !strings.Contains(body, "UID:acc-"+stayID+"@goldentempo") {
+		t.Fatalf("event UID missing; body:\n%s", body)
+	}
+
+	// All failure shapes are one opaque 404, indistinguishable from a bad token.
+	for name, path := range map[string]string{
+		"bad token":    "/api/v1/export/bogus.token/event/stay/" + stayID + ".ics",
+		"bogus uuid":   "/api/v1/export/" + token + "/event/stay/not-a-uuid.ics",
+		"unknown id":   "/api/v1/export/" + token + "/event/stay/" + uuid.NewString() + ".ics",
+		"unknown kind": "/api/v1/export/" + token + "/event/hovercraft/" + stayID + ".ics",
+	} {
+		rec := doJSON(t, "GET", path, "", nil)
+		if rec.Code != 404 {
+			t.Fatalf("%s: got %d want 404", name, rec.Code)
+		}
+		if got := rec.Body.String(); got != "export link not available" {
+			t.Fatalf("%s: body %q not opaque", name, got)
+		}
+	}
+}

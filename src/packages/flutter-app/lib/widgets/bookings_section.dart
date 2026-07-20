@@ -3,7 +3,9 @@ import '../models/accommodation.dart';
 import '../models/trip.dart';
 import '../models/trip_segment.dart';
 import '../theme/spacing.dart';
+import '../utils/calendar_links.dart';
 import '../utils/tracked_launch.dart';
+import 'add_to_calendar_button.dart';
 import 'section_header.dart';
 import 'status_pill.dart';
 
@@ -61,6 +63,11 @@ class BookingsSection extends StatelessWidget {
   /// (offline), mirroring the reorder callbacks.
   final VoidCallback? onAddBooking;
 
+  /// Whether the "Apple Calendar (.ics)" entry of the per-row Add-to-calendar
+  /// menu is enabled. False for viewers (they can't mint export tokens) and
+  /// offline; the Google entry is a pure URL and stays available regardless.
+  final bool appleCalendarEnabled;
+
   const BookingsSection({
     super.key,
     required this.trip,
@@ -81,7 +88,19 @@ class BookingsSection extends StatelessWidget {
     this.readOnly = false,
     this.otherBookings,
     this.onAddBooking,
+    this.appleCalendarEnabled = false,
   });
+
+  /// Calendar-event title for a segment, mirroring the Go export's
+  /// `capitalize(mode) + ": " + segmentRoute(s)`.
+  static String _segmentCalendarTitle(TripSegment s) {
+    final mode = s.mode.isEmpty
+        ? 'Trip'
+        : s.mode[0].toUpperCase() + s.mode.substring(1);
+    final route =
+        [s.origin, s.destination].whereType<String>().join(' → ');
+    return route.isEmpty ? mode : '$mode: $route';
+  }
 
   static IconData _modeIcon(String mode) => switch (mode) {
         'flight' => Icons.flight_takeoff,
@@ -288,6 +307,19 @@ class BookingsSection extends StatelessWidget {
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (stayCalendarRange(a) case final range?)
+                              AddToCalendarButton(
+                                tripId: trip.id,
+                                kind: 'stay',
+                                eventId: a.id,
+                                analyticsKind: 'stay',
+                                title: 'Stay: ${a.name}',
+                                start: range.start,
+                                endExclusive: range.endExclusive,
+                                location: a.address,
+                                details: a.provider,
+                                appleEnabled: appleCalendarEnabled,
+                              ),
                             if (a.url != null && a.url!.isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.open_in_new, size: 18),
@@ -374,6 +406,18 @@ class BookingsSection extends StatelessWidget {
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (segmentCalendarRange(s) case final range?)
+                              AddToCalendarButton(
+                                tripId: trip.id,
+                                kind: 'segment',
+                                eventId: s.id,
+                                analyticsKind: 'transport',
+                                title: _segmentCalendarTitle(s),
+                                start: range.start,
+                                endExclusive: range.endExclusive,
+                                details: s.notes,
+                                appleEnabled: appleCalendarEnabled,
+                              ),
                             if (s.url != null && s.url!.isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.open_in_new, size: 18),

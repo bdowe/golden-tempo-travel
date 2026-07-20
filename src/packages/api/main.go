@@ -812,6 +812,7 @@ func buildRouter() *mux.Router {
 	// token IS the authorization (a bad/expired token is a clean 404).
 	api.HandleFunc("/export/{token}/print.html", printViewHandler).Methods("GET")
 	api.HandleFunc("/export/{token}/calendar.ics", calendarHandler).Methods("GET")
+	api.HandleFunc("/export/{token}/event/{kind}/{id}.ics", calendarEventHandler).Methods("GET")
 	// Public share read sits behind the general per-IP limiter like everything
 	// else; it is the one endpoint deliberately open to anonymous strangers.
 	api.HandleFunc("/shared/{token}", sharedTripHandler).Methods("GET")
