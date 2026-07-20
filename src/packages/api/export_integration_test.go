@@ -136,6 +136,172 @@ func TestExportPrintView_RendersAndEscapes(t *testing.T) {
 	}
 }
 
+// TestExportPrintView_DayPacket exercises the day-by-day packet layout
+// (specs/print-travel-packet): summary, per-day sections with weather and
+// tonight's stay, unscheduled items, booking details, and the budget table.
+func TestExportPrintView_DayPacket(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "packet@example.com")
+	ctx := context.Background()
+	q := store.New(dbPool)
+
+	summary := "A slow loop through Athens with a Delphi day trip."
+	chat := "packet-chat"
+	trip, err := q.CreateTrip(ctx, store.CreateTripParams{
+		UserID: owner.ID, Title: "Packet Trip", Status: "draft", ChatID: &chat, Summary: &summary,
+	})
+	if err != nil {
+		t.Fatalf("CreateTrip: %v", err)
+	}
+	if _, err := q.UpdateTrip(ctx, store.UpdateTripParams{
+		ID: trip.ID, UserID: owner.ID,
+		StartDate: pgDate(t, "2026-08-01"), EndDate: pgDate(t, "2026-08-05"),
+	}); err != nil {
+		t.Fatalf("UpdateTrip dates: %v", err)
+	}
+
+	day := int32(2)
+	city := "Athens"
+	rec := "Maria"
+	if _, err := q.CreateItineraryItem(ctx, store.CreateItineraryItemParams{
+		TripID: trip.ID, Position: 0, Name: "Acropolis", Latitude: 37.97, Longitude: 23.72,
+		Day: &day, City: &city, LocalSourceName: &rec,
+	}); err != nil {
+		t.Fatalf("create day item: %v", err)
+	}
+	// No day ⇒ Unscheduled section.
+	if _, err := q.CreateItineraryItem(ctx, store.CreateItineraryItemParams{
+		TripID: trip.ID, Position: 1, Name: "Someday Taverna", Latitude: 37.97, Longitude: 23.73,
+		City: &city,
+	}); err != nil {
+		t.Fatalf("create unscheduled item: %v", err)
+	}
+
+	stayURL := "https://www.booking.com/hotel/gr/grande.html?aid=42"
+	stayPrice := "€180/night"
+	if _, err := q.CreateAccommodation(ctx, store.CreateAccommodationParams{
+		TripID: trip.ID, Name: "Hotel Grande Bretagne",
+		Url: &stayURL, PriceNote: &stayPrice,
+		CheckIn: pgDate(t, "2026-08-01"), CheckOut: pgDate(t, "2026-08-05"),
+	}); err != nil {
+		t.Fatalf("create stay: %v", err)
+	}
+
+	provider := "Hellenic Train"
+	segPrice := "€25"
+	seg, err := q.CreateSegment(ctx, store.CreateSegmentParams{
+		TripID: trip.ID, Mode: "train", Origin: strp("Athens"), Destination: strp("Kalambaka"),
+		DepartDate: pgDate(t, "2026-08-02"), ArriveDate: pgDate(t, "2026-08-02"),
+		Provider: &provider, PriceNote: &segPrice,
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+	booked := true
+	if _, err := q.UpdateSegment(ctx, store.UpdateSegmentParams{
+		ID: seg.ID, TripID: trip.ID, Booked: &booked,
+	}); err != nil {
+		t.Fatalf("book segment: %v", err)
+	}
+
+	target := 2000.0
+	if _, err := q.UpsertBudget(ctx, store.UpsertBudgetParams{
+		TripID: trip.ID, TargetAmount: &target, Currency: "EUR",
+	}); err != nil {
+		t.Fatalf("upsert budget: %v", err)
+	}
+	for i, e := range []struct {
+		cat, label string
+		amount     float64
+	}{
+		{"lodging", "Hotel Grande Bretagne", 600},
+		{"food", "Tavernas", 150},
+	} {
+		if _, err := q.CreateExpense(ctx, store.CreateExpenseParams{
+			TripID: trip.ID, Category: e.cat, Label: e.label, Amount: e.amount, Position: int32(i),
+		}); err != nil {
+			t.Fatalf("create expense: %v", err)
+		}
+	}
+
+	// Point the shared weather singleton at a stub double (idiom from
+	// trip_review_integration_test.go); it serves both forecast and archive
+	// paths, so the assertion is date-independent.
+	prevWeather := weatherService
+	weatherService = weatherStub(t, false, 30, 21)
+	t.Cleanup(func() { weatherService = prevWeather })
+
+	token, _ := newExportToken(trip.ID)
+	res := doJSON(t, "GET", "/api/v1/export/"+token+"/print.html", "", nil)
+	if res.Code != 200 {
+		t.Fatalf("print.html: got %d want 200", res.Code)
+	}
+	body := res.Body.String()
+
+	for _, want := range []string{
+		summary,
+		"Day 1 · Sat, Aug 1",
+		"Day 2 · Sun, Aug 2 — Athens",
+		"Day 5 · Wed, Aug 5",
+		"Weather:", "°C",
+		"Train · Athens → Kalambaka",
+		"(booked)",
+		"Hellenic Train", "€25",
+		"Acropolis", "Recommended by Maria",
+		"No plans yet for this day.",
+		"Tonight: Hotel Grande Bretagne",
+		"Check in today",
+		"Check out Wed, Aug 5",
+		"€180/night",
+		"booking.com/hotel/gr/grande.html",
+		"Unscheduled", "Someday Taverna",
+		"Budget (EUR)", "Target: 2000.00",
+		"Total spent: 750.00", "Remaining: 1250.00",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("print packet missing %q\n%s", want, body)
+		}
+	}
+
+	// The stay covers nights 1–4 only; no "Tonight" block on the check-out day.
+	if n := strings.Count(body, "Tonight: Hotel Grande Bretagne"); n != 4 {
+		t.Fatalf("stay should appear on 4 nights, got %d", n)
+	}
+	// The raw booking URL query string must not leak into the visible text.
+	if strings.Contains(body, "aid=42</a>") {
+		t.Fatal("URL text should strip the query string")
+	}
+}
+
+// TestExportPrintView_WeatherFailureIsSilent proves a dead weather upstream
+// degrades to a page without weather lines, never an error.
+func TestExportPrintView_WeatherFailureIsSilent(t *testing.T) {
+	resetDB(t)
+	owner, _ := createTestUser(t, "noweather@example.com")
+	trip := exportFixtureTrip(t, owner.ID, "Stormy Trip")
+
+	dead := NewWeatherService()
+	dead.GeocodeBaseURL = "http://127.0.0.1:1"
+	dead.ForecastBaseURL = "http://127.0.0.1:1"
+	dead.ArchiveBaseURL = "http://127.0.0.1:1"
+	prevWeather := weatherService
+	weatherService = dead
+	t.Cleanup(func() { weatherService = prevWeather })
+
+	token, _ := newExportToken(trip.ID)
+	res := doJSON(t, "GET", "/api/v1/export/"+token+"/print.html", "", nil)
+	if res.Code != 200 {
+		t.Fatalf("print.html with dead weather: got %d want 200", res.Code)
+	}
+	body := res.Body.String()
+	if strings.Contains(body, "Weather:") {
+		t.Fatal("weather line should be absent when the upstream is down")
+	}
+	if !strings.Contains(body, "Acropolis") || !strings.Contains(body, "Day 2") {
+		t.Fatal("packet content should survive a weather outage")
+	}
+}
+
 func TestExportPrintView_InvalidTokenIs404(t *testing.T) {
 	resetDB(t)
 	rec := doJSON(t, "GET", "/api/v1/export/not-a-real-token/print.html", "", nil)
