@@ -15,6 +15,7 @@ UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(
       createdAt: DateTime.parse(json['created_at'] as String),
       remindersEnabled: json['reminders_enabled'] as bool? ?? true,
       nudgesEnabled: json['nudges_enabled'] as bool? ?? true,
+      locale: json['locale'] as String?,
     );
 
 Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
@@ -26,6 +27,7 @@ Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
       'created_at': instance.createdAt.toIso8601String(),
       'reminders_enabled': instance.remindersEnabled,
       'nudges_enabled': instance.nudgesEnabled,
+      'locale': instance.locale,
     };
 
 AuthResponse _$AuthResponseFromJson(Map<String, dynamic> json) => AuthResponse(

@@ -16,6 +16,12 @@ class ApiClient {
   /// that need authentication (e.g. trips). Set by the auth provider.
   String? authToken;
 
+  /// The effective UI language, sent as `Accept-Language` so server-rendered
+  /// text (trip-review findings, exports) comes back in the same language the
+  /// app is showing. Set by the locale provider, which owns resolution
+  /// (specs/i18n-spanish).
+  String localeTag = 'en';
+
   ApiClient({String? baseUrl, http.Client? client}) : _client = client ?? http.Client() {
     // Use provided baseUrl, or environment variable, or default
     _baseUrl = baseUrl ??
@@ -26,12 +32,15 @@ class ApiClient {
   String get baseUrl => _baseUrl;
   http.Client get httpClient => _client;
 
-  /// Standard request headers for the JSON API: `Accept` always, a JSON
-  /// `Content-Type` when the request carries a body ([json] is true), and the
-  /// bearer token whenever a session exists. Shared by the feature services so
-  /// each one doesn't re-implement its own copy.
+  /// Standard request headers for the JSON API: `Accept` and `Accept-Language`
+  /// always, a JSON `Content-Type` when the request carries a body ([json] is
+  /// true), and the bearer token whenever a session exists. Shared by the
+  /// feature services so each one doesn't re-implement its own copy.
   Map<String, String> jsonHeaders({bool json = false}) {
-    final h = <String, String>{'Accept': 'application/json'};
+    final h = <String, String>{
+      'Accept': 'application/json',
+      'Accept-Language': localeTag,
+    };
     if (json) h['Content-Type'] = 'application/json';
     final token = authToken;
     if (token != null) h['Authorization'] = 'Bearer $token';

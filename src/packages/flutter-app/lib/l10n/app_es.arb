@@ -1,0 +1,24 @@
+{
+  "@@locale": "es",
+
+  "appTitle": "Golden Tempo Travel",
+
+  "languageSectionTitle": "Idioma",
+  "languageSystemDefault": "Predeterminado del sistema",
+  "languageEnglish": "English",
+  "languageSpanish": "Español",
+  "languageChangeNote": "Los viajes y las notas que ya guardaste se mantienen en el idioma en que se escribieron.",
+
+  "commonSave": "Guardar",
+  "commonCancel": "Cancelar",
+  "commonDelete": "Eliminar",
+  "commonRetry": "Reintentar",
+  "commonClose": "Cerrar",
+  "commonBack": "Atrás",
+  "commonNext": "Siguiente",
+  "commonDone": "Listo",
+  "commonSeeAll": "Ver todo",
+
+  "citiesTwo": "{first} y {second}",
+  "citiesMore": "{first} y {second} +{count} más"
+}

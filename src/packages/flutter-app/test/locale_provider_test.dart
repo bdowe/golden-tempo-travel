@@ -1,0 +1,123 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+
+import 'package:travel_route_planner/l10n/l10n.dart';
+import 'package:travel_route_planner/providers/locale_provider.dart';
+import 'package:travel_route_planner/services/api_client.dart';
+import 'package:travel_route_planner/utils/money_format.dart';
+import 'package:travel_route_planner/utils/trip_format.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('supported languages', () {
+    // Spanish translations ship ahead of enablement: the .arb file exists and
+    // is complete, but `es` stays out of kSupportedLocales until the string
+    // extraction is done. Until then the app must resolve to English for
+    // everyone, so no user sees a half-translated UI.
+    test('English is supported and Spanish is not yet enabled', () {
+      expect(isSupportedLanguage('en'), isTrue);
+      expect(isSupportedLanguage('es'), isFalse);
+      expect(isSupportedLanguage('fr'), isFalse);
+    });
+  });
+
+  group('resolveEffectiveLocale', () {
+    test('system follows the device, falling back to English', () {
+      expect(resolveEffectiveLocale(kLocaleSystem), 'en');
+    });
+
+    test('an override for a language this build cannot render is ignored', () {
+      // A stale override left by a build that shipped more languages must not
+      // pin the app to a language it has no translations for.
+      expect(resolveEffectiveLocale('es'), 'en');
+      expect(resolveEffectiveLocale('klingon'), 'en');
+    });
+
+    test('an override for a supported language wins', () {
+      expect(resolveEffectiveLocale('en'), 'en');
+    });
+  });
+
+  group('LocaleState', () {
+    test('following the system hands MaterialApp a null locale', () {
+      // Null lets Flutter resolve against supportedLocales itself, which is
+      // what keeps the app tracking a device language change.
+      const state = LocaleState(override: kLocaleSystem, effective: 'en');
+      expect(state.materialLocale, isNull);
+    });
+
+    test('an explicit choice pins MaterialApp to that locale', () {
+      const state = LocaleState(override: 'en', effective: 'en');
+      expect(state.materialLocale?.languageCode, 'en');
+    });
+  });
+
+  group('ApiClient language header', () {
+    test('every JSON request states the effective language', () {
+      final client = ApiClient(baseUrl: 'http://x/api/v1');
+      expect(client.jsonHeaders()['Accept-Language'], 'en');
+
+      client.localeTag = 'es';
+      expect(client.jsonHeaders()['Accept-Language'], 'es');
+      // The existing headers must survive the addition.
+      expect(client.jsonHeaders(json: true)['Content-Type'], 'application/json');
+      expect(client.jsonHeaders()['Accept'], 'application/json');
+    });
+  });
+
+  group('locale-aware formatting', () {
+    setUp(() => Intl.defaultLocale = null);
+    tearDown(() => Intl.defaultLocale = null);
+
+    test('English formatting is unchanged by the intl migration', () {
+      expect(tripDateRange('2026-03-04', '2026-03-09'), 'Mar 4 – Mar 9');
+      expect(tripDateRange('2026-03-04', '2026-03-04'), 'Mar 4');
+      expect(tripDateRange(null, '2026-03-09'), isNull);
+      expect(formatMoney(412, 'EUR'), '€412');
+      expect(formatMoney(1234, 'USD'), r'$1,234');
+      expect(formatMoney(-5, 'USD'), r'-$5');
+    });
+
+    test('Spanish formatting follows the active locale', () async {
+      // flutter_localizations does this at startup for the app's locale; unit
+      // tests have no delegates, so load the symbols explicitly.
+      await initializeDateFormatting('es');
+      Intl.defaultLocale = 'es';
+
+      // Day-before-month ordering and Spanish month abbreviations.
+      expect(tripDateRange('2026-03-04', '2026-03-09'), '4 mar – 9 mar');
+      // Grouping separator flips; the currency symbol does not (it is a
+      // property of the currency, not of the reader's language).
+      expect(formatMoney(1234, 'USD'), r'$1.234');
+      expect(formatMoney(412, 'EUR'), '€412');
+    });
+  });
+
+  group('citiesLabel', () {
+    test('falls back to English connectors without translations', () {
+      expect(citiesLabel(null), isNull);
+      expect(citiesLabel([]), isNull);
+      expect(citiesLabel(['Paris']), 'Paris');
+      expect(citiesLabel(['Mexico City', 'Puerto Vallarta']),
+          'Mexico City & Puerto Vallarta');
+      expect(citiesLabel(['Tokyo', 'Kyoto', 'Osaka', 'Nara']),
+          'Tokyo & Kyoto +2 more');
+    });
+
+    test('uses the translated connectors when supplied', () {
+      expect(
+        citiesLabel(['Madrid', 'Sevilla'], two: (a, b) => '$a y $b'),
+        'Madrid y Sevilla',
+      );
+      expect(
+        citiesLabel(
+          ['Madrid', 'Sevilla', 'Granada', 'Córdoba'],
+          more: (a, b, n) => '$a y $b +$n más',
+        ),
+        'Madrid y Sevilla +2 más',
+      );
+    });
+  });
+}

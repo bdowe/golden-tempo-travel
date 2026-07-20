@@ -1,0 +1,57 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Golden Tempo Travel",
+  "@appTitle": {
+    "description": "Product name. Not translated — it is a brand name."
+  },
+
+  "languageSectionTitle": "Language",
+  "@languageSectionTitle": {
+    "description": "Header of the language group in account settings."
+  },
+  "languageSystemDefault": "System default",
+  "@languageSystemDefault": {
+    "description": "Language option that follows the device/browser language."
+  },
+  "languageEnglish": "English",
+  "@languageEnglish": {
+    "description": "Name of the English language, shown in its own language."
+  },
+  "languageSpanish": "Español",
+  "@languageSpanish": {
+    "description": "Name of the Spanish language, shown in its own language."
+  },
+  "languageChangeNote": "Trips and notes you already saved stay in the language they were written in.",
+  "@languageChangeNote": {
+    "description": "Explains that switching language does not retranslate existing saved content."
+  },
+
+  "commonSave": "Save",
+  "commonCancel": "Cancel",
+  "commonDelete": "Delete",
+  "commonRetry": "Retry",
+  "commonClose": "Close",
+  "commonBack": "Back",
+  "commonNext": "Next",
+  "commonDone": "Done",
+  "commonSeeAll": "See all",
+
+  "citiesTwo": "{first} & {second}",
+  "@citiesTwo": {
+    "description": "Destination summary for a trip with exactly two hub cities.",
+    "placeholders": {
+      "first": { "type": "String", "example": "Mexico City" },
+      "second": { "type": "String", "example": "Puerto Vallarta" }
+    }
+  },
+  "citiesMore": "{first} & {second} +{count} more",
+  "@citiesMore": {
+    "description": "Destination summary for a trip with more than two hub cities; count is how many are not named.",
+    "placeholders": {
+      "first": { "type": "String", "example": "Tokyo" },
+      "second": { "type": "String", "example": "Kyoto" },
+      "count": { "type": "int", "example": "2" }
+    }
+  }
+}

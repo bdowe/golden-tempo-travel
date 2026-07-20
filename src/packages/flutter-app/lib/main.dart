@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'constants/app_info.dart';
+import 'l10n/l10n.dart';
 import 'providers/auth_provider.dart';
+import 'providers/locale_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/alerts_screen.dart';
 import 'screens/landing_screen.dart';
@@ -26,15 +29,28 @@ void main() {
   );
 }
 
-class TravelRoutePlannerApp extends StatelessWidget {
+class TravelRoutePlannerApp extends ConsumerWidget {
   const TravelRoutePlannerApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watching only the locale the widget layer needs: a change to the stored
+    // override alone (same effective language) must not rebuild the app.
+    final locale = ref.watch(localeProvider.select((s) => s.materialLocale));
     return MaterialApp(
       title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      // specs/i18n-spanish. `locale` is null while following the device, which
+      // lets Flutter resolve against supportedLocales itself.
+      locale: locale,
+      supportedLocales: kSupportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       // Route by URL so share links work signed-out. Everything else lands
       // on AuthGate, preserving the existing splash -> landing/quiz/shell
       // flow. Legacy /#/share links are rewritten by the index.html shim.

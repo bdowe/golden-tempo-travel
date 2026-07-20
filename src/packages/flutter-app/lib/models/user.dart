@@ -22,6 +22,11 @@ class UserModel {
   @JsonKey(name: 'nudges_enabled')
   final bool nudgesEnabled;
 
+  /// Preferred language synced from this device ('en' | 'es'). Null until the
+  /// account has ever resolved one, in which case server-generated text falls
+  /// back to English (specs/i18n-spanish).
+  final String? locale;
+
   const UserModel({
     required this.id,
     required this.email,
@@ -31,6 +36,7 @@ class UserModel {
     required this.createdAt,
     this.remindersEnabled = true,
     this.nudgesEnabled = true,
+    this.locale,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) =>
