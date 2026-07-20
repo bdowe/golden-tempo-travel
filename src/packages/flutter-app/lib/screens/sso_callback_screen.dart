@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/gradient_app_bar.dart';
+
+/// Why the handoff didn't produce a session. Internal only — never shown or
+/// sent anywhere; [SsoCallbackScreen.build] maps it to localized copy.
+enum _SsoFailure { cancelled, expired }
 
 /// Landing spot for the SSO redirect (Google or Apple), reachable at
 /// /sso/<code> (specs/google-sso, specs/apple-sso). Swaps the one-time code
@@ -18,7 +23,11 @@ class SsoCallbackScreen extends ConsumerStatefulWidget {
 
 class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
   bool _loading = true;
-  String? _error;
+
+  /// Which failure to explain, not the sentence itself: the copy is localized
+  /// and resolved in [build] (specs/i18n-spanish). `_exchange` runs from
+  /// `initState`, where an inherited-widget lookup isn't allowed.
+  _SsoFailure? _failure;
 
   @override
   void initState() {
@@ -30,7 +39,7 @@ class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
     if (widget.code == 'error') {
       setState(() {
         _loading = false;
-        _error = 'Sign-in was cancelled or failed. Please try again.';
+        _failure = _SsoFailure.cancelled;
       });
       return;
     }
@@ -45,7 +54,7 @@ class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'This sign-in link expired. Please try again.';
+          _failure = _SsoFailure.expired;
         });
       }
     }
@@ -58,6 +67,7 @@ class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final Widget body;
     if (_loading) {
       body = const CircularProgressIndicator();
@@ -71,27 +81,34 @@ class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
             Icon(Icons.link_off, size: 64, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(
-              'Sign-in didn\'t complete',
+              l10n.ssoFailedTitle,
               style: theme.textTheme.headlineSmall
                   ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(_error ?? '', textAlign: TextAlign.center),
+            Text(
+              switch (_failure) {
+                _SsoFailure.cancelled => l10n.ssoErrorCancelled,
+                _SsoFailure.expired => l10n.ssoErrorExpired,
+                null => '',
+              },
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _backToSignIn,
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Back to sign in'),
+              child: Text(l10n.ssoBackToSignIn),
             ),
           ],
         ),
       );
     }
     return Scaffold(
-      appBar: const GradientAppBar(title: Text('Signing you in')),
+      appBar: GradientAppBar(title: Text(l10n.ssoTitle)),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

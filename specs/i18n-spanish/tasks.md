@@ -38,6 +38,20 @@
 
 ## PRs 3-5 — String extraction (mechanical)
 
+**PR 3 (batch A) is DONE**: preferences, auth, reset-password, landing, verify,
+sso-callback, account-settings, onboarding-quiz + the three SSO button widgets.
+109 keys. splash_screen has no user-facing text (left untouched).
+Established for batches B and C:
+- `test/support/l10n_test_app.dart` — any test pumping a bare `MaterialApp`
+  needs the delegates or `AppLocalizations.of` throws; supports pinning `es`.
+- Canonical API values (chip options) keep their values and get translated
+  labels only, via `ChoiceChipRow.labelBuilder` + a `_xLabel` switch helper.
+- Strings assigned outside `build` (e.g. from `initState`) must become an enum
+  or bool that `build` maps to copy — `context.l10n` is illegal there.
+- Extraction was parallelized across agents writing `lib/l10n/_frag_*.json`
+  fragments (no shared-ARB contention), verified English-verbatim against
+  `git HEAD` before merging.
+
 Per batch (A: auth/landing/settings/preferences/account · B: trips/itinerary/
 today/budget/checklist · C: chat/alerts/share/export/remaining):
 

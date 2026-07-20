@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/l10n.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -36,7 +37,7 @@ class GoogleSignInButton extends ConsumerWidget {
         height: 20,
         width: 20,
       ),
-      label: const Text('Continue with Google'),
+      label: Text(context.l10n.ssoContinueWithGoogle),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
       ),

@@ -7,6 +7,8 @@ import 'package:travel_route_planner/screens/auth_screen.dart';
 import 'package:travel_route_planner/services/auth_service.dart';
 import 'package:travel_route_planner/services/auth_storage.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Records login/register calls; Google SSO reports unavailable so the
 /// button stays hidden.
 class _FakeAuthService extends AuthService {
@@ -58,7 +60,7 @@ Widget _wrap(_FakeAuthService service) {
       authServiceProvider.overrideWithValue(service),
       authStorageProvider.overrideWithValue(_FakeAuthStorage()),
     ],
-    child: const MaterialApp(home: AuthScreen()),
+    child: localizedTestApp(home: const AuthScreen()),
   );
 }
 

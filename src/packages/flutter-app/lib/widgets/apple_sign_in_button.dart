@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/l10n.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -30,7 +31,7 @@ class AppleSignInButton extends ConsumerWidget {
       // Material Icons ships an Apple glyph — no bundled asset needed
       // (unlike the Google "G", which has no font equivalent).
       icon: const Icon(Icons.apple, size: 22),
-      label: const Text('Continue with Apple'),
+      label: Text(context.l10n.ssoContinueWithApple),
       style: FilledButton.styleFrom(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,

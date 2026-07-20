@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/analytics_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
@@ -61,6 +62,7 @@ class _LandingScreenState extends State<LandingScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -74,7 +76,7 @@ class _LandingScreenState extends State<LandingScreen> {
           TextButton(
             onPressed: () => _openAuth(context, isLogin: true),
             style: TextButton.styleFrom(foregroundColor: Colors.white),
-            child: const Text('Sign in'),
+            child: Text(l10n.landingSignIn),
           ),
           const SizedBox(width: AppSpacing.sm),
         ],
@@ -96,7 +98,7 @@ class _LandingScreenState extends State<LandingScreen> {
                 const SizedBox(height: AppSpacing.xl + AppSpacing.xs),
 
                 Text(
-                  'Everything you need to plan the trip',
+                  l10n.landingFeaturesTitle,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: theme.colorScheme.onSurface,
@@ -105,11 +107,10 @@ class _LandingScreenState extends State<LandingScreen> {
 
                 const SizedBox(height: AppSpacing.md),
 
-                const _FeatureCard(
+                _FeatureCard(
                   icon: Icons.auto_awesome,
-                  title: 'AI Travel Agent',
-                  description:
-                      'Describe your dream trip and get a complete itinerary in seconds.',
+                  title: l10n.landingFeatureAgentTitle,
+                  description: l10n.landingFeatureAgentDescription,
                 ),
 
                 const SizedBox(height: AppSpacing.xl),
@@ -121,10 +122,10 @@ class _LandingScreenState extends State<LandingScreen> {
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
-                      'Get started',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    child: Text(
+                      l10n.landingGetStarted,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ),
                 ),
@@ -151,6 +152,7 @@ class _LandingFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final muted = theme.textTheme.bodySmall
         ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return Column(
@@ -162,17 +164,17 @@ class _LandingFooter extends StatelessWidget {
           children: [
             TextButton(
               onPressed: openPrivacyPolicy,
-              child: const Text('Privacy Policy'),
+              child: Text(l10n.landingPrivacyPolicy),
             ),
             Text('·', style: muted),
             TextButton(
               onPressed: openTermsOfService,
-              child: const Text('Terms of Service'),
+              child: Text(l10n.landingTermsOfService),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        Text('© 2026 Golden Tempo LLC', style: muted),
+        Text(l10n.landingCopyright, style: muted),
       ],
     );
   }
@@ -190,6 +192,7 @@ class _LandingHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Container(
       decoration: BoxDecoration(
         borderRadius: AppRadius.lgAll,
@@ -230,7 +233,7 @@ class _LandingHero extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Plan less. Travel more.',
+                    l10n.landingHeroTagline,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -238,9 +241,7 @@ class _LandingHero extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Your AI travel companion — describe the trip you want and '
-                    'get a full day-by-day itinerary with routes, places, and '
-                    'flights.',
+                    l10n.landingHeroSubtitle,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: Colors.white.withValues(alpha: 0.85),
                     ),
@@ -258,9 +259,9 @@ class _LandingHero extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
-                        'Get started',
-                        style: TextStyle(
+                      child: Text(
+                        l10n.landingGetStarted,
+                        style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ),
@@ -274,7 +275,7 @@ class _LandingHero extends StatelessWidget {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: const Text('I already have an account'),
+                      child: Text(l10n.landingHaveAccount),
                     ),
                   ),
                 ],

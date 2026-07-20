@@ -6,6 +6,8 @@ import 'package:travel_route_planner/services/auth_service.dart';
 import 'package:travel_route_planner/services/auth_storage.dart';
 import 'package:travel_route_planner/widgets/apple_sign_in_button.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// AuthService with a scripted Apple availability answer.
 class _FakeAuthService extends AuthService {
   final bool available;
@@ -33,8 +35,8 @@ Widget _wrap({required bool available}) {
           .overrideWithValue(_FakeAuthService(available: available)),
       authStorageProvider.overrideWithValue(_FakeAuthStorage()),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: AppleSignInButton()),
+    child: localizedTestApp(
+      home: const Scaffold(body: AppleSignInButton()),
     ),
   );
 }

@@ -7,6 +7,8 @@ import 'package:travel_route_planner/screens/sso_callback_screen.dart';
 import 'package:travel_route_planner/services/auth_service.dart';
 import 'package:travel_route_planner/services/auth_storage.dart';
 
+import 'support/l10n_test_app.dart';
+
 final _testUser = UserModel(
   id: 'u1',
   email: 'sso@example.com',
@@ -52,6 +54,7 @@ Widget _wrap(_FakeAuthService service, _FakeAuthStorage storage, String code) {
       authStorageProvider.overrideWithValue(storage),
     ],
     child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
       initialRoute: '/sso',
       onGenerateRoute: (settings) {
         if (settings.name == '/sso') {

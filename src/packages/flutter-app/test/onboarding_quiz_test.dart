@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +6,8 @@ import 'package:travel_route_planner/models/user.dart';
 import 'package:travel_route_planner/providers/auth_provider.dart';
 import 'package:travel_route_planner/screens/landing_screen.dart';
 import 'package:travel_route_planner/screens/onboarding_quiz_screen.dart';
+
+import 'support/l10n_test_app.dart';
 
 /// Auth notifier pinned to a fixed state, so AuthGate can be pumped without
 /// network or storage.
@@ -54,7 +55,7 @@ Future<void> _pumpGate(WidgetTester tester, UserModel? user) async {
       overrides: [
         authProvider.overrideWith((ref) => _FakeAuthNotifier(user)),
       ],
-      child: const MaterialApp(home: AuthGate()),
+      child: localizedTestApp(home: const AuthGate()),
     ),
   );
   await tester.pump();

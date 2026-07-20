@@ -4,14 +4,48 @@ import '../models/airport.dart';
 import '../widgets/airport_field.dart';
 import '../widgets/choice_chip_row.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../l10n/l10n.dart';
 import '../providers/preferences_provider.dart';
 import '../utils/snack.dart';
 
+// Canonical API values. These are sent to the server and read by the AI agent,
+// so they are NEVER translated — only their display labels are
+// (specs/i18n-spanish).
 const _budgets = ['budget', 'mid', 'luxury'];
 const _paces = ['relaxed', 'balanced', 'packed'];
 const _suggestedInterests = [
   'museums', 'food', 'nightlife', 'nature', 'history', 'art', 'shopping', 'outdoors', 'beaches', 'architecture',
 ];
+
+String _budgetLabel(AppLocalizations l10n, String value) => switch (value) {
+      'budget' => l10n.prefsBudgetLow,
+      'mid' => l10n.prefsBudgetMid,
+      'luxury' => l10n.prefsBudgetLuxury,
+      _ => value,
+    };
+
+String _paceLabel(AppLocalizations l10n, String value) => switch (value) {
+      'relaxed' => l10n.prefsPaceRelaxed,
+      'balanced' => l10n.prefsPaceBalanced,
+      'packed' => l10n.prefsPacePacked,
+      _ => value,
+    };
+
+/// Suggested interests get translated labels; anything the traveler typed
+/// themselves is shown exactly as they wrote it.
+String _interestLabel(AppLocalizations l10n, String value) => switch (value) {
+      'museums' => l10n.prefsInterestMuseums,
+      'food' => l10n.prefsInterestFood,
+      'nightlife' => l10n.prefsInterestNightlife,
+      'nature' => l10n.prefsInterestNature,
+      'history' => l10n.prefsInterestHistory,
+      'art' => l10n.prefsInterestArt,
+      'shopping' => l10n.prefsInterestShopping,
+      'outdoors' => l10n.prefsInterestOutdoors,
+      'beaches' => l10n.prefsInterestBeaches,
+      'architecture' => l10n.prefsInterestArchitecture,
+      _ => value,
+    };
 
 class PreferencesScreen extends ConsumerStatefulWidget {
   const PreferencesScreen({super.key});
@@ -78,43 +112,47 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           profileNotes: _notesController.text.trim(),
         );
     if (!mounted) return;
-    showSnack(context, ok ? 'Preferences saved' : 'Could not save preferences');
+    showSnack(context,
+        ok ? context.l10n.prefsSaved : context.l10n.prefsSaveFailed);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final state = ref.watch(preferencesProvider);
 
     // Chips = suggested set plus any custom interests already selected.
     final chipLabels = {..._suggestedInterests, ..._interests}.toList();
 
     return Scaffold(
-      appBar: const GradientAppBar(
-        title: Text('Travel profile'),
+      appBar: GradientAppBar(
+        title: Text(l10n.prefsTitle),
       ),
       body: state.loading && !_initialized
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('Budget', style: theme.textTheme.titleMedium),
+                Text(l10n.prefsBudget, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 ChoiceChipRow(
                   options: _budgets,
                   selected: _budget,
                   onSelected: (v) => setState(() => _budget = v),
+                  labelBuilder: (v) => _budgetLabel(l10n, v),
                 ),
                 const SizedBox(height: 24),
-                Text('Pace', style: theme.textTheme.titleMedium),
+                Text(l10n.prefsPace, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 ChoiceChipRow(
                   options: _paces,
                   selected: _pace,
                   onSelected: (v) => setState(() => _pace = v),
+                  labelBuilder: (v) => _paceLabel(l10n, v),
                 ),
                 const SizedBox(height: 24),
-                Text('Interests', style: theme.textTheme.titleMedium),
+                Text(l10n.prefsInterests, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -122,7 +160,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                   children: chipLabels.map((label) {
                     final selected = _interests.contains(label);
                     return FilterChip(
-                      label: Text(label),
+                      label: Text(_interestLabel(l10n, label)),
                       selected: selected,
                       onSelected: (sel) => setState(() {
                         if (sel) {
@@ -140,7 +178,8 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                     Expanded(
                       child: TextField(
                         controller: _interestController,
-                        decoration: const InputDecoration(hintText: 'Add an interest'),
+                        decoration:
+                            InputDecoration(hintText: l10n.prefsAddInterest),
                         onSubmitted: (_) => _addInterest(),
                       ),
                     ),
@@ -148,26 +187,27 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                   ],
                 ),
                 const SizedBox(height: 24),
-                Text('Home airport', style: theme.textTheme.titleMedium),
+                Text(l10n.prefsHomeAirport, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  'Used as the default origin when planning flights.',
+                  l10n.prefsHomeAirportHelp,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 8),
                 AirportField(
-                  label: 'Home airport',
+                  label: l10n.prefsHomeAirport,
                   icon: Icons.home,
                   selected: _homeAirport,
                   onSelected: (a) => setState(() => _homeAirport = a),
                 ),
                 const SizedBox(height: 24),
-                Text('Profile notes', style: theme.textTheme.titleMedium),
+                Text(l10n.prefsProfileNotes,
+                    style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  'Your AI agent keeps these notes as it learns about you. Edit or clear them anytime.',
+                  l10n.prefsProfileNotesHelp,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -177,9 +217,9 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                   controller: _notesController,
                   maxLines: 6,
                   maxLength: 2000,
-                  decoration: const InputDecoration(
-                    hintText: 'Nothing noted yet — the agent adds to this as you plan trips.',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: l10n.prefsProfileNotesHint,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -188,7 +228,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                   style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                   child: state.saving
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Save'),
+                      : Text(l10n.commonSave),
                 ),
               ],
             ),

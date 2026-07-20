@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/airport.dart';
 import '../models/traveler_preferences.dart';
 import '../providers/auth_provider.dart';
@@ -11,6 +12,9 @@ import '../widgets/gradient_app_bar.dart';
 import '../widgets/page_container.dart';
 import '../utils/snack.dart';
 
+// Canonical API values. These are sent to the server (and, for companions,
+// folded into the profile notes the AI agent reads), so they are NEVER
+// translated — only their display labels are (specs/i18n-spanish).
 const _budgets = ['budget', 'mid', 'luxury'];
 const _paces = ['relaxed', 'balanced', 'packed'];
 const _suggestedInterests = [
@@ -18,6 +22,45 @@ const _suggestedInterests = [
 ];
 const _companionOptions = ['solo', 'partner', 'friends', 'family with kids', 'it varies'];
 const _tripsMaxLength = 500;
+
+String _budgetLabel(AppLocalizations l10n, String value) => switch (value) {
+      'budget' => l10n.prefsBudgetLow,
+      'mid' => l10n.prefsBudgetMid,
+      'luxury' => l10n.prefsBudgetLuxury,
+      _ => value,
+    };
+
+String _paceLabel(AppLocalizations l10n, String value) => switch (value) {
+      'relaxed' => l10n.prefsPaceRelaxed,
+      'balanced' => l10n.prefsPaceBalanced,
+      'packed' => l10n.prefsPacePacked,
+      _ => value,
+    };
+
+/// Suggested interests get translated labels; anything the traveler typed
+/// themselves is shown exactly as they wrote it.
+String _interestLabel(AppLocalizations l10n, String value) => switch (value) {
+      'museums' => l10n.prefsInterestMuseums,
+      'food' => l10n.prefsInterestFood,
+      'nightlife' => l10n.prefsInterestNightlife,
+      'nature' => l10n.prefsInterestNature,
+      'history' => l10n.prefsInterestHistory,
+      'art' => l10n.prefsInterestArt,
+      'shopping' => l10n.prefsInterestShopping,
+      'outdoors' => l10n.prefsInterestOutdoors,
+      'beaches' => l10n.prefsInterestBeaches,
+      'architecture' => l10n.prefsInterestArchitecture,
+      _ => value,
+    };
+
+String _companionLabel(AppLocalizations l10n, String value) => switch (value) {
+      'solo' => l10n.quizCompanionSolo,
+      'partner' => l10n.quizCompanionPartner,
+      'friends' => l10n.quizCompanionFriends,
+      'family with kids' => l10n.quizCompanionFamily,
+      'it varies' => l10n.quizCompanionVaries,
+      _ => value,
+    };
 
 /// Formats the quiz's free-form answers as profile-notes bullet lines, using
 /// the same short-bullet convention the AI profile distiller maintains so the
@@ -133,6 +176,7 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
 
   Future<void> _finish() async {
     if (_submitting) return;
+    final l10n = context.l10n;
     setState(() => _submitting = true);
     final notes = buildOnboardingProfileNotes(
       companions: _companions,
@@ -151,14 +195,13 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
     if (!ok) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      showSnack(
-          context, 'Could not save your answers — try again, or skip for now.');
+      showSnack(context, l10n.quizSaveFailed);
       return;
     }
     if (widget.retake) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      showSnack(context, 'Travel profile updated');
+      showSnack(context, l10n.quizProfileUpdated);
       return;
     }
     await ref.read(authProvider.notifier).completeOnboarding();
@@ -175,16 +218,17 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
       });
     }
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final isLast = _step == _stepCount - 1;
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('Set up your travel profile'),
+        title: Text(l10n.quizTitle),
         actions: [
           TextButton(
             onPressed: _submitting ? null : _skip,
             style: TextButton.styleFrom(foregroundColor: Colors.white),
-            child: const Text('Skip'),
+            child: Text(l10n.quizSkip),
           ),
         ],
       ),
@@ -198,29 +242,31 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _buildStep(
-                      title: 'What\'s your travel style?',
-                      subtitle: 'Helps the planner match stays and activities to you.',
+                      title: l10n.quizStyleTitle,
+                      subtitle: l10n.quizStyleSubtitle,
                       children: [
-                        Text('Budget', style: theme.textTheme.titleMedium),
+                        Text(l10n.prefsBudget, style: theme.textTheme.titleMedium),
                         const SizedBox(height: AppSpacing.sm),
                         ChoiceChipRow(
                           options: _budgets,
                           selected: _budget,
                           onSelected: (v) => setState(() => _budget = v),
+                          labelBuilder: (v) => _budgetLabel(l10n, v),
                         ),
                         const SizedBox(height: AppSpacing.xl),
-                        Text('Pace', style: theme.textTheme.titleMedium),
+                        Text(l10n.prefsPace, style: theme.textTheme.titleMedium),
                         const SizedBox(height: AppSpacing.sm),
                         ChoiceChipRow(
                           options: _paces,
                           selected: _pace,
                           onSelected: (v) => setState(() => _pace = v),
+                          labelBuilder: (v) => _paceLabel(l10n, v),
                         ),
                       ],
                     ),
                     _buildStep(
-                      title: 'What do you love doing on a trip?',
-                      subtitle: 'Pick as many as you like.',
+                      title: l10n.quizInterestsTitle,
+                      subtitle: l10n.quizInterestsSubtitle,
                       children: [
                         Wrap(
                           spacing: AppSpacing.sm,
@@ -228,7 +274,7 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                           children: {..._suggestedInterests, ..._interests}.map((label) {
                             final selected = _interests.contains(label);
                             return FilterChip(
-                              label: Text(label),
+                              label: Text(_interestLabel(l10n, label)),
                               selected: selected,
                               onSelected: (sel) => setState(() {
                                 if (sel) {
@@ -246,7 +292,7 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _interestController,
-                                decoration: const InputDecoration(hintText: 'Add an interest'),
+                                decoration: InputDecoration(hintText: l10n.prefsAddInterest),
                                 onSubmitted: (_) => _addInterest(),
                               ),
                             ),
@@ -256,21 +302,22 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                       ],
                     ),
                     _buildStep(
-                      title: 'Who do you usually travel with?',
+                      title: l10n.quizCompanionsTitle,
                       children: [
                         ChoiceChipRow(
                           options: _companionOptions,
                           selected: _companions,
                           onSelected: (v) => setState(() => _companions = v),
+                          labelBuilder: (v) => _companionLabel(l10n, v),
                         ),
                       ],
                     ),
                     _buildStep(
-                      title: 'Where do you fly from?',
-                      subtitle: 'Used as the default origin when planning flights.',
+                      title: l10n.quizHomeAirportTitle,
+                      subtitle: l10n.prefsHomeAirportHelp,
                       children: [
                         AirportField(
-                          label: 'Home airport',
+                          label: l10n.prefsHomeAirport,
                           icon: Icons.home,
                           selected: _homeAirport,
                           onSelected: (a) => setState(() => _homeAirport = a),
@@ -278,16 +325,16 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                       ],
                     ),
                     _buildStep(
-                      title: 'Any trips you\'re dreaming about?',
-                      subtitle: 'Places, seasons, occasions — the planner will keep them in mind.',
+                      title: l10n.quizTripsTitle,
+                      subtitle: l10n.quizTripsSubtitle,
                       children: [
                         TextField(
                           controller: _tripsController,
                           maxLines: 4,
                           maxLength: _tripsMaxLength,
-                          decoration: const InputDecoration(
-                            hintText: 'e.g. Japan for cherry blossom season, a Greek island hop next summer…',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            hintText: l10n.quizTripsHint,
+                            border: const OutlineInputBorder(),
                           ),
                         ),
                       ],
@@ -302,7 +349,7 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                     if (_step > 0)
                       TextButton(
                         onPressed: _submitting ? null : () => _goTo(_step - 1),
-                        child: const Text('Back'),
+                        child: Text(l10n.commonBack),
                       ),
                     const Spacer(),
                     _StepDots(count: _stepCount, current: _step),
@@ -323,7 +370,7 @@ class _OnboardingQuizScreenState extends ConsumerState<OnboardingQuizScreen> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(isLast ? 'Finish' : 'Next'),
+                          : Text(isLast ? l10n.quizFinish : l10n.commonNext),
                     ),
                   ],
                 ),
