@@ -38,6 +38,13 @@ String exportPrintUrl(String apiBaseUrl, String token) =>
 String exportIcsUrl(String apiBaseUrl, String token) =>
     _exportUrl(apiBaseUrl, token, 'calendar.ics');
 
+/// Absolute URL for ONE trip event's token-gated .ics ([kind] is the server's
+/// path segment: stay | segment | item). See [exportPrintUrl] for how the
+/// same-origin URL is built.
+String exportEventIcsUrl(
+        String apiBaseUrl, String token, String kind, String id) =>
+    _exportUrl(apiBaseUrl, token, 'event/$kind/$id.ics');
+
 String _exportUrl(String apiBaseUrl, String token, String file) {
   final path = '$apiBaseUrl/export/$token/$file';
   // An absolute API base (bare `flutter run`) is already launch-ready.

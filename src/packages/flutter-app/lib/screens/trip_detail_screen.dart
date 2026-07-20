@@ -39,6 +39,7 @@ import '../models/budget.dart';
 import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
+import '../utils/calendar_links.dart';
 import '../utils/share_link.dart';
 import '../utils/tracked_launch.dart';
 import '../utils/trip_days.dart';
@@ -1663,6 +1664,62 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
+  /// Google-Calendar details line for an itinerary item, mirroring the Go
+  /// export's icsItemDescription: time-of-day + local attribution.
+  String _itemCalendarDetails(ItineraryItem item) {
+    final tod = item.timeOfDay;
+    final rec = item.localSourceName?.trim();
+    return [
+      if (tod != null && tod.isNotEmpty)
+        tod[0].toUpperCase() + tod.substring(1),
+      if (rec != null && rec.isNotEmpty) 'Recommended by $rec',
+    ].join(' · ');
+  }
+
+  /// Opens a prefilled Google Calendar event for one itinerary item — a pure
+  /// URL, so no token mint and no offline gate.
+  Future<void> _addItemToGoogleCalendar(ItineraryItem item) async {
+    final range = itemCalendarRange(_trip?.startDate, item.day);
+    if (range == null) return;
+    await trackedLaunchUrl(
+      context,
+      googleCalendarUrl(
+        title: item.name,
+        start: range.start,
+        endExclusive: range.endExclusive,
+        location: item.address,
+        details: _itemCalendarDetails(item),
+      ),
+      provider: 'google_calendar',
+      surface: 'event_calendar',
+      tripId: widget.tripId,
+      kind: 'item',
+    );
+  }
+
+  /// Mints an export token and downloads the item's one-event .ics (the Apple
+  /// Calendar path). Needs the network, like _openExport.
+  Future<void> _addItemToAppleCalendar(ItineraryItem item) async {
+    if (_isOffline) return;
+    try {
+      final service = ref.read(tripsApiServiceProvider);
+      final token = await service.mintExportToken(widget.tripId);
+      if (!mounted) return;
+      final url = exportEventIcsUrl(
+          service.apiClient.baseUrl, token, 'item', item.id);
+      await trackedLaunchUrl(
+        context,
+        url,
+        provider: 'apple_calendar',
+        surface: 'event_calendar',
+        tripId: widget.tripId,
+        kind: 'item',
+      );
+    } catch (e) {
+      _showSnack('Could not export the event: $e');
+    }
+  }
+
   Future<void> _revokeLink() async {
     try {
       await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
@@ -2780,6 +2837,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Widget _itemMenu(ItineraryItem item) {
     final canUp = _moveNeighbor(item, -1) != null;
     final canDown = _moveNeighbor(item, 1) != null;
+    final calendarRange = itemCalendarRange(_trip?.startDate, item.day);
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
       tooltip: 'Place actions',
@@ -2793,6 +2851,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             _moveItem(item, 1);
           case 'reorder':
             _reorderSection(item);
+          case 'gcal':
+            _addItemToGoogleCalendar(item);
+          case 'ics':
+            _addItemToAppleCalendar(item);
           case 'delete':
             _deleteItem(item);
         }
@@ -2833,6 +2895,25 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               contentPadding: EdgeInsets.zero,
             ),
           ),
+        if (calendarRange != null) ...[
+          const PopupMenuItem(
+            value: 'gcal',
+            child: ListTile(
+              leading: Icon(Icons.event_outlined),
+              title: Text('Add to Google Calendar'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          PopupMenuItem(
+            value: 'ics',
+            enabled: !_isOffline,
+            child: const ListTile(
+              leading: Icon(Icons.event_available_outlined),
+              title: Text('Add to Apple Calendar (.ics)'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
         const PopupMenuItem(
           value: 'delete',
           child: ListTile(
@@ -4171,6 +4252,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                             grouped.residual, theme),
                                     onAddBooking:
                                         _isOffline ? null : _addBooking,
+                                    appleCalendarEnabled:
+                                        !_readOnly && !_isOffline,
                                   ),
                                 ],
                               ),

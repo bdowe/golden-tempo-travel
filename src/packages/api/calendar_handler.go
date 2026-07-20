@@ -49,40 +49,29 @@ func buildICS(d exportData) string {
 	events := 0
 
 	for _, it := range d.Items {
-		start, ok := itemStartDate(d.Trip, it)
+		start, end, summary, location, description, ok := itemEventFields(d.Trip, it)
 		if !ok {
 			continue // no trip start_date or no day → not datable
 		}
-		desc := icsItemDescription(it)
-		b.event(stamp, "item-"+it.ID.String(), start, start.AddDate(0, 0, 1),
-			it.Name, strPtrVal(it.Address), desc)
+		b.event(stamp, "item-"+it.ID.String(), start, end, summary, location, description)
 		events++
 	}
 
 	for _, a := range d.Accommodations {
-		if !a.CheckIn.Valid {
+		start, end, summary, location, ok := stayEventFields(a)
+		if !ok {
 			continue
 		}
-		end := a.CheckIn.Time.AddDate(0, 0, 1)
-		if a.CheckOut.Valid && a.CheckOut.Time.After(a.CheckIn.Time) {
-			end = a.CheckOut.Time
-		}
-		b.event(stamp, "acc-"+a.ID.String(), a.CheckIn.Time, end,
-			"Stay: "+a.Name, strPtrVal(a.Address), "")
+		b.event(stamp, "acc-"+a.ID.String(), start, end, summary, location, "")
 		events++
 	}
 
 	for _, s := range d.Segments {
-		if !s.DepartDate.Valid {
+		start, end, summary, description, ok := segmentEventFields(s)
+		if !ok {
 			continue
 		}
-		end := s.DepartDate.Time.AddDate(0, 0, 1)
-		if s.ArriveDate.Valid && s.ArriveDate.Time.After(s.DepartDate.Time) {
-			end = s.ArriveDate.Time.AddDate(0, 0, 1)
-		}
-		summary := capitalize(s.Mode) + ": " + segmentRoute(s)
-		b.event(stamp, "seg-"+s.ID.String(), s.DepartDate.Time, end,
-			summary, "", strPtrVal(s.Notes))
+		b.event(stamp, "seg-"+s.ID.String(), start, end, summary, "", description)
 		events++
 	}
 
@@ -98,6 +87,48 @@ func buildICS(d exportData) string {
 
 	b.line("END:VCALENDAR")
 	return b.String()
+}
+
+// The three per-kind field resolvers below are shared by the whole-trip
+// calendar and the single-event endpoint (calendar_event_handler.go) so both
+// render identical all-day VEVENTs. All ends are exclusive; ok=false means the
+// event is undated and gets no VEVENT.
+
+// stayEventFields resolves an accommodation's VEVENT fields: check-in through
+// check-out (or one night when check-out is missing/not after check-in).
+func stayEventFields(a store.Accommodation) (start, end time.Time, summary, location string, ok bool) {
+	if !a.CheckIn.Valid {
+		return time.Time{}, time.Time{}, "", "", false
+	}
+	end = a.CheckIn.Time.AddDate(0, 0, 1)
+	if a.CheckOut.Valid && a.CheckOut.Time.After(a.CheckIn.Time) {
+		end = a.CheckOut.Time
+	}
+	return a.CheckIn.Time, end, "Stay: " + a.Name, strPtrVal(a.Address), true
+}
+
+// segmentEventFields resolves a transport segment's VEVENT fields: departure
+// day through arrival day inclusive (single day when arrival is missing).
+func segmentEventFields(s store.TripSegment) (start, end time.Time, summary, description string, ok bool) {
+	if !s.DepartDate.Valid {
+		return time.Time{}, time.Time{}, "", "", false
+	}
+	end = s.DepartDate.Time.AddDate(0, 0, 1)
+	if s.ArriveDate.Valid && s.ArriveDate.Time.After(s.DepartDate.Time) {
+		end = s.ArriveDate.Time.AddDate(0, 0, 1)
+	}
+	summary = capitalize(s.Mode) + ": " + segmentRoute(s)
+	return s.DepartDate.Time, end, summary, strPtrVal(s.Notes), true
+}
+
+// itemEventFields resolves an itinerary item's VEVENT fields: the single trip
+// day the item is assigned to.
+func itemEventFields(trip store.Trip, it store.ItineraryItem) (start, end time.Time, summary, location, description string, ok bool) {
+	start, ok = itemStartDate(trip, it)
+	if !ok {
+		return time.Time{}, time.Time{}, "", "", "", false
+	}
+	return start, start.AddDate(0, 0, 1), it.Name, strPtrVal(it.Address), icsItemDescription(it), true
 }
 
 // itemStartDate resolves an item's all-day start: trip.start_date + (day-1).
