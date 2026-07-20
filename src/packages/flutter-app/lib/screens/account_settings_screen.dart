@@ -76,9 +76,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
               _currentPwController.text,
               _newPwController.text,
             );
-        await ref
-            .read(authProvider.notifier)
-            .adoptSession(res.token, res.user);
+        await ref.read(authProvider.notifier).adoptSession(res.token, res.user);
         _currentPwController.clear();
         _newPwController.clear();
         _snack('Password changed — other devices were signed out');
@@ -122,6 +120,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             TextField(
               controller: pwController,
               obscureText: true,
+              autofillHints: const [AutofillHints.password],
               decoration: const InputDecoration(
                 labelText: 'Confirm your password',
                 border: OutlineInputBorder(),
@@ -193,21 +192,29 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             const SizedBox(height: AppSpacing.xl),
             const SectionHeader(title: 'Password'),
             const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _currentPwController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Current password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _newPwController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'New password (8+ characters)',
-                border: OutlineInputBorder(),
+            AutofillGroup(
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _currentPwController,
+                    obscureText: true,
+                    autofillHints: const [AutofillHints.password],
+                    decoration: const InputDecoration(
+                      labelText: 'Current password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextField(
+                    controller: _newPwController,
+                    obscureText: true,
+                    autofillHints: const [AutofillHints.newPassword],
+                    decoration: const InputDecoration(
+                      labelText: 'New password (8+ characters)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -281,8 +288,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
-                icon: Icon(Icons.delete_forever,
-                    color: theme.colorScheme.error),
+                icon:
+                    Icon(Icons.delete_forever, color: theme.colorScheme.error),
                 label: Text('Delete account',
                     style: TextStyle(color: theme.colorScheme.error)),
                 style: OutlinedButton.styleFrom(

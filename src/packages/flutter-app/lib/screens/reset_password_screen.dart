@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/gradient_app_bar.dart';
@@ -40,6 +41,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       await ref
           .read(authServiceProvider)
           .resetPassword(widget.token, _passwordController.text);
+      // Let the browser / password manager offer to update the saved login.
+      TextInput.finishAutofillContext();
       if (mounted) setState(() => _done = true);
     } catch (e) {
       if (mounted) {
@@ -106,66 +109,70 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   Widget _buildForm(ThemeData theme) {
     return Form(
       key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Choose a new password',
-            style: theme.textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          TextFormField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'New password'),
-            validator: (v) {
-              if ((v ?? '').isEmpty) return 'Password is required';
-              if (v!.length < 8) {
-                return 'Password must be at least 8 characters';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _confirmController,
-            obscureText: true,
-            decoration:
-                const InputDecoration(labelText: 'Confirm new password'),
-            validator: (v) {
-              if ((v ?? '').isEmpty) return 'Confirm your new password';
-              if (v != _passwordController.text) {
-                return 'Passwords don\'t match';
-              }
-              return null;
-            },
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 16),
+      child: AutofillGroup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Text(
-              _error!,
-              style: TextStyle(color: theme.colorScheme.error),
+              'Choose a new password',
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
-          ],
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _saving ? null : _submit,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _passwordController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(labelText: 'New password'),
+              validator: (v) {
+                if ((v ?? '').isEmpty) return 'Password is required';
+                if (v!.length < 8) {
+                  return 'Password must be at least 8 characters';
+                }
+                return null;
+              },
             ),
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Set new password'),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _confirmController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration:
+                  const InputDecoration(labelText: 'Confirm new password'),
+              validator: (v) {
+                if ((v ?? '').isEmpty) return 'Confirm your new password';
+                if (v != _passwordController.text) {
+                  return 'Passwords don\'t match';
+                }
+                return null;
+              },
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                style: TextStyle(color: theme.colorScheme.error),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _saving ? null : _submit,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Set new password'),
+            ),
+          ],
+        ),
       ),
     );
   }
