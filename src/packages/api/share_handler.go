@@ -254,11 +254,12 @@ func duplicateSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 	qtx := store.New(tx)
 
 	copyTrip, err := qtx.CreateTrip(ctx, store.CreateTripParams{
-		UserID:  user.ID,
-		Title:   src.Title + " (copy)",
-		Status:  "draft",
-		ChatID:  &newChatID,
-		Summary: src.Summary,
+		UserID:     user.ID,
+		Title:      src.Title + " (copy)",
+		Status:     "draft",
+		ChatID:     &newChatID,
+		Summary:    src.Summary,
+		TravelMode: src.TravelMode,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not copy trip")

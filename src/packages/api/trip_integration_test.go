@@ -94,3 +94,39 @@ func TestTripPatchValidation(t *testing.T) {
 		t.Fatalf("invalid status = %d, want 400", rec.Code)
 	}
 }
+
+func TestTripPatchTravelMode(t *testing.T) {
+	resetDB(t)
+	owner, token := createTestUser(t, "owner@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	path := "/api/v1/trips/" + trip.ID.String()
+
+	rec := doJSON(t, "PATCH", path, token, map[string]any{"travel_mode": "car"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH travel_mode = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TripResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.TravelMode == nil || *resp.TravelMode != "car" {
+		t.Fatalf("travel_mode = %v, want car", resp.TravelMode)
+	}
+
+	// A later PATCH that omits travel_mode must not clear it.
+	rec = doJSON(t, "PATCH", path, token, map[string]any{"status": "planned"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH status = %d: %s", rec.Code, rec.Body.String())
+	}
+	resp = TripResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.TravelMode == nil || *resp.TravelMode != "car" {
+		t.Fatalf("travel_mode after unrelated PATCH = %v, want car", resp.TravelMode)
+	}
+
+	if rec := doJSON(t, "PATCH", path, token, map[string]any{"travel_mode": "teleport"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid travel_mode = %d, want 400", rec.Code)
+	}
+}

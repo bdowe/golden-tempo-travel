@@ -1,6 +1,6 @@
 -- name: CreateTrip :one
-INSERT INTO trips (user_id, title, status, chat_id, summary, updated_by)
-VALUES ($1, $2, $3, $4, $5, $1)
+INSERT INTO trips (user_id, title, status, chat_id, summary, travel_mode, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $1)
 RETURNING *;
 
 -- name: CreateItineraryItem :one
@@ -147,9 +147,15 @@ SET title      = COALESCE(sqlc.narg('title'), title),
     start_date = COALESCE(sqlc.narg('start_date'), start_date),
     end_date   = COALESCE(sqlc.narg('end_date'), end_date),
     status     = COALESCE(sqlc.narg('status'), status),
-    chat_id    = COALESCE(sqlc.narg('chat_id'), chat_id)
+    chat_id    = COALESCE(sqlc.narg('chat_id'), chat_id),
+    travel_mode = COALESCE(sqlc.narg('travel_mode'), travel_mode)
 WHERE id = sqlc.arg('id') AND user_id = sqlc.arg('user_id')
 RETURNING *;
+
+-- name: SetTripTravelMode :exec
+-- Authorization happens in the callers (checkBoundTripSession / editableTrip),
+-- same as CreateSegment — no user_id scope here.
+UPDATE trips SET travel_mode = $2 WHERE id = $1;
 
 -- name: DeleteTrip :execrows
 -- Deletes the trip and, when it belongs to a chat group, all its versions.

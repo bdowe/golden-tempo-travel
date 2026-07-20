@@ -4,7 +4,14 @@ import '../models/booking_todo.dart';
 IconData _kindIcon(BookingTodo todo) {
   switch (todo.kind) {
     case 'transport':
-      return todo.provider == 'ferry' ? Icons.directions_boat : Icons.flight;
+      switch (todo.provider) {
+        case 'ferry':
+          return Icons.directions_boat;
+        case 'rome2rio': // ground leg on a driving/train/bus trip
+          return Icons.directions;
+        default:
+          return Icons.flight;
+      }
     case 'stay':
       return Icons.hotel;
     default:

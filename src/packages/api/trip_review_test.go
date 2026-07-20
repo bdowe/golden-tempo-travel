@@ -433,6 +433,42 @@ func TestFix_TransitGreekFerry(t *testing.T) {
 	}
 }
 
+// A trip-level travel_mode steers the missing-transport fix away from the
+// flight default; Greek island legs keep ferry and 'mixed' falls through.
+func TestFix_TransitRespectsTravelMode(t *testing.T) {
+	items := []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Whaling Museum", City: strp("Nantucket"), Day: i32p(1)},
+		{ID: uuid.New(), Name: "Freedom Trail", City: strp("Boston"), Day: i32p(2)},
+	}
+	tripWith := func(mode *string) store.Trip {
+		return store.Trip{ID: uuid.New(),
+			StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-03"),
+			TravelMode: mode}
+	}
+
+	fs := checkTransit(exportData{Trip: tripWith(strp("car")), Items: items})
+	if len(fs) != 1 || fs[0].Fix == nil || fs[0].Fix.Label != "Add drive" ||
+		fs[0].Fix.Mode == nil || *fs[0].Fix.Mode != "car" {
+		t.Fatalf("car-trip transit fix = %+v", fs)
+	}
+
+	// mixed is not a segment mode → keeps the flight default.
+	fs = checkTransit(exportData{Trip: tripWith(strp("mixed")), Items: items})
+	if len(fs) != 1 || fs[0].Fix == nil || *fs[0].Fix.Mode != "flight" {
+		t.Fatalf("mixed-trip transit fix = %+v", fs)
+	}
+
+	// Greek island pair stays ferry even on a car trip.
+	greek := []store.ItineraryItem{
+		{ID: uuid.New(), Name: "Acropolis", City: strp("Athens"), Day: i32p(1)},
+		{ID: uuid.New(), Name: "Portara", City: strp("Naxos"), Day: i32p(2)},
+	}
+	fs = checkTransit(exportData{Trip: tripWith(strp("car")), Items: greek})
+	if len(fs) != 1 || fs[0].Fix == nil || *fs[0].Fix.Mode != "ferry" {
+		t.Fatalf("greek car-trip transit fix = %+v", fs)
+	}
+}
+
 func TestFix_BookingsEntityType(t *testing.T) {
 	d := exportData{
 		Trip: store.Trip{ID: uuid.New()},

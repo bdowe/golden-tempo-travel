@@ -54,6 +54,7 @@ type TripResponse struct {
 	EndDate        *string                 `json:"end_date,omitempty"`
 	Status         string                  `json:"status"`
 	ChatID         *string                 `json:"chat_id,omitempty"`
+	TravelMode     *string                 `json:"travel_mode,omitempty"`
 	VersionCount   int                     `json:"version_count"`
 	Cities         []string                `json:"cities,omitempty"`
 	CreatedAt      time.Time               `json:"created_at"`
@@ -85,9 +86,19 @@ type PatchTripRequest struct {
 	StartDate *string `json:"start_date"`
 	EndDate   *string `json:"end_date"`
 	Status    *string `json:"status"`
+	// TravelMode cannot be cleared back to NULL over PATCH (COALESCE update);
+	// 'mixed' is the effective unset.
+	TravelMode *string `json:"travel_mode"`
 }
 
 var allowedStatuses = map[string]bool{"draft": true, "planned": true}
+
+// allowedTravelModes are the trip-level travel_mode values: the segment modes
+// (minus 'other') plus 'mixed' for genuinely multi-mode trips. NULL/unset
+// keeps the legacy flight-default behavior in drafts, todos, and Trip Health.
+var allowedTravelModes = map[string]bool{
+	"flight": true, "car": true, "train": true, "bus": true, "ferry": true, "mixed": true,
+}
 
 // --- helpers ---
 
@@ -155,15 +166,16 @@ func touchedBy(tripID uuid.UUID, r *http.Request) store.TouchTripParams {
 
 func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []store.Accommodation, segments []store.TripSegment, bookingTodos []store.BookingTodo) TripResponse {
 	resp := TripResponse{
-		ID:        t.ID.String(),
-		Title:     t.Title,
-		Summary:   t.Summary,
-		StartDate: dateToPtr(t.StartDate),
-		EndDate:   dateToPtr(t.EndDate),
-		Status:    t.Status,
-		ChatID:    t.ChatID,
-		CreatedAt: t.CreatedAt,
-		UpdatedAt: t.UpdatedAt,
+		ID:         t.ID.String(),
+		Title:      t.Title,
+		Summary:    t.Summary,
+		StartDate:  dateToPtr(t.StartDate),
+		EndDate:    dateToPtr(t.EndDate),
+		Status:     t.Status,
+		ChatID:     t.ChatID,
+		TravelMode: t.TravelMode,
+		CreatedAt:  t.CreatedAt,
+		UpdatedAt:  t.UpdatedAt,
 	}
 	for _, it := range items {
 		resp.Items = append(resp.Items, toItineraryItemResponse(it))
@@ -189,7 +201,7 @@ func toTripResponse(t store.Trip, items []store.ItineraryItem, accommodations []
 // opposed to adding a version to an existing chat lineage). The caller uses
 // it to gate the free-cap active_trips crossing signal, which a version save
 // must never emit (specs/free-cap-instrumentation).
-func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, startDate, endDate string, locations []map[string]any) (tripID string, newLineage bool, err error) {
+func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, startDate, endDate, travelMode string, locations []map[string]any) (tripID string, newLineage bool, err error) {
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		return "", false, err
@@ -248,7 +260,12 @@ func persistTrip(ctx context.Context, userID uuid.UUID, chatID, title, summary, 
 		}
 	}
 
-	trip, err := q.CreateTrip(ctx, store.CreateTripParams{UserID: userID, Title: finalTitle, Status: "draft", ChatID: chatPtr, Summary: summaryPtr})
+	var modePtr *string
+	if m := strings.TrimSpace(travelMode); m != "" && allowedTravelModes[m] {
+		modePtr = &m
+	}
+
+	trip, err := q.CreateTrip(ctx, store.CreateTripParams{UserID: userID, Title: finalTitle, Status: "draft", ChatID: chatPtr, Summary: summaryPtr, TravelMode: modePtr})
 	if err != nil {
 		return "", false, err
 	}
@@ -368,7 +385,7 @@ func getTripHandler(w http.ResponseWriter, r *http.Request) {
 		ID: row.ID, UserID: row.UserID, CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt, Title: row.Title, StartDate: row.StartDate,
 		EndDate: row.EndDate, Status: row.Status, ChatID: row.ChatID,
-		Summary: row.Summary, UpdatedBy: row.UpdatedBy,
+		Summary: row.Summary, UpdatedBy: row.UpdatedBy, TravelMode: row.TravelMode,
 	}
 	q := store.New(dbPool)
 	items, err := q.GetItineraryItemsByTrip(r.Context(), trip.ID)
@@ -523,6 +540,10 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "status must be 'draft' or 'planned'")
 		return
 	}
+	if req.TravelMode != nil && !allowedTravelModes[*req.TravelMode] {
+		writeJSONError(w, http.StatusBadRequest, "travel_mode must be one of: flight, car, train, bus, ferry, mixed")
+		return
+	}
 	if req.Title != nil {
 		t := strings.TrimSpace(*req.Title)
 		if t == "" {
@@ -553,12 +574,13 @@ func patchTripHandler(w http.ResponseWriter, r *http.Request) {
 
 	q := store.New(dbPool)
 	trip, err := q.UpdateTrip(r.Context(), store.UpdateTripParams{
-		Title:     req.Title,
-		StartDate: start,
-		EndDate:   end,
-		Status:    req.Status,
-		ID:        id,
-		UserID:    authorized.UserID,
+		Title:      req.Title,
+		StartDate:  start,
+		EndDate:    end,
+		Status:     req.Status,
+		TravelMode: req.TravelMode,
+		ID:         id,
+		UserID:     authorized.UserID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "trip not found")

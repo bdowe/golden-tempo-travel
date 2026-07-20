@@ -18,6 +18,12 @@ class Trip {
   final String status;
   @JsonKey(name: 'chat_id')
   final String? chatId;
+
+  /// How the traveler moves between cities on this trip: 'flight', 'car',
+  /// 'train', 'bus', 'ferry', or 'mixed'. Null = never stated ⇒ the legacy
+  /// flight-default behavior in drafts, todos, and Trip Health.
+  @JsonKey(name: 'travel_mode')
+  final String? travelMode;
   @JsonKey(name: 'version_count')
   final int? versionCount;
   final List<String>? cities;
@@ -55,6 +61,7 @@ class Trip {
     this.endDate,
     required this.status,
     this.chatId,
+    this.travelMode,
     this.versionCount,
     this.cities,
     required this.createdAt,

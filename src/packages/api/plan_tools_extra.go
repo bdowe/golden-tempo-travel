@@ -215,6 +215,62 @@ var moveItineraryItemTool = anthropic.ToolParam{
 	},
 }
 
+var setTravelModeTool = anthropic.ToolParam{
+	Name:        "set_travel_mode",
+	Description: anthropic.String("Record how the traveler is getting between cities for THIS trip — call it the moment they state or imply a mode ('we're driving', 'road trip', 'we'll have a car', 'taking the train'). Once set, plan all transport in that mode: on a car, train, or bus trip do NOT search flights or add flight legs. A drive that includes a short car-ferry hop (e.g. onto an island) is still 'car'; reserve 'ferry' for trips that move primarily by ferry. Works in any planning session: with a saved trip open it updates the trip immediately; otherwise the mode is applied when create_itinerary saves the plan. Use 'mixed' only when different legs genuinely use different modes (e.g. a long flight there, then trains around)."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"mode": map[string]any{"type": "string", "enum": []string{"flight", "car", "train", "bus", "ferry", "mixed"}, "description": "The trip's primary way of moving between cities"},
+		},
+		Required: []string{"mode"},
+	},
+}
+
+// runSetTravelModeTool records the traveler's stated mode. It always succeeds
+// once the value validates: session state is the source of truth for unsaved
+// plans (create_itinerary applies it), and a bound editable trip is updated
+// immediately. Persistence problems degrade to session-only rather than
+// erroring — a failed tool call would derail the loop over a note-taking step.
+func runSetTravelModeTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Mode string `json:"mode"`
+	}
+	json.Unmarshal(input, &in)
+	mode := strings.ToLower(strings.TrimSpace(in.Mode))
+	if !allowedTravelModes[mode] {
+		return "mode must be one of: flight, car, train, bus, ferry, mixed.", true
+	}
+	s.travelMode = mode
+
+	persisted := false
+	if s.authed && dbPool != nil && s.boundTripID != nil {
+		if tid, _, failed := checkBoundTripSession(s); !failed {
+			if err := store.New(dbPool).SetTripTravelMode(s.ctx, store.SetTripTravelModeParams{ID: tid, TravelMode: &mode}); err == nil {
+				persisted = true
+				touchTripAs(s.ctx, tid, s.uid)
+				sendSSE(s.w, "trip_updated", map[string]string{"trip_id": tid.String()})
+				safeGo("recordEvent", func() { recordEvent(s.uid, "agent_travel_mode_set", &tid, map[string]any{"mode": mode}) })
+			}
+		}
+	}
+
+	var note string
+	switch mode {
+	case "car", "train", "bus":
+		note = fmt.Sprintf("Noted: this is a %s trip. Plan legs with add_transport_segment mode '%s'; do not search or suggest flights.", mode, mode)
+	case "ferry":
+		note = "Noted: this trip moves by ferry between stops. Use suggest_ferries and ferry segments for the hops; a long-haul flight to the region can still make sense."
+	case "mixed":
+		note = "Noted: this trip mixes travel modes. Set each leg's mode explicitly when adding segments."
+	default:
+		note = "Noted: this trip travels by flight between cities."
+	}
+	if !persisted && s.boundTripID == nil {
+		note += " The mode will be saved with the itinerary when you create it."
+	}
+	return note, false
+}
+
 // runReviewTripTool reviews the session's bound trip and narrates the findings.
 // It defaults CheckHours off: the operating-hours check spends real Google
 // money, and a conversational review shouldn't silently bill — the traveler can
@@ -617,6 +673,9 @@ func runGetTripTool(ctx context.Context, authed bool, uid uuid.UUID, boundTripID
 		if e := dateString(trip.EndDate); e != "" {
 			fmt.Fprintf(&b, " to %s", e)
 		}
+	}
+	if trip.TravelMode != nil && *trip.TravelMode != "" {
+		fmt.Fprintf(&b, ". Travel mode: %s — keep transport suggestions in that mode", *trip.TravelMode)
 	}
 	fmt.Fprintf(&b, ". %d places:\n", len(items))
 	for _, it := range items {
