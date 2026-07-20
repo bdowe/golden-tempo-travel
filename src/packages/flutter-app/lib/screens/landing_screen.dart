@@ -217,9 +217,10 @@ class _LandingHero extends StatelessWidget {
               ),
             ),
             Container(
-              constraints: const BoxConstraints(minHeight: 340),
+              constraints: const BoxConstraints(minHeight: 440),
               padding: const EdgeInsets.all(28),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const BrandBadge(
