@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../providers/analytics_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
@@ -111,20 +110,6 @@ class _LandingScreenState extends State<LandingScreen> {
                   title: 'AI Travel Agent',
                   description:
                       'Describe your dream trip and get a complete itinerary in seconds.',
-                ),
-                _FeatureCard(
-                  icon: MdiIcons.mapMarkerMultiple,
-                  color: AppColors.toolRoute,
-                  title: 'Route Optimizer',
-                  description:
-                      'Map the smartest path between your stops in a city.',
-                ),
-                _FeatureCard(
-                  icon: MdiIcons.airplane,
-                  color: AppColors.toolFlights,
-                  title: 'Find Flights',
-                  description:
-                      'Compare flights by price, schedule, and stops.',
                 ),
 
                 const SizedBox(height: AppSpacing.xl),
@@ -301,12 +286,10 @@ class _LandingHero extends StatelessWidget {
   }
 }
 
-/// Informational feature row: colored icon chip + title + description. Mirrors
-/// the home screen's `_ToolRow` minus the trailing chevron (these don't
-/// navigate).
+/// Informational feature row: colored icon chip + title + description (these
+/// don't navigate).
 class _FeatureCard extends StatelessWidget {
   final IconData icon;
-  final Color? color;
   final String title;
   final String description;
 
@@ -314,13 +297,12 @@ class _FeatureCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.description,
-    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = color ?? AppColors.brand;
+    final accent = AppColors.brand;
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
