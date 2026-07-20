@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
@@ -40,6 +41,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ? await notifier.login(email, password)
         : await notifier.register(email, password,
             displayName: _displayNameController.text.trim());
+    // Tell the platform the autofill session succeeded so the browser /
+    // password manager offers to save the credentials.
+    if (ok) TextInput.finishAutofillContext();
     // On success the AuthGate swaps the root from the landing page to the app.
     // When this screen was pushed on top of the landing page, pop it so the
     // app (now the root) is revealed instead of this form staying on top.
@@ -90,95 +94,112 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             constraints: const BoxConstraints(maxWidth: 420),
             child: Form(
               key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const BrandLogo.mark(size: 72),
-                  const SizedBox(height: 16),
-                  Text(
-                    _isLogin ? 'Welcome back' : 'Create your account',
-                    style: theme.textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: (v) {
-                      final value = (v ?? '').trim();
-                      if (value.isEmpty) return 'Email is required';
-                      if (!value.contains('@') || !value.contains('.')) {
-                        return 'Enter a valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    validator: (v) {
-                      if ((v ?? '').isEmpty) return 'Password is required';
-                      if (!_isLogin && v!.length < 8) {
-                        return 'Password must be at least 8 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                  if (!_isLogin) ...[
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _displayNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Display name (optional)',
-                      ),
-                    ),
-                  ],
-                  if (auth.error != null) ...[
+              // AutofillGroup makes Flutter web expose the fields as a DOM
+              // <form> with autocomplete attributes, which is what browser
+              // password managers (1Password etc.) hook into.
+              child: AutofillGroup(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const BrandLogo.mark(size: 72),
                     const SizedBox(height: 16),
                     Text(
-                      auth.error!,
-                      style: TextStyle(color: theme.colorScheme.error),
+                      _isLogin ? 'Welcome back' : 'Create your account',
+                      style: theme.textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
-                  ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: auth.loading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      autofillHints: const [
+                        AutofillHints.username,
+                        AutofillHints.email,
+                      ],
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: (v) {
+                        final value = (v ?? '').trim();
+                        if (value.isEmpty) return 'Email is required';
+                        if (!value.contains('@') || !value.contains('.')) {
+                          return 'Enter a valid email';
+                        }
+                        return null;
+                      },
                     ),
-                    child: auth.loading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_isLogin ? 'Sign in' : 'Create account'),
-                  ),
-                  if (!_isLogin) ...[
                     const SizedBox(height: 12),
-                    const LegalAgreementText(),
-                  ],
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: auth.loading ? null : _toggleMode,
-                    child: Text(_isLogin
-                        ? "Don't have an account? Sign up"
-                        : 'Already have an account? Sign in'),
-                  ),
-                  if (_isLogin)
-                    TextButton(
-                      onPressed: auth.loading ? null : _forgotPassword,
-                      child: const Text('Forgot password?'),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      autofillHints: [
+                        _isLogin
+                            ? AutofillHints.password
+                            : AutofillHints.newPassword,
+                      ],
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _submit(),
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      validator: (v) {
+                        if ((v ?? '').isEmpty) return 'Password is required';
+                        if (!_isLogin && v!.length < 8) {
+                          return 'Password must be at least 8 characters';
+                        }
+                        return null;
+                      },
                     ),
-                  const GoogleSignInButton(),
-                ],
+                    if (!_isLogin) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _displayNameController,
+                        autofillHints: const [AutofillHints.name],
+                        decoration: const InputDecoration(
+                          labelText: 'Display name (optional)',
+                        ),
+                      ),
+                    ],
+                    if (auth.error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        auth.error!,
+                        style: TextStyle(color: theme.colorScheme.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: auth.loading ? null : _submit,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: auth.loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(_isLogin ? 'Sign in' : 'Create account'),
+                    ),
+                    if (!_isLogin) ...[
+                      const SizedBox(height: 12),
+                      const LegalAgreementText(),
+                    ],
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: auth.loading ? null : _toggleMode,
+                      child: Text(_isLogin
+                          ? "Don't have an account? Sign up"
+                          : 'Already have an account? Sign in'),
+                    ),
+                    if (_isLogin)
+                      TextButton(
+                        onPressed: auth.loading ? null : _forgotPassword,
+                        child: const Text('Forgot password?'),
+                      ),
+                    const GoogleSignInButton(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -248,6 +269,7 @@ class _RequestResetDialogState extends State<_RequestResetDialog> {
             controller: _email,
             keyboardType: TextInputType.emailAddress,
             autocorrect: false,
+            autofillHints: const [AutofillHints.email],
             decoration: InputDecoration(
               labelText: 'Email',
               errorText: _error,
@@ -321,26 +343,30 @@ class _EnterResetCodeDialogState extends State<_EnterResetCodeDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Enter your reset code'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Check your inbox for the code we just sent.'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _code,
-            autocorrect: false,
-            decoration: const InputDecoration(labelText: 'Reset code'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _password,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'New password',
-              errorText: _error,
+      content: AutofillGroup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Check your inbox for the code we just sent.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _code,
+              autocorrect: false,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              decoration: const InputDecoration(labelText: 'Reset code'),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: InputDecoration(
+                labelText: 'New password',
+                errorText: _error,
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
