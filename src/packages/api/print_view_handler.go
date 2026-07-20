@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"travel-route-planner/store"
@@ -28,10 +32,26 @@ func capitalize(s string) string {
 // is the capability. Rendered with html/template so every field is
 // auto-escaped; NEVER assemble this HTML with fmt.Sprintf (same rule as
 // share_preview_handler.go).
+//
+// Layout is a day-by-day travel packet (specs/print-travel-packet): one
+// section per calendar day (weather, transport, activities, tonight's stay),
+// then Unscheduled items, reference lists for undatable stays/transport,
+// Budget, and the booking/packing checklists. Budget and weather load here
+// only, best-effort — loadExportData stays shared with the review engine and
+// plan tools and must not grow those costs.
+
+// maxPrintDays caps the rendered day range. The day loop iterates 1..N, so a
+// stray item day (e.g. 5000) must not render thousands of sections; items
+// beyond the cap fall into Unscheduled.
+const maxPrintDays = 60
+
+// maxPrintWeatherCities caps outbound weather lookups per page render.
+const maxPrintWeatherCities = 5
 
 type printItem struct {
 	Name          string
 	TimeOfDay     string
+	City          string // set only when it differs from the day's hub (day trips)
 	Address       string
 	RecommendedBy string // local_source_name attribution, when present
 }
@@ -48,17 +68,47 @@ type printGroup struct {
 }
 
 type printStay struct {
-	Name     string
-	Address  string
-	CheckIn  string
-	CheckOut string
+	Name    string
+	Address string
+	Meta    string // provider · price note · check-in/out or tonight note
+	URL     string
+	URLText string // short visible link text (paper isn't clickable)
+	Booked  bool
 }
 
 type printSegment struct {
-	Mode   string
-	Route  string // "Origin → Destination"
-	Depart string
-	Arrive string
+	Route   string // "Origin → Destination"
+	Mode    string
+	Meta    string // depart/arrive · provider · price note
+	Notes   string
+	URL     string
+	URLText string
+	Booked  bool
+}
+
+type printDaySection struct {
+	Label    string // "Day 3"
+	Date     string // "Mon, Jan 2" or "" for undated trips
+	Hub      string // where you are that day
+	DayTrip  string // "Day trip from Athens" when the whole day is one day trip
+	Weather  string // formatted line; "" = omit
+	Segments []printSegment
+	Items    []printItem
+	Stays    []printStay // tonight's stay(s)
+}
+
+type printBudgetRow struct {
+	Label    string
+	Amount   string
+	Subtotal bool // category subtotal row (rendered bold)
+}
+
+type printBudget struct {
+	Currency  string
+	Target    string // "" when no target set
+	Spent     string
+	Remaining string // "" when no target set
+	Rows      []printBudgetRow
 }
 
 type printTodo struct {
@@ -78,14 +128,17 @@ type printChecklistItem struct {
 }
 
 type printViewData struct {
-	Title      string
-	Dates      string
-	Groups     []printGroup
-	Stays      []printStay
-	Segments   []printSegment
-	Todos      []printTodo
-	Checklist  []printChecklistGroup
-	HasContent bool
+	Title         string
+	Dates         string
+	Summary       string
+	Days          []printDaySection
+	Unscheduled   []printGroup
+	OtherStays    []printStay
+	OtherSegments []printSegment
+	Budget        *printBudget
+	Todos         []printTodo
+	Checklist     []printChecklistGroup
+	HasContent    bool
 }
 
 // printViewTmpl uses html/template — every field is auto-escaped. Brand house
@@ -119,6 +172,10 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
       color: #00695C; font-size: 1.2rem; margin: 32px 0 8px;
       border-bottom: 2px solid #B2DFDB; padding-bottom: 6px;
     }
+    .summary { font-size: 1.02rem; color: #455A64; margin: 0 0 8px; }
+    .day-sec { margin: 0 0 8px; }
+    .daytrip { margin: -4px 0 8px; font-size: 0.92rem; color: #00695C; font-style: italic; }
+    .wx { margin: 0 0 8px; font-size: 0.9rem; color: #546E7A; }
     .hub { margin: 20px 0 0; }
     .hub-name { font-size: 1.05rem; font-weight: 600; color: #004D40; margin: 0 0 4px; }
     .day { margin: 12px 0 0; padding: 10px 14px; background: #F5F7F7; border-radius: 8px; }
@@ -131,17 +188,27 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     .row:last-child { border-bottom: none; }
     .row-title { font-weight: 600; }
     .row-meta { font-size: 0.9rem; color: #546E7A; }
+    .stay { margin: 10px 0 0; padding: 8px 12px; background: #F5F7F7; border-radius: 8px; }
+    .url { font-size: 0.85rem; color: #546E7A; word-break: break-all; }
+    a { color: inherit; text-decoration: none; }
     .cat { font-weight: 600; color: #004D40; margin: 14px 0 4px; text-transform: capitalize; }
     ul.check { list-style: none; padding-left: 0; margin: 0; }
     ul.check li { padding: 3px 0; }
     .box { display: inline-block; width: 1em; }
     .booked { color: #2E7D32; }
+    table.budget { border-collapse: collapse; width: 100%; max-width: 420px; }
+    table.budget td { padding: 3px 0; font-size: 0.95rem; }
+    table.budget td.amt { text-align: right; }
+    table.budget tr.subtotal td { font-weight: 600; color: #004D40; padding-top: 8px; }
+    table.budget td.exp { padding-left: 14px; color: #546E7A; }
+    .budget-line { margin: 10px 0 0; font-weight: 600; }
     footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #CFD8DC; font-size: 0.85rem; color: #607D8B; }
     .empty { color: #607D8B; font-style: italic; }
+    @page { margin: 14mm; }
     @media print {
       header { background: #004D40 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .day, .hub, .row { page-break-inside: avoid; }
-      h2 { page-break-after: avoid; }
+      .day-sec, .day, .hub, .row, .stay, .item, table.budget tr { break-inside: avoid; page-break-inside: avoid; }
+      h2 { break-after: avoid; page-break-after: avoid; }
     }
   </style>
 </head>
@@ -156,9 +223,43 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
   <main>
     {{if not .HasContent}}<p class="empty">This trip has nothing to export yet.</p>{{end}}
 
-    {{if .Groups}}
-    <h2>Itinerary</h2>
-    {{range .Groups}}
+    {{if .Summary}}<p class="summary">{{.Summary}}</p>{{end}}
+
+    {{range .Days}}
+    <section class="day-sec">
+      <h2>{{.Label}}{{if .Date}} · {{.Date}}{{end}}{{if .Hub}} — {{.Hub}}{{end}}</h2>
+      {{if .DayTrip}}<p class="daytrip">{{.DayTrip}}</p>{{end}}
+      {{if .Weather}}<p class="wx">Weather: {{.Weather}}</p>{{end}}
+      {{range .Segments}}
+      <div class="row">
+        <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+        {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
+        {{if .Notes}}<div class="row-meta">{{.Notes}}</div>{{end}}
+        {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
+      </div>
+      {{end}}
+      {{range .Items}}
+      <div class="item">
+        <div class="item-name">{{.Name}}</div>
+        {{if or .TimeOfDay .City .Address}}<div class="item-meta">{{if .TimeOfDay}}{{.TimeOfDay}}{{end}}{{if and .TimeOfDay .City}} · {{end}}{{.City}}{{if and (or .TimeOfDay .City) .Address}} · {{end}}{{.Address}}</div>{{end}}
+        {{if .RecommendedBy}}<div class="rec">Recommended by {{.RecommendedBy}}</div>{{end}}
+      </div>
+      {{end}}
+      {{if not .Items}}<p class="empty">No plans yet for this day.</p>{{end}}
+      {{range .Stays}}
+      <div class="stay">
+        <div class="row-title">Tonight: {{.Name}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+        {{if .Address}}<div class="row-meta">{{.Address}}</div>{{end}}
+        {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
+        {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
+      </div>
+      {{end}}
+    </section>
+    {{end}}
+
+    {{if .Unscheduled}}
+    <h2>Unscheduled</h2>
+    {{range .Unscheduled}}
     <div class="hub">
       <p class="hub-name">{{.Hub}}</p>
       {{range .Days}}
@@ -177,25 +278,41 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
     {{end}}
 
-    {{if .Stays}}
+    {{if .OtherStays}}
     <h2>Accommodations</h2>
-    {{range .Stays}}
+    {{range .OtherStays}}
     <div class="row">
-      <div class="row-title">{{.Name}}</div>
+      <div class="row-title">{{.Name}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
       {{if .Address}}<div class="row-meta">{{.Address}}</div>{{end}}
-      {{if or .CheckIn .CheckOut}}<div class="row-meta">{{if .CheckIn}}Check-in {{.CheckIn}}{{end}}{{if .CheckOut}} · Check-out {{.CheckOut}}{{end}}</div>{{end}}
+      {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
+      {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
     </div>
     {{end}}
     {{end}}
 
-    {{if .Segments}}
-    <h2>Transport</h2>
-    {{range .Segments}}
+    {{if .OtherSegments}}
+    <h2>Other transport</h2>
+    {{range .OtherSegments}}
     <div class="row">
-      <div class="row-title">{{.Route}}</div>
-      <div class="row-meta">{{.Mode}}{{if .Depart}} · Departs {{.Depart}}{{end}}{{if .Arrive}} · Arrives {{.Arrive}}{{end}}</div>
+      <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+      {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
+      {{if .Notes}}<div class="row-meta">{{.Notes}}</div>{{end}}
+      {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
     </div>
     {{end}}
+    {{end}}
+
+    {{with .Budget}}
+    <h2>Budget ({{.Currency}})</h2>
+    {{if .Target}}<p class="budget-line">Target: {{.Target}}</p>{{end}}
+    {{if .Rows}}
+    <table class="budget">
+      {{range .Rows}}
+      <tr{{if .Subtotal}} class="subtotal"{{end}}><td{{if not .Subtotal}} class="exp"{{end}}>{{.Label}}</td><td class="amt">{{.Amount}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+    <p class="budget-line">Total spent: {{.Spent}}{{if .Remaining}} · Remaining: {{.Remaining}}{{end}}</p>
     {{end}}
 
     {{if .Todos}}
@@ -232,17 +349,121 @@ func printViewHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("<!DOCTYPE html><html><body><h2>This export link isn't available</h2><p>It may have expired.</p></body></html>"))
 		return
 	}
-	view := buildPrintView(data)
+	budget := loadPrintBudget(r.Context(), data.Trip.ID)
+	var weather []string
+	if n, dated := printDayCount(data); dated {
+		weather = loadPrintWeather(r.Context(), weatherService, data, n)
+	}
+	view := buildPrintView(data, budget, weather)
 	if err := printViewTmpl.Execute(w, view); err != nil {
 		// Headers already sent; nothing sensible left to do.
 		return
 	}
 }
 
+// loadPrintBudget loads the trip's budget + expenses for display. Best-effort:
+// any failure returns nil and the Budget section is simply omitted — the print
+// page must render without it.
+func loadPrintBudget(ctx context.Context, tripID uuid.UUID) *printBudget {
+	if dbPool == nil {
+		return nil
+	}
+	q := store.New(dbPool)
+	var b *store.TripBudget
+	if row, err := q.GetBudgetByTrip(ctx, tripID); err == nil {
+		b = &row
+	}
+	expenses, err := q.ListExpensesByTrip(ctx, tripID)
+	if err != nil {
+		return nil
+	}
+	return buildPrintBudget(b, expenses)
+}
+
+// loadPrintWeather returns one formatted weather line per trip day (index 0 =
+// Day 1), "" where unavailable. Best-effort: never returns an error — weather
+// must not break or slow the page beyond its own timeout. Takes the service as
+// a parameter so tests don't need to swap the package-level singleton.
+func loadPrintWeather(ctx context.Context, ws *WeatherService, d exportData, n int) []string {
+	if ws == nil || !d.Trip.StartDate.Valid || n <= 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	start := d.Trip.StartDate.Time
+	cities := resolveDayCities(d, n)
+	out := make([]string, n)
+
+	// One lookup per contiguous same-city run, capped at a handful of distinct
+	// cities per render (the service's TTL cache absorbs repeats).
+	type cityRun struct {
+		city     string
+		from, to int
+	}
+	var runs []cityRun
+	for i := 0; i < n; i++ {
+		c := cities[i]
+		if c == "" {
+			continue
+		}
+		if len(runs) > 0 && runs[len(runs)-1].city == c && runs[len(runs)-1].to == i-1 {
+			runs[len(runs)-1].to = i
+			continue
+		}
+		runs = append(runs, cityRun{city: c, from: i, to: i})
+	}
+	distinct := map[string]bool{}
+	for _, run := range runs {
+		if !distinct[run.city] {
+			if len(distinct) >= maxPrintWeatherCities {
+				continue
+			}
+			distinct[run.city] = true
+		}
+		report, err := ws.GetTripWeather(ctx, run.city,
+			start.AddDate(0, 0, run.from).Format(dateLayout),
+			start.AddDate(0, 0, run.to).Format(dateLayout))
+		if err != nil || len(report.Days) == 0 {
+			continue // weather is decoration; skip silently
+		}
+		historical := report.Kind == "historical"
+		byKey := map[string]WeatherDay{}
+		for _, wd := range report.Days {
+			byKey[weatherDayKey(wd.Date, historical)] = wd
+		}
+		for i := run.from; i <= run.to; i++ {
+			key := start.AddDate(0, 0, i).Format(dateLayout)
+			if historical {
+				key = start.AddDate(0, 0, i).Format("01-02")
+			}
+			if wd, ok := byKey[key]; ok {
+				out[i] = formatWeatherLine(wd, historical)
+			}
+		}
+	}
+	return out
+}
+
+// formatWeatherLine mirrors summarizeWeather's per-day rendering; "Typical:"
+// flags archive data (last year's observations, not a forecast).
+func formatWeatherLine(wd WeatherDay, historical bool) string {
+	line := fmt.Sprintf("%.0f–%.0f°C", wd.TempMinC, wd.TempMaxC)
+	if wd.PrecipPct != nil {
+		line += fmt.Sprintf(", %d%% chance of rain", *wd.PrecipPct)
+	} else if wd.PrecipMM >= 1 {
+		line += fmt.Sprintf(", %.0fmm rain", wd.PrecipMM)
+	}
+	if historical {
+		return "Typical: " + line
+	}
+	return line
+}
+
 // buildPrintView reshapes the raw export data into the template view model:
-// items grouped by hub (day_trip_from → city) then by day with resolved dates,
-// plus flat stays/segments/todos/checklist sections.
-func buildPrintView(d exportData) printViewData {
+// day-by-day packet sections plus unscheduled/reference/budget/checklist
+// sections. budget and weatherByDay are optional (nil ⇒ section/lines omitted).
+func buildPrintView(d exportData, budget *printBudget, weatherByDay []string) printViewData {
 	view := printViewData{Title: strings.TrimSpace(d.Trip.Title)}
 	if view.Title == "" {
 		view.Title = "Untitled trip"
@@ -252,25 +473,22 @@ func buildPrintView(d exportData) printViewData {
 	} else if d.Trip.StartDate.Valid {
 		view.Dates = d.Trip.StartDate.Time.Format("Jan 2, 2006")
 	}
+	view.Summary = strings.TrimSpace(strPtrVal(d.Trip.Summary))
 
-	view.Groups = groupExportItems(d.Trip, d.Items)
+	view.HasContent = len(d.Items) > 0 || len(d.Accommodations) > 0 ||
+		len(d.Segments) > 0 || len(d.BookingTodos) > 0 || len(d.Checklist) > 0 ||
+		budget != nil
+	if !view.HasContent {
+		return view
+	}
 
-	for _, a := range d.Accommodations {
-		view.Stays = append(view.Stays, printStay{
-			Name:     a.Name,
-			Address:  strPtrVal(a.Address),
-			CheckIn:  formatExportDate(dateToPtr(a.CheckIn)),
-			CheckOut: formatExportDate(dateToPtr(a.CheckOut)),
-		})
-	}
-	for _, s := range d.Segments {
-		view.Segments = append(view.Segments, printSegment{
-			Mode:   capitalize(s.Mode),
-			Route:  segmentRoute(s),
-			Depart: formatExportDate(dateToPtr(s.DepartDate)),
-			Arrive: formatExportDate(dateToPtr(s.ArriveDate)),
-		})
-	}
+	days, unscheduled, otherStays, otherSegs := buildPrintDays(d, weatherByDay)
+	view.Days = days
+	view.Unscheduled = groupExportItems(d.Trip, unscheduled)
+	view.OtherStays = otherStays
+	view.OtherSegments = otherSegs
+	view.Budget = budget
+
 	for _, t := range d.BookingTodos {
 		view.Todos = append(view.Todos, printTodo{
 			Title:    t.Title,
@@ -279,16 +497,361 @@ func buildPrintView(d exportData) printViewData {
 		})
 	}
 	view.Checklist = groupChecklist(d.Checklist)
-
-	view.HasContent = len(view.Groups) > 0 || len(view.Stays) > 0 ||
-		len(view.Segments) > 0 || len(view.Todos) > 0 || len(view.Checklist) > 0
 	return view
+}
+
+// printDayCount returns how many day sections to render and whether the trip
+// has real dates. The count comes from the trip's date range, extended by item
+// day numbers (so a Day 7 item on a 5-day trip still shows), and clamped to
+// maxPrintDays. Undated trips get relative day sections from item days alone.
+func printDayCount(d exportData) (int, bool) {
+	dated := d.Trip.StartDate.Valid
+	n := 0
+	if dated {
+		n = 1
+		if d.Trip.EndDate.Valid {
+			if span := int(d.Trip.EndDate.Time.Sub(d.Trip.StartDate.Time).Hours()/24) + 1; span > 1 {
+				n = span
+			}
+		}
+	}
+	// Item days extend the range, but a runaway day number (beyond the clamp)
+	// must not drag dozens of hollow sections with it — that item just lands
+	// in Unscheduled instead.
+	for _, it := range d.Items {
+		if it.Day != nil && int(*it.Day) > n && int(*it.Day) <= maxPrintDays {
+			n = int(*it.Day)
+		}
+	}
+	if n > maxPrintDays {
+		n = maxPrintDays
+	}
+	return n, dated
+}
+
+// resolveDayCities maps each day (index 0 = Day 1) to a city: the first item
+// that day with a city, gaps inheriting the previous day's city and leading
+// gaps backfilling from the first known one. Drives the day header label and
+// weather lookups — deliberately prefers City over DayTripFrom (weather should
+// be where you are, not the hub you left from).
+func resolveDayCities(d exportData, n int) []string {
+	cities := make([]string, n)
+	for _, it := range d.Items {
+		if it.Day == nil {
+			continue
+		}
+		di := int(*it.Day) - 1
+		if di < 0 || di >= n || cities[di] != "" {
+			continue
+		}
+		if city := strings.TrimSpace(strPtrVal(it.City)); city != "" {
+			cities[di] = city
+		}
+	}
+	first := ""
+	for _, c := range cities {
+		if c != "" {
+			first = c
+			break
+		}
+	}
+	prev := first
+	for i := range cities {
+		if cities[i] == "" {
+			cities[i] = prev
+		} else {
+			prev = cities[i]
+		}
+	}
+	return cities
+}
+
+// buildPrintDays assembles the day-by-day sections: items bucketed by day,
+// segments attached by depart (falling back to arrive) date, stays matched to
+// the nights they cover (check_in ≤ night < check_out). Whatever can't be
+// placed on a day is returned for the trailing reference sections.
+func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []store.ItineraryItem, []printStay, []printSegment) {
+	n, dated := printDayCount(d)
+	var unscheduled []store.ItineraryItem
+	var otherStays []printStay
+	var otherSegs []printSegment
+
+	if n == 0 {
+		for _, a := range d.Accommodations {
+			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(a)))
+		}
+		for _, s := range d.Segments {
+			otherSegs = append(otherSegs, toPrintSegment(s))
+		}
+		return nil, d.Items, otherStays, otherSegs
+	}
+
+	start := d.Trip.StartDate.Time
+	cities := resolveDayCities(d, n)
+	days := make([]printDaySection, n)
+	for i := range days {
+		days[i].Label = "Day " + strconv.Itoa(i+1)
+		days[i].Hub = cities[i]
+		if dated {
+			days[i].Date = start.AddDate(0, 0, i).Format("Mon, Jan 2")
+		}
+		if i < len(weatherByDay) {
+			days[i].Weather = weatherByDay[i]
+		}
+	}
+
+	// Items, in position order. A day whose items all share one non-empty
+	// DayTripFrom gets a "Day trip from <hub>" subline; the sentinel marks a
+	// day disqualified by a mixed or missing hub.
+	const mixedDayTrip = "\x00"
+	dayTripHub := make([]string, n)
+	for _, it := range d.Items {
+		di := -1
+		if it.Day != nil {
+			di = int(*it.Day) - 1
+		}
+		if di < 0 || di >= n {
+			unscheduled = append(unscheduled, it)
+			continue
+		}
+		item := printItem{
+			Name:          it.Name,
+			TimeOfDay:     capitalize(strPtrVal(it.TimeOfDay)),
+			Address:       strPtrVal(it.Address),
+			RecommendedBy: strPtrVal(it.LocalSourceName),
+		}
+		if city := strings.TrimSpace(strPtrVal(it.City)); city != "" && !strings.EqualFold(city, cities[di]) {
+			item.City = city
+		}
+		days[di].Items = append(days[di].Items, item)
+
+		dtf := strings.TrimSpace(strPtrVal(it.DayTripFrom))
+		switch {
+		case dtf == "":
+			dayTripHub[di] = mixedDayTrip
+		case dayTripHub[di] == "":
+			dayTripHub[di] = dtf
+		case !strings.EqualFold(dayTripHub[di], dtf):
+			dayTripHub[di] = mixedDayTrip
+		}
+	}
+	for i, hub := range dayTripHub {
+		if hub != "" && hub != mixedDayTrip {
+			days[i].DayTrip = "Day trip from " + hub
+		}
+	}
+
+	dayIndexOf := func(t time.Time) int {
+		if !dated {
+			return -1
+		}
+		di := int(t.Sub(start).Hours() / 24)
+		if di < 0 || di >= n {
+			return -1
+		}
+		return di
+	}
+
+	for _, s := range d.Segments {
+		di := -1
+		if s.DepartDate.Valid {
+			di = dayIndexOf(s.DepartDate.Time)
+		}
+		if di < 0 && s.ArriveDate.Valid {
+			di = dayIndexOf(s.ArriveDate.Time)
+		}
+		if di < 0 {
+			otherSegs = append(otherSegs, toPrintSegment(s))
+			continue
+		}
+		days[di].Segments = append(days[di].Segments, toPrintSegment(s))
+	}
+
+	for _, a := range d.Accommodations {
+		attached := false
+		if dated && a.CheckIn.Valid {
+			checkIn := a.CheckIn.Time
+			checkOut := checkIn.AddDate(0, 0, 1) // no/invalid check-out ⇒ single night
+			if a.CheckOut.Valid && a.CheckOut.Time.After(checkIn) {
+				checkOut = a.CheckOut.Time
+			}
+			for i := 0; i < n; i++ {
+				night := start.AddDate(0, 0, i)
+				if night.Before(checkIn) || !night.Before(checkOut) {
+					continue
+				}
+				var notes []string
+				if night.Equal(checkIn) {
+					notes = append(notes, "Check in today")
+				}
+				if a.CheckOut.Valid && night.Equal(checkOut.AddDate(0, 0, -1)) {
+					notes = append(notes, "Check out "+checkOut.Format("Mon, Jan 2"))
+				}
+				days[i].Stays = append(days[i].Stays, toPrintStay(a, strings.Join(notes, " · ")))
+				attached = true
+			}
+		}
+		if !attached {
+			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(a)))
+		}
+	}
+
+	// Undated trips can't attach weather, stays, or transport to a day, so an
+	// item-less "Day N" section would be an empty shell — drop those. Dated
+	// trips keep them (real calendar days worth showing even when unplanned).
+	if !dated {
+		filtered := days[:0]
+		for _, day := range days {
+			if len(day.Items) > 0 {
+				filtered = append(filtered, day)
+			}
+		}
+		days = filtered
+	}
+
+	return days, unscheduled, otherStays, otherSegs
+}
+
+// buildPrintBudget shapes the budget section: expenses grouped by category in
+// first-appearance order, each group led by a bold subtotal row. Returns nil
+// when there is nothing worth printing.
+func buildPrintBudget(b *store.TripBudget, expenses []store.TripExpense) *printBudget {
+	if len(expenses) == 0 && (b == nil || b.TargetAmount == nil) {
+		return nil
+	}
+	pb := &printBudget{Currency: "USD"}
+	if b != nil {
+		if c := strings.TrimSpace(b.Currency); c != "" {
+			pb.Currency = c
+		}
+		if b.TargetAmount != nil {
+			pb.Target = formatMoneyAmount(*b.TargetAmount)
+		}
+	}
+
+	type catGroup struct {
+		name     string
+		expenses []store.TripExpense
+		total    float64
+	}
+	var groups []*catGroup
+	idx := map[string]*catGroup{}
+	spent := 0.0
+	for _, e := range expenses {
+		g, ok := idx[e.Category]
+		if !ok {
+			g = &catGroup{name: e.Category}
+			idx[e.Category] = g
+			groups = append(groups, g)
+		}
+		g.expenses = append(g.expenses, e)
+		g.total += e.Amount
+		spent += e.Amount
+	}
+	for _, g := range groups {
+		pb.Rows = append(pb.Rows, printBudgetRow{Label: capitalize(g.name), Amount: formatMoneyAmount(g.total), Subtotal: true})
+		for _, e := range g.expenses {
+			pb.Rows = append(pb.Rows, printBudgetRow{Label: e.Label, Amount: formatMoneyAmount(e.Amount)})
+		}
+	}
+	pb.Spent = formatMoneyAmount(spent)
+	if b != nil && b.TargetAmount != nil {
+		pb.Remaining = formatMoneyAmount(*b.TargetAmount - spent)
+	}
+	return pb
+}
+
+func formatMoneyAmount(v float64) string {
+	return strconv.FormatFloat(v, 'f', 2, 64)
+}
+
+func toPrintSegment(s store.TripSegment) printSegment {
+	var meta []string
+	if dep := formatExportDate(dateToPtr(s.DepartDate)); dep != "" {
+		meta = append(meta, "Departs "+dep)
+	}
+	if arr := formatExportDate(dateToPtr(s.ArriveDate)); arr != "" {
+		meta = append(meta, "Arrives "+arr)
+	}
+	if p := strings.TrimSpace(strPtrVal(s.Provider)); p != "" {
+		meta = append(meta, p)
+	}
+	if pn := strings.TrimSpace(strPtrVal(s.PriceNote)); pn != "" {
+		meta = append(meta, pn)
+	}
+	rawURL := strings.TrimSpace(strPtrVal(s.Url))
+	return printSegment{
+		Route:   segmentRoute(s),
+		Mode:    capitalize(s.Mode),
+		Meta:    strings.Join(meta, " · "),
+		Notes:   strings.TrimSpace(strPtrVal(s.Notes)),
+		URL:     rawURL,
+		URLText: displayURL(rawURL),
+		Booked:  s.Booked,
+	}
+}
+
+// toPrintStay converts an accommodation; note is context-dependent (a tonight
+// note on day sections, the check-in/out range on reference lists).
+func toPrintStay(a store.Accommodation, note string) printStay {
+	var meta []string
+	if p := strings.TrimSpace(strPtrVal(a.Provider)); p != "" {
+		meta = append(meta, p)
+	}
+	if pn := strings.TrimSpace(strPtrVal(a.PriceNote)); pn != "" {
+		meta = append(meta, pn)
+	}
+	if note != "" {
+		meta = append(meta, note)
+	}
+	rawURL := strings.TrimSpace(strPtrVal(a.Url))
+	return printStay{
+		Name:    a.Name,
+		Address: strPtrVal(a.Address),
+		Meta:    strings.Join(meta, " · "),
+		URL:     rawURL,
+		URLText: displayURL(rawURL),
+		Booked:  a.Booked,
+	}
+}
+
+// stayDatesNote renders the reference-list date range for a stay.
+func stayDatesNote(a store.Accommodation) string {
+	var parts []string
+	if ci := formatExportDate(dateToPtr(a.CheckIn)); ci != "" {
+		parts = append(parts, "Check-in "+ci)
+	}
+	if co := formatExportDate(dateToPtr(a.CheckOut)); co != "" {
+		parts = append(parts, "Check-out "+co)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// displayURL builds the short visible text for a booking link — paper isn't
+// clickable, so the reader needs something typable: host + path, no scheme,
+// "www." or query noise, truncated.
+func displayURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	display := raw
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		display = strings.TrimPrefix(u.Host, "www.") + strings.TrimSuffix(u.Path, "/")
+	}
+	const maxRunes = 48
+	runes := []rune(display)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes-1]) + "…"
+	}
+	return display
 }
 
 // groupExportItems walks items in position order and groups them by hub
 // (day_trip_from, falling back to city, then "Itinerary"), sub-grouping by day.
 // First-appearance order is preserved for both hubs and days. Per-item date is
-// trip.start_date + (day-1) when both are present.
+// trip.start_date + (day-1) when both are present. Used for the Unscheduled
+// section (and exercised by the .ics fixture tests).
 func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup {
 	var groups []printGroup
 	groupIdx := map[string]int{}
