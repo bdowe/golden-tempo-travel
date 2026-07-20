@@ -13,6 +13,7 @@ import '../theme/app_shadows.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/continue_chats_section.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/live_trip_card.dart';
 import '../widgets/page_container.dart';
@@ -112,6 +113,12 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                 ],
+                // In-progress AI conversations that haven't produced a trip
+                // yet (specs/continue-where-you-left-off) — same section as
+                // My Trips, slotted below the live trip like there. Collapses
+                // to nothing when empty, on error, or signed out.
+                const ContinueChatsSection(),
+
                 if (recentTrip != null &&
                     recentTrip.tripId != liveTrip?.id) ...[
                   _RecentTripCard(

@@ -9,6 +9,7 @@ import 'package:travel_route_planner/models/trip.dart';
 import 'package:travel_route_planner/models/user.dart';
 import 'package:travel_route_planner/providers/auth_provider.dart';
 import 'package:travel_route_planner/providers/live_trip_provider.dart';
+import 'package:travel_route_planner/providers/resumable_chats_provider.dart';
 import 'package:travel_route_planner/screens/home_screen.dart';
 import 'package:travel_route_planner/widgets/live_trip_card.dart';
 
@@ -84,6 +85,9 @@ Future<void> _pumpHome(WidgetTester tester, Trip? liveTrip) async {
       overrides: [
         authProvider.overrideWith((ref) => _FakeAuthNotifier(_user())),
         liveTripProvider.overrideWithValue(liveTrip),
+        // Signed-in fake auth would otherwise trigger a real chats fetch
+        // behind the home ContinueChatsSection.
+        resumableChatsProvider.overrideWith((ref) async => const []),
       ],
       child: const MaterialApp(home: HomeScreen()),
     ),
