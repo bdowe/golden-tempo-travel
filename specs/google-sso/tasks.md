@@ -49,5 +49,5 @@
 
 - [x] Full Go suite green against a Postgres test DB
 - [x] `flutter analyze` clean (no new issues) + widget tests green
-- [ ] Manual click-through with real Google credentials (needs a Web OAuth
-      client registered for http://localhost:3000/api/v1/auth/google/callback)
+- [x] Manual click-through with real Google credentials — verified on
+      production (goldentempotravel.com) 2026-07-20; consent screen published

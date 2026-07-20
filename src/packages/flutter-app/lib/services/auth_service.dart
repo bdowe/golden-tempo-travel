@@ -122,11 +122,27 @@ class AuthService {
     }
   }
 
+  /// Whether the server has Apple sign-in configured. False on any error so
+  /// the button simply stays hidden when the backend is unreachable.
+  Future<bool> appleSignInAvailable() async {
+    try {
+      final res = await httpClient.get(
+        Uri.parse('$baseUrl/auth/apple/availability'),
+      );
+      if (res.statusCode != 200) return false;
+      final body = jsonDecode(res.body);
+      return body is Map && body['available'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Swaps the one-time code from the /sso/<code> redirect for a real
-  /// session. Codes are single-use and expire after a minute.
+  /// session. Codes are single-use, provider-agnostic (Google or Apple),
+  /// and expire after a minute.
   Future<AuthResponse> exchangeSsoCode(String code) async {
     final res = await httpClient.post(
-      Uri.parse('$baseUrl/auth/google/exchange'),
+      Uri.parse('$baseUrl/auth/sso/exchange'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'code': code}),
     );

@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/gradient_app_bar.dart';
 
-/// Landing spot for the Google sign-in redirect, reachable at /sso/<code>
-/// (specs/google-sso). Swaps the one-time code for a session on load and
-/// hands it to the auth provider; /sso/error means the OAuth flow itself
-/// failed (declined consent, expired state, unverified Google email).
+/// Landing spot for the SSO redirect (Google or Apple), reachable at
+/// /sso/<code> (specs/google-sso, specs/apple-sso). Swaps the one-time code
+/// for a session on load and hands it to the auth provider; /sso/error means
+/// the OAuth flow itself failed (declined consent, expired state, unverified
+/// provider email).
 class SsoCallbackScreen extends ConsumerStatefulWidget {
   final String code;
   const SsoCallbackScreen({super.key, required this.code});
@@ -29,7 +30,7 @@ class _SsoCallbackScreenState extends ConsumerState<SsoCallbackScreen> {
     if (widget.code == 'error') {
       setState(() {
         _loading = false;
-        _error = 'Google sign-in was cancelled or failed. Please try again.';
+        _error = 'Sign-in was cancelled or failed. Please try again.';
       });
       return;
     }

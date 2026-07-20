@@ -92,7 +92,7 @@ void main() {
 
     expect(service.exchangedCode, isNull);
     expect(
-      find.text('Google sign-in was cancelled or failed. Please try again.'),
+      find.text('Sign-in was cancelled or failed. Please try again.'),
       findsOneWidget,
     );
     expect(find.text('Back to sign in'), findsOneWidget);

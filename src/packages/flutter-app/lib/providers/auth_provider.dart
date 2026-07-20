@@ -22,6 +22,11 @@ final googleSsoAvailableProvider = FutureProvider<bool>((ref) {
   return ref.watch(authServiceProvider).googleSignInAvailable();
 });
 
+/// Whether the backend has Apple sign-in configured (specs/apple-sso).
+final appleSsoAvailableProvider = FutureProvider<bool>((ref) {
+  return ref.watch(authServiceProvider).appleSignInAvailable();
+});
+
 class AuthState {
   final UserModel? user;
   final bool initialized; // false until the stored token has been checked
