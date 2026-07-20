@@ -21,8 +21,15 @@ UPDATE users SET password_hash = $2 WHERE id = $1;
 UPDATE users SET email_verified_at = COALESCE(email_verified_at, now())
 WHERE id = $1;
 
--- name: UpdateUserDisplayName :one
-UPDATE users SET display_name = $2 WHERE id = $1
+-- name: UpdateUserProfile :one
+-- Partial account update: a NULL arg leaves that column untouched, so one query
+-- serves a display-name edit, a locale sync, or both. Same shape as
+-- SetUserEmailOptOut below. Locale is never cleared back to NULL — the client
+-- always resolves "System default" to a concrete language before syncing.
+UPDATE users SET
+    display_name = COALESCE(sqlc.narg('display_name'), display_name),
+    locale       = COALESCE(sqlc.narg('locale'), locale)
+WHERE id = sqlc.arg('id')
 RETURNING *;
 
 -- name: SetUserEmailOptOut :one

@@ -40,6 +40,11 @@ type UserResponse struct {
 	// opt-out columns.
 	RemindersEnabled bool `json:"reminders_enabled"`
 	NudgesEnabled    bool `json:"nudges_enabled"`
+	// Preferred language ('en' | 'es'), omitted when the account has never
+	// resolved one. The client owns resolution and syncs it here; the server
+	// reads it only where there is no request to negotiate from — background
+	// email and token-gated exports (specs/i18n-spanish).
+	Locale *string `json:"locale,omitempty"`
 }
 
 type AuthResponse struct {
@@ -62,6 +67,7 @@ func toUserResponse(u store.User) UserResponse {
 		// Opt-out false => still receiving => enabled true.
 		RemindersEnabled: !u.RemindersOptOut,
 		NudgesEnabled:    !u.NudgesOptOut,
+		Locale:           u.Locale,
 	}
 }
 

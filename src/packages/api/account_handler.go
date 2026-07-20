@@ -23,23 +23,37 @@ func patchAccountHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	var req struct {
 		DisplayName *string `json:"display_name"`
+		Locale      *string `json:"locale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.DisplayName == nil {
+	if req.DisplayName == nil && req.Locale == nil {
 		writeJSONError(w, http.StatusBadRequest, "nothing to update")
 		return
 	}
-	name := strings.TrimSpace(*req.DisplayName)
-	if name == "" || utf8.RuneCountInString(name) > 60 {
-		writeJSONError(w, http.StatusUnprocessableEntity, "display_name must be 1-60 characters")
-		return
+	params := store.UpdateUserProfileParams{ID: user.ID}
+	if req.DisplayName != nil {
+		name := strings.TrimSpace(*req.DisplayName)
+		if name == "" || utf8.RuneCountInString(name) > 60 {
+			writeJSONError(w, http.StatusUnprocessableEntity, "display_name must be 1-60 characters")
+			return
+		}
+		params.DisplayName = &name
 	}
-	updated, err := store.New(dbPool).UpdateUserDisplayName(r.Context(), store.UpdateUserDisplayNameParams{
-		ID: user.ID, DisplayName: &name,
-	})
+	// The client syncs its already-resolved effective locale here (specs/
+	// i18n-spanish), so background email has a language to write in. Regional
+	// tags fold to their base language; anything unsupported is a client bug.
+	if req.Locale != nil {
+		locale, ok := normalizeLocale(*req.Locale)
+		if !ok {
+			writeJSONError(w, http.StatusUnprocessableEntity, "unsupported locale")
+			return
+		}
+		params.Locale = &locale
+	}
+	updated, err := store.New(dbPool).UpdateUserProfile(r.Context(), params)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not update account")
 		return

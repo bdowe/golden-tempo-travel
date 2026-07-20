@@ -721,6 +721,10 @@ func buildRouter() *mux.Router {
 	// into the in-process opsMetrics registry (ops_metrics.go).
 	router.Use(metricsMiddleware)
 	router.Use(corsMiddleware)
+	// Negotiates the response language for every route, including the public
+	// token-gated exports that have no session to read a stored locale from
+	// (specs/i18n-spanish).
+	router.Use(localeMiddleware)
 	router.Use(bodyLimitMiddleware)
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
