@@ -31,6 +31,21 @@ class AccountApiService {
     throw Exception(_message(res.body, res.statusCode));
   }
 
+  /// Syncs the effective UI language to the account, so server-generated text
+  /// that has no request to negotiate from — above all the background emails —
+  /// is written in the user's language (specs/i18n-spanish).
+  Future<UserModel> updateLocale(String locale) async {
+    final res = await apiClient.httpClient.patch(
+      Uri.parse('${apiClient.baseUrl}/auth/account'),
+      headers: apiClient.jsonHeaders(json: true),
+      body: jsonEncode({'locale': locale}),
+    );
+    if (res.statusCode == 200) {
+      return UserModel.fromJson(jsonDecode(res.body));
+    }
+    throw Exception(_message(res.body, res.statusCode));
+  }
+
   /// Returns the fresh session token minted after the change (every other
   /// session is revoked server-side).
   Future<({UserModel user, String token})> changePassword(

@@ -44,3 +44,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# gen_l10n coverage report (l10n.yaml → untranslated-messages-file): a build
+# artifact listing any message missing a translation. Regenerated on every
+# codegen run; CI asserts it is empty rather than tracking it.
+/l10n_untranslated.json

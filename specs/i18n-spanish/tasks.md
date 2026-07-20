@@ -19,17 +19,22 @@
 
 ## PR 2 — Flutter i18n infrastructure
 
-- [ ] `pubspec.yaml`: `flutter_localizations`, `intl`, `generate: true`
-- [ ] `l10n.yaml` + `lib/l10n/app_en.arb` + `lib/l10n/app_es.arb` (shell strings)
-- [ ] `lib/l10n/l10n.dart` — `context.l10n` extension
-- [ ] `lib/providers/locale_provider.dart` — override persistence, effective
+- [x] `pubspec.yaml`: `flutter_localizations`, `intl`, `generate: true`
+- [x] `l10n.yaml` + `lib/l10n/app_en.arb` + `lib/l10n/app_es.arb` (shell strings)
+- [x] `lib/l10n/l10n.dart` — `context.l10n` extension + `kSupportedLocales`
+      (single source of truth; `es` added here in PR 7)
+- [x] `lib/providers/locale_provider.dart` — override persistence, effective
       locale, `Intl.defaultLocale`, account sync
-- [ ] `main.dart` — delegates, `supportedLocales: [en]` (es deferred to PR 7)
-- [ ] `services/api_client.dart` — `Accept-Language` in `jsonHeaders()`
-- [ ] Auth user model gains `locale`; `make flutter-build-models`
-- [ ] [P] `utils/trip_format.dart` → `DateFormat` (signatures unchanged)
-- [ ] [P] `utils/money_format.dart` → `NumberFormat` digit grouping
-- [ ] Tests: locale resolution, `Accept-Language` header; `make flutter-analyze`
+- [x] `main.dart` — delegates, `supportedLocales: [en]` (es deferred to PR 7)
+- [x] `services/api_client.dart` — `Accept-Language` in `jsonHeaders()`;
+      `account_api_service.dart` — `updateLocale`
+- [x] Auth user model gains `locale`; `make flutter-build-models`
+- [x] [P] `utils/trip_format.dart` → `DateFormat` (signatures unchanged)
+- [x] [P] `utils/money_format.dart` → `NumberFormat` digit grouping
+- [x] Tests: locale resolution, `Accept-Language` header, Spanish date/number
+      formatting; `flutter analyze` CI-clean; 395 tests pass
+- [x] CI gate: `flutter gen-l10n` + untranslated-messages check + l10n drift
+      check (mirrors the Go sqlc drift check)
 
 ## PRs 3-5 — String extraction (mechanical)
 

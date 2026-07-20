@@ -96,6 +96,21 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
+      # Regenerate the localizations and fail if any message lacks a
+      # translation (specs/i18n-spanish). Catches both a missing .arb entry and
+      # a committed app_localizations*.dart that drifted from the .arb files —
+      # the l10n equivalent of the sqlc drift check on the Go side.
+      - name: l10n codegen + translation coverage
+        run: |
+          flutter gen-l10n
+          if [ -s l10n_untranslated.json ] && [ "$(cat l10n_untranslated.json)" != "{}" ]; then
+            echo "::error::Untranslated messages:"; cat l10n_untranslated.json; exit 1
+          fi
+          if ! git diff --quiet -- lib/l10n; then
+            echo "::error::Generated localizations are stale — run 'flutter gen-l10n' and commit."
+            git diff --stat -- lib/l10n; exit 1
+          fi
+
       - name: flutter analyze
         run: flutter analyze --no-fatal-infos --fatal-warnings
 

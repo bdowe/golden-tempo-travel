@@ -33,6 +33,15 @@ dependencies:
   # Path-style web URLs (usePathUrlStrategy in main.dart).
   flutter_web_plugins:
     sdk: flutter
+  # Localization (specs/i18n-spanish): gen_l10n delegates + Material/Cupertino
+  # translations. GlobalMaterialLocalizations also initializes intl's date
+  # symbols for the active locale, so DateFormat works without a manual
+  # initializeDateFormatting call.
+  flutter_localizations:
+    sdk: flutter
+  # Locale-aware date and number formatting (utils/trip_format.dart,
+  # utils/money_format.dart).
+  intl: any
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -124,6 +133,9 @@ flutter_native_splash:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Generate AppLocalizations from lib/l10n/*.arb (see l10n.yaml).
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
