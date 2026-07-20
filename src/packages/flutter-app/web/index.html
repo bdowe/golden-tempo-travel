@@ -145,19 +145,22 @@
   </script>
 
   <script>
-    // Password-manager autofill shim. Flutter web only gives the *focused*
-    // text field a real DOM rect; its AutofillGroup siblings are left at
-    // 0x0 (upstream flutter/flutter#61301, #127694), and 1Password/Bitwarden
-    // refuse to fill zero-size inputs (anti-phishing visibility check) — so
-    // picking a login filled only the focused field. Give the siblings a
-    // plausible on-screen rect stacked around the focused field; they stay
-    // visually transparent and click-through, and values the extension
-    // writes into them reach Flutter through the engine's own listeners.
-    // Only elements currently at 0x0 are touched, so the engine's own
-    // styling of the focused element always wins and the MutationObserver
-    // settles instead of looping.
+    // Password-manager autofill shim (v3). Flutter web only gives the
+    // *focused* text field a real DOM rect; its AutofillGroup siblings are
+    // left at 0x0 (upstream flutter/flutter#61301, #127694). Password
+    // managers run anti-phishing visibility checks per field — including an
+    // occlusion check: elementFromPoint(field center) must return the field
+    // itself (Bitwarden's DomElementVisibilityService; 1Password behaves
+    // the same). elementFromPoint skips pointer-events:none elements, so
+    // siblings must be pe:auto to qualify — and because the engine ignores
+    // pointer events not targeted at its own surface, we intercept pointer
+    // events on the siblings and re-dispatch clones at the engine element
+    // beneath, so a user click on a sibling still focuses the right
+    // Flutter field.
     (function () {
+      console.info('[autofill] shim v3 active');
       var diagnosed = new WeakSet();
+      var forwarded = new WeakSet();
       function logFillEvent(e) {
         // Verbose-level breadcrumbs for debugging real password-manager
         // behavior (DevTools console, "Verbose" filter, search "autofill").
@@ -166,6 +169,36 @@
             ' len=' + (e.target.value || '').length +
             ' trusted=' + e.isTrusted +
             ' inputType=' + (e.inputType || '-'));
+      }
+      // A pointer event landed on a non-focused autofill input. Cancel it
+      // (also suppresses the compatibility mouse events) and re-dispatch a
+      // clone at whatever the engine has under that point, found by
+      // momentarily making this input click-transparent.
+      function forwardToFlutter(e) {
+        var el = e.currentTarget;
+        if (el.classList.contains('flt-text-editing')) return; // now focused
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        el.style.pointerEvents = 'none';
+        var under = document.elementFromPoint(e.clientX, e.clientY);
+        el.style.pointerEvents = 'auto';
+        if (!under || under === el) return;
+        under.dispatchEvent(new e.constructor(e.type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: window,
+          detail: e.detail,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          screenX: e.screenX,
+          screenY: e.screenY,
+          button: e.button,
+          buttons: e.buttons,
+          pointerId: e.pointerId,
+          pointerType: e.pointerType,
+          isPrimary: e.isPrimary,
+        }));
       }
       function sizeAutofillForm() {
         var focused = document.querySelector(
@@ -195,9 +228,17 @@
                   'translate(' + rect.left + 'px, ' + y + 'px)';
               el.style.width = rect.width + 'px';
               el.style.height = rect.height + 'px';
-              el.style.pointerEvents = 'none';
             } else {
               y = el.getBoundingClientRect().top;
+            }
+            // pe:auto (not none) so elementFromPoint returns the field and
+            // the extensions' occlusion check passes; the pointer listeners
+            // hand real user clicks back to the engine.
+            el.style.pointerEvents = 'auto';
+            if (!forwarded.has(el)) {
+              forwarded.add(el);
+              el.addEventListener('pointerdown', forwardToFlutter);
+              el.addEventListener('pointerup', forwardToFlutter);
             }
           }
           minY = Math.min(minY, y);
@@ -209,7 +250,7 @@
         // make it the containing block for the engine's absolutely-placed
         // inputs, and empirically even margins break the engine's
         // focus-switch between fields. pointer-events:none keeps the sized
-        // box click-transparent; the focused input wins pe back explicitly.
+        // box click-transparent; inputs win pe back explicitly above.
         var form = focused.form;
         if (form.offsetWidth <= 0 || form.offsetHeight <= 0) {
           form.style.width = rect.width + 'px';
