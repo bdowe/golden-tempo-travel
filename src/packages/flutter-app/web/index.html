@@ -157,9 +157,17 @@
     // styling of the focused element always wins and the MutationObserver
     // settles instead of looping.
     (function () {
-      var scheduled = false;
-      function sizeAutofillSiblings() {
-        scheduled = false;
+      var diagnosed = new WeakSet();
+      function logFillEvent(e) {
+        // Verbose-level breadcrumbs for debugging real password-manager
+        // behavior (DevTools console, "Verbose" filter, search "autofill").
+        console.debug('[autofill] ' + e.type +
+            ' on ' + (e.target.getAttribute('autocomplete') || e.target.name) +
+            ' len=' + (e.target.value || '').length +
+            ' trusted=' + e.isTrusted +
+            ' inputType=' + (e.inputType || '-'));
+      }
+      function sizeAutofillForm() {
         var focused = document.querySelector(
             'form input.flt-text-editing, form textarea.flt-text-editing');
         if (!focused || !focused.form) return;
@@ -169,33 +177,60 @@
             focused.form.querySelectorAll('input, textarea'),
             function (el) { return el.type !== 'submit'; });
         var focusedIdx = fields.indexOf(focused);
+        var minY = rect.top;
+        var maxY = rect.top + rect.height;
         fields.forEach(function (el, i) {
-          if (el === focused || el.offsetWidth > 0 || el.offsetHeight > 0) {
-            return;
+          if (!diagnosed.has(el)) {
+            diagnosed.add(el);
+            el.addEventListener('input', logFillEvent);
+            el.addEventListener('change', logFillEvent);
           }
           var y = rect.top + (i - focusedIdx) * (rect.height + 40);
-          el.style.position = 'absolute';
-          el.style.top = '0px';
-          el.style.left = '0px';
-          el.style.transform =
-              'translate(' + rect.left + 'px, ' + y + 'px)';
-          el.style.width = rect.width + 'px';
-          el.style.height = rect.height + 'px';
-          el.style.pointerEvents = 'none';
+          if (el !== focused) {
+            if (el.offsetWidth <= 0 && el.offsetHeight <= 0) {
+              el.style.position = 'absolute';
+              el.style.top = '0px';
+              el.style.left = '0px';
+              el.style.transform =
+                  'translate(' + rect.left + 'px, ' + y + 'px)';
+              el.style.width = rect.width + 'px';
+              el.style.height = rect.height + 'px';
+              el.style.pointerEvents = 'none';
+            } else {
+              y = el.getBoundingClientRect().top;
+            }
+          }
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y + rect.height);
         });
+        // Extensions treat 0x0 forms as hidden/honeypot forms and skip
+        // their fields — give the form itself a real size. It must stay
+        // static AND unmargined at its natural spot: positioning it would
+        // make it the containing block for the engine's absolutely-placed
+        // inputs, and empirically even margins break the engine's
+        // focus-switch between fields. pointer-events:none keeps the sized
+        // box click-transparent; the focused input wins pe back explicitly.
+        var form = focused.form;
+        if (form.offsetWidth <= 0 || form.offsetHeight <= 0) {
+          form.style.width = rect.width + 'px';
+          form.style.height = (maxY - minY) + 'px';
+          form.style.pointerEvents = 'none';
+        }
+        if (getComputedStyle(focused).pointerEvents === 'none') {
+          focused.style.pointerEvents = 'auto';
+        }
       }
-      function schedule() {
-        if (scheduled) return;
-        scheduled = true;
-        requestAnimationFrame(sizeAutofillSiblings);
-      }
-      new MutationObserver(schedule).observe(document.body, {
+      // Run synchronously inside the observer callback: our observer is
+      // registered before extension content scripts, so the fields are
+      // already sized when the extension's own observer sees the same
+      // mutation batch and analyzes the form.
+      new MutationObserver(sizeAutofillForm).observe(document.body, {
         childList: true,
         subtree: true,
         attributes: true,
         attributeFilter: ['style', 'class'],
       });
-      document.addEventListener('focusin', schedule, true);
+      document.addEventListener('focusin', sizeAutofillForm, true);
     })();
   </script>
 
