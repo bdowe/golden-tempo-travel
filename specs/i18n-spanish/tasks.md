@@ -81,7 +81,31 @@ today/budget/checklist · C: chat/alerts/share/export/remaining):
 - [ ] Layout spot-check under a temporary Spanish override (~25% expansion)
 - [ ] `make flutter-analyze && make flutter-test` clean
 
-- [ ] After PR 5: `untranslated-messages` output is empty
+- [x] After PR 5: `untranslated-messages` output is empty
+
+**PR 5 (batch C) is DONE**: chat panel, agent screen, refine panel, alerts,
+create-alert sheet, notification center, shared trip, legal links, offline
+banner, place search, add-to-trip, route optimizer, optimization params, flight
+search/card/details, airport field, guides, guide detail, app map. 245 keys
+(786 total). Every non-admin user-facing file in `lib/` now reads its copy from
+the ARB.
+
+Also in PR 5:
+- `trip_detail_screen`'s `_months`/`_weekdays` tables became `DateFormat.MMMd()`
+  / `MMMEd()` (the batch-B follow-up; English byte-identical, Spanish reorders
+  to "15 jul" / "mié, 15 jul" on its own).
+- Flight stop labels moved off `FlightOffer` into `utils/flight_labels.dart` as
+  an ICU plural — a model getter returning a fixed English sentence cannot
+  express "1 escala" vs "2 escalas".
+- `DictationController` and `add_to_trip_sheet` now store error *codes* (enums)
+  resolved to copy in `build`, since services and `initState` have no context.
+- Suggestion chips send the localized text on BOTH the home and agent screens.
+  They become a message in the traveler's own transcript, so an English message
+  they never wrote reads as a bug. `RefineTarget.label` still stays English —
+  that one goes into the AI seed prompt, not the transcript.
+- Fixed a latent crash: `context.l10n` read after an `await` in
+  trip_detail's booking-link handler (only an `info` lint, but a real
+  unmounted-widget throw).
 
 ## PR 6 — Server-side Spanish + AI + providers
 
@@ -106,6 +130,15 @@ today/budget/checklist · C: chat/alerts/share/export/remaining):
 - [ ] Tests: es email builders, Spanish trip-review integration test, and the
       **English prompt byte-stability** test via the fake-Anthropic harness
 - [ ] `make smoke`
+
+## Deliberately not localized
+
+- **Admin-only screens** (`local_admin_screen.dart`, `admin_metrics_screen.dart`
+  and the `daily_count_chart` they use, ~38 strings). They sit behind
+  `isAdmin`, which is a single English-speaking operator. Translating internal
+  tooling buys nothing and adds permanent translation debt on every change.
+- `local_rec_card.dart` has zero user-facing English — every string is server
+  data (name, quote, tip, credit line).
 
 ## Follow-ups (not blocking enablement)
 

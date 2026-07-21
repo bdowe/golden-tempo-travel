@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
+import '../utils/flight_labels.dart';
 import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
 import '../utils/money_format.dart';
@@ -14,7 +16,8 @@ import '../utils/snack.dart';
 /// offer, no comparable alternative (unknown fees and other currencies are
 /// skipped — their totals understate or don't compare), or a saving that would
 /// round to zero.
-String? savingsLabelFor(List<FlightOffer> offers, String? bestOfferId) {
+String? savingsLabelFor(
+    AppLocalizations l10n, List<FlightOffer> offers, String? bestOfferId) {
   FlightOffer? best;
   for (final o in offers) {
     if (o.id == bestOfferId) {
@@ -37,7 +40,7 @@ String? savingsLabelFor(List<FlightOffer> offers, String? bestOfferId) {
   if (nextBest == null) return null;
   final saved = nextBest - best.displayPrice;
   if (saved < 0.5) return null;
-  return 'Saves ${formatMoney(saved, best.currency)} vs next option';
+  return l10n.flightCardSavings(formatMoney(saved, best.currency));
 }
 
 /// A single ranked flight offer rendered as a card — airline(s), route, price,
@@ -57,25 +60,29 @@ class FlightOfferCard extends StatelessWidget {
   /// Baggage badge under the price on baggage-aware searches; null otherwise.
   /// "paid" prices already fold the fee into [FlightOffer.displayPrice] — the
   /// badge explains where the number came from.
-  String? get _bagBadge => switch (offer.baggageStatus) {
-        'included' => 'Bag included',
+  String? _bagBadge(AppLocalizations l10n) => switch (offer.baggageStatus) {
+        'included' => l10n.flightCardBagIncluded,
         'paid' =>
-          'incl. bag +${formatMoney(offer.bagFee, offer.currency)}',
-        'unknown' => 'Bag fee unknown',
+          l10n.flightCardBagPaid(formatMoney(offer.bagFee, offer.currency)),
+        'unknown' => l10n.flightCardBagUnknown,
         _ => null,
       };
 
   Future<void> _book(BuildContext context) async {
     final url = offer.bookingUrl;
     if (url == null || url.isEmpty) return;
+    final l10n = context.l10n;
     final ok = await trackedLaunchUrl(context, url,
         provider: 'duffel', surface: 'flight_card');
-    if (!ok && context.mounted) showSnack(context, 'Could not open link');
+    if (!ok && context.mounted) {
+      showSnack(context, l10n.flightCardOpenLinkError);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final accent = Colors.teal.shade700;
 
     return Card(
@@ -108,8 +115,8 @@ class FlightOfferCard extends StatelessWidget {
                             color: accent,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text('BEST MATCH',
-                              style: TextStyle(
+                          child: Text(l10n.flightCardBestMatch,
+                              style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold)),
@@ -139,7 +146,7 @@ class FlightOfferCard extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 offer.airlines.isEmpty
-                                    ? 'Flight'
+                                    ? l10n.flightCardFlight
                                     : offer.airlines.join(', '),
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleMedium
@@ -166,13 +173,13 @@ class FlightOfferCard extends StatelessWidget {
                         style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold, color: accent),
                       ),
-                      if (_bagBadge case final badge?)
+                      if (_bagBadge(l10n) case final badge?)
                         Text(badge,
                             style: theme.textTheme.labelSmall?.copyWith(
                                 color: offer.bagFeeUnknown
                                     ? theme.colorScheme.error
                                     : theme.colorScheme.onSurfaceVariant)),
-                      Text('score ${offer.score.toStringAsFixed(1)}',
+                      Text(l10n.flightCardScore(offer.score.toStringAsFixed(1)),
                           style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant)),
                     ],
@@ -190,7 +197,7 @@ class FlightOfferCard extends StatelessWidget {
                   const SizedBox(width: 16),
                   _Stat(
                       icon: Icons.connecting_airports,
-                      label: offer.combinedStopsLabel),
+                      label: combinedStopsLabel(l10n, offer)),
                   if (offer.stops > 0 || offer.returnStops > 0) ...[
                     const SizedBox(width: 6),
                     Icon(Icons.chevron_right,
@@ -201,7 +208,7 @@ class FlightOfferCard extends StatelessWidget {
                     TextButton.icon(
                       onPressed: () => _book(context),
                       icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('Book'),
+                      label: Text(l10n.flightCardBook),
                     ),
                 ],
               ),

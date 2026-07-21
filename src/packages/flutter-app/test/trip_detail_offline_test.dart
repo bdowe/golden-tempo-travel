@@ -15,6 +15,7 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trip_cache.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/offline_banner.dart';
+import 'package:travel_route_planner/l10n/l10n.dart';
 
 import 'support/l10n_test_app.dart';
 
@@ -93,17 +94,30 @@ void main() {
   });
 
   group('relativeTime', () {
-    test('formats coarse staleness labels', () {
+    test('formats coarse staleness labels', () async {
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       final now = DateTime(2026, 7, 6, 12, 0);
       DateTime ago(Duration d) => now.subtract(d);
-      expect(relativeTime(ago(const Duration(seconds: 20)), now: now),
+      expect(relativeTime(l10n, ago(const Duration(seconds: 20)), now: now),
           'just now');
-      expect(relativeTime(ago(const Duration(minutes: 5)), now: now),
+      expect(relativeTime(l10n, ago(const Duration(minutes: 5)), now: now),
           '5 minutes ago');
-      expect(
-          relativeTime(ago(const Duration(hours: 1)), now: now), '1 hour ago');
-      expect(
-          relativeTime(ago(const Duration(days: 2)), now: now), '2 days ago');
+      expect(relativeTime(l10n, ago(const Duration(hours: 1)), now: now),
+          '1 hour ago');
+      expect(relativeTime(l10n, ago(const Duration(days: 2)), now: now),
+          '2 days ago');
+    });
+
+    // The 1-vs-N branches are ICU plurals now, so Spanish gets its own forms
+    // rather than an English sentence with a translated noun.
+    test('pluralizes in Spanish', () async {
+      final es = await AppLocalizations.delegate.load(const Locale('es'));
+      final now = DateTime(2026, 7, 6, 12, 0);
+      DateTime ago(Duration d) => now.subtract(d);
+      expect(relativeTime(es, ago(const Duration(hours: 1)), now: now),
+          isNot(contains('hour')));
+      expect(relativeTime(es, ago(const Duration(days: 2)), now: now),
+          isNot(contains('days')));
     });
   });
 

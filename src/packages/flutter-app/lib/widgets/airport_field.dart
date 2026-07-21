@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/airport.dart';
 import '../providers/flights_provider.dart';
 
@@ -37,6 +38,7 @@ class _AirportFieldState extends ConsumerState<AirportField> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final selected = widget.selected;
 
     if (selected != null) {
@@ -65,7 +67,7 @@ class _AirportFieldState extends ConsumerState<AirportField> {
           controller: _controller,
           decoration: InputDecoration(
             labelText: widget.label,
-            hintText: 'City or airport',
+            hintText: l10n.airportFieldHint,
             prefixIcon: Icon(widget.icon),
             border: const OutlineInputBorder(),
           ),

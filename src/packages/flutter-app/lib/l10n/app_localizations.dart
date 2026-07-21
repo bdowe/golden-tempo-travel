@@ -3343,6 +3343,1476 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sign out'**
   String get accountMenuSignOut;
+
+  /// No description provided for @alertsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Price alerts'**
+  String get alertsTitle;
+
+  /// No description provided for @alertsSignInTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to watch fares'**
+  String get alertsSignInTitle;
+
+  /// No description provided for @alertsSignInMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Price alerts email you when a flight you care about drops.'**
+  String get alertsSignInMessage;
+
+  /// No description provided for @alertsSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get alertsSignIn;
+
+  /// No description provided for @alertsLoadErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load alerts'**
+  String get alertsLoadErrorTitle;
+
+  /// No description provided for @alertsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No alerts yet'**
+  String get alertsEmptyTitle;
+
+  /// No description provided for @alertsEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Search a flight and tap \"Watch this route\" — we\'ll email you when the price drops.'**
+  String get alertsEmptyMessage;
+
+  /// No description provided for @alertsLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Last seen {price}'**
+  String alertsLastSeen(String price);
+
+  /// No description provided for @alertsTargetPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'target {price}'**
+  String alertsTargetPrice(String price);
+
+  /// No description provided for @alertsWatchingAnyDrop.
+  ///
+  /// In en, this message translates to:
+  /// **'watching for any drop'**
+  String get alertsWatchingAnyDrop;
+
+  /// No description provided for @alertsAdults.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} adults'**
+  String alertsAdults(int count);
+
+  /// No description provided for @alertsBaselineDelta.
+  ///
+  /// In en, this message translates to:
+  /// **'Down {amount} from when you started watching'**
+  String alertsBaselineDelta(String amount);
+
+  /// No description provided for @alertsChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked {when}'**
+  String alertsChecked(String when);
+
+  /// No description provided for @alertsSetTargetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set target price'**
+  String get alertsSetTargetTitle;
+
+  /// No description provided for @alertsSetTargetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Get notified when the fare hits or drops below this price.'**
+  String get alertsSetTargetBody;
+
+  /// No description provided for @alertsNotifyAtOrBelow.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me at or below'**
+  String get alertsNotifyAtOrBelow;
+
+  /// No description provided for @alertsWatchAnyDropInstead.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch for any drop instead'**
+  String get alertsWatchAnyDropInstead;
+
+  /// No description provided for @alertsInvalidTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid target price'**
+  String get alertsInvalidTarget;
+
+  /// No description provided for @alertsActionsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert actions'**
+  String get alertsActionsTooltip;
+
+  /// No description provided for @alertsEditTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit target price'**
+  String get alertsEditTarget;
+
+  /// No description provided for @alertsPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get alertsPause;
+
+  /// No description provided for @alertsResume.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get alertsResume;
+
+  /// No description provided for @alertsStatusExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get alertsStatusExpired;
+
+  /// No description provided for @alertsStatusPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get alertsStatusPaused;
+
+  /// No description provided for @alertsStatusDropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Price dropped'**
+  String get alertsStatusDropped;
+
+  /// No description provided for @alertsStatusWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching'**
+  String get alertsStatusWatching;
+
+  /// No description provided for @alertSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch this route'**
+  String get alertSheetTitle;
+
+  /// No description provided for @alertSheetBestPriceNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Best price now: {price}'**
+  String alertSheetBestPriceNow(String price);
+
+  /// No description provided for @alertSheetAnyDropTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me on any real price drop'**
+  String get alertSheetAnyDropTitle;
+
+  /// No description provided for @alertSheetAnyDropSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 5% and \$5 below the last price'**
+  String get alertSheetAnyDropSubtitle;
+
+  /// No description provided for @alertSheetFlexTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Date flexibility'**
+  String get alertSheetFlexTitle;
+
+  /// No description provided for @alertSheetFlexHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch a few days around your departure and we\'ll flag the cheapest one.'**
+  String get alertSheetFlexHelp;
+
+  /// No description provided for @alertSheetFlexExact.
+  ///
+  /// In en, this message translates to:
+  /// **'Exact'**
+  String get alertSheetFlexExact;
+
+  /// No description provided for @alertSheetCreating.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating…'**
+  String get alertSheetCreating;
+
+  /// No description provided for @alertSheetCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create alert'**
+  String get alertSheetCreate;
+
+  /// No description provided for @alertSheetWatchingSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching {origin} → {destination} — we\'ll email you on a drop'**
+  String alertSheetWatchingSnack(String origin, String destination);
+
+  /// No description provided for @notifTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notifTitle;
+
+  /// No description provided for @notifLoadErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load notifications'**
+  String get notifLoadErrorTitle;
+
+  /// No description provided for @notifEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No notifications yet'**
+  String get notifEmptyTitle;
+
+  /// No description provided for @notifEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Price drops on routes you watch will show up here.'**
+  String get notifEmptyMessage;
+
+  /// No description provided for @notifDownFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'{price}, down from {previous}'**
+  String notifDownFrom(String price, String previous);
+
+  /// No description provided for @notifBestInWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'(best in window)'**
+  String get notifBestInWindow;
+
+  /// No description provided for @notifGenericFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification'**
+  String get notifGenericFallback;
+
+  /// No description provided for @notifSomeTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'a trip'**
+  String get notifSomeTrip;
+
+  /// No description provided for @notifSomeone.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone'**
+  String get notifSomeone;
+
+  /// No description provided for @notifACollaborator.
+  ///
+  /// In en, this message translates to:
+  /// **'A collaborator'**
+  String get notifACollaborator;
+
+  /// No description provided for @notifJoinedTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'{who} joined \"{trip}\"'**
+  String notifJoinedTrip(String who, String trip);
+
+  /// No description provided for @notifEditedTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'{who} edited \"{trip}\"'**
+  String notifEditedTrip(String who, String trip);
+
+  /// No description provided for @sharedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared trip'**
+  String get sharedTitle;
+
+  /// No description provided for @sharedUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This link isn\'t available'**
+  String get sharedUnavailableTitle;
+
+  /// No description provided for @sharedInviteUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The invite may have expired, been revoked, or already used.'**
+  String get sharedInviteUnavailableMessage;
+
+  /// No description provided for @sharedLinkUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The trip may have been unshared, or the link is incorrect.'**
+  String get sharedLinkUnavailableMessage;
+
+  /// No description provided for @sharedPlacesGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Places'**
+  String get sharedPlacesGroup;
+
+  /// No description provided for @sharedSaveCopyError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save a copy: {error}'**
+  String sharedSaveCopyError(String error);
+
+  /// No description provided for @sharedJoinError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not join trip: {error}'**
+  String sharedJoinError(String error);
+
+  /// No description provided for @sharedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared by {name}'**
+  String sharedBy(String name);
+
+  /// No description provided for @sharedNoMappedPlaces.
+  ///
+  /// In en, this message translates to:
+  /// **'No mapped places'**
+  String get sharedNoMappedPlaces;
+
+  /// No description provided for @sharedNoPlacesOnDay.
+  ///
+  /// In en, this message translates to:
+  /// **'No places pinned on Day {day}'**
+  String sharedNoPlacesOnDay(int day);
+
+  /// No description provided for @sharedEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No places yet'**
+  String get sharedEmptyTitle;
+
+  /// No description provided for @sharedEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This trip doesn\'t have an itinerary yet.'**
+  String get sharedEmptyMessage;
+
+  /// No description provided for @sharedDayN.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day}'**
+  String sharedDayN(int day);
+
+  /// No description provided for @sharedStays.
+  ///
+  /// In en, this message translates to:
+  /// **'Stays'**
+  String get sharedStays;
+
+  /// No description provided for @sharedJoinCoPlanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Join as co-planner'**
+  String get sharedJoinCoPlanner;
+
+  /// No description provided for @sharedSaveSeparateCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Or save a separate copy'**
+  String get sharedSaveSeparateCopy;
+
+  /// No description provided for @sharedKeepInTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep in my trips'**
+  String get sharedKeepInTrips;
+
+  /// No description provided for @legalAgreementPrefix.
+  ///
+  /// In en, this message translates to:
+  /// **'By signing up you agree to the '**
+  String get legalAgreementPrefix;
+
+  /// No description provided for @legalTermsOfService.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of Service'**
+  String get legalTermsOfService;
+
+  /// No description provided for @legalAgreementConjunction.
+  ///
+  /// In en, this message translates to:
+  /// **' and '**
+  String get legalAgreementConjunction;
+
+  /// No description provided for @legalPrivacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get legalPrivacyPolicy;
+
+  /// No description provided for @offlineJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get offlineJustNow;
+
+  /// No description provided for @offlineMinutesAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 minute ago} other{{count} minutes ago}}'**
+  String offlineMinutesAgo(int count);
+
+  /// No description provided for @offlineHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 hour ago} other{{count} hours ago}}'**
+  String offlineHoursAgo(int count);
+
+  /// No description provided for @offlineDaysAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day ago} other{{count} days ago}}'**
+  String offlineDaysAgo(int count);
+
+  /// No description provided for @offlineBannerMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline — showing saved copy from {when}'**
+  String offlineBannerMessage(String when);
+
+  /// No description provided for @chatInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe your trip...'**
+  String get chatInputHint;
+
+  /// No description provided for @chatFollowUpHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask a follow-up…'**
+  String get chatFollowUpHint;
+
+  /// No description provided for @chatAttachImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach images'**
+  String get chatAttachImages;
+
+  /// No description provided for @chatStopDictating.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop dictating'**
+  String get chatStopDictating;
+
+  /// No description provided for @chatDictate.
+  ///
+  /// In en, this message translates to:
+  /// **'Dictate'**
+  String get chatDictate;
+
+  /// No description provided for @chatDropImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop images to attach'**
+  String get chatDropImages;
+
+  /// No description provided for @chatRemoveImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove image'**
+  String get chatRemoveImage;
+
+  /// No description provided for @chatImagePlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Image'**
+  String get chatImagePlaceholder;
+
+  /// No description provided for @chatStillPreparingImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Still preparing an image — one moment.'**
+  String get chatStillPreparingImage;
+
+  /// No description provided for @chatAttachLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'You can attach up to {count} images.'**
+  String chatAttachLimit(int count);
+
+  /// No description provided for @chatImageUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read that image — try a JPEG, PNG, GIF, or WebP under 10 MB.'**
+  String get chatImageUnreadable;
+
+  /// No description provided for @chatOnlyImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Only image files can be attached.'**
+  String get chatOnlyImages;
+
+  /// No description provided for @chatToolSearchPlaces.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching places...'**
+  String get chatToolSearchPlaces;
+
+  /// No description provided for @chatToolCreateItinerary.
+  ///
+  /// In en, this message translates to:
+  /// **'Building itinerary...'**
+  String get chatToolCreateItinerary;
+
+  /// No description provided for @chatToolUpdateItinerary.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating itinerary...'**
+  String get chatToolUpdateItinerary;
+
+  /// No description provided for @chatToolSearchFlights.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching flights...'**
+  String get chatToolSearchFlights;
+
+  /// No description provided for @chatToolCheckConnectivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking route connectivity...'**
+  String get chatToolCheckConnectivity;
+
+  /// No description provided for @chatToolSearchEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding events...'**
+  String get chatToolSearchEvents;
+
+  /// No description provided for @chatToolSuggestFerries.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding ferries...'**
+  String get chatToolSuggestFerries;
+
+  /// No description provided for @chatSummarizing.
+  ///
+  /// In en, this message translates to:
+  /// **'Summarizing earlier conversation…'**
+  String get chatSummarizing;
+
+  /// No description provided for @chatProfileUpdatedTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Travel profile updated'**
+  String get chatProfileUpdatedTooltip;
+
+  /// No description provided for @chatProfileUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Noted — travel profile updated'**
+  String get chatProfileUpdated;
+
+  /// No description provided for @chatTripUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip updated'**
+  String get chatTripUpdated;
+
+  /// No description provided for @chatChipFlightOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{count} flight option} other{{count} flight options}}'**
+  String chatChipFlightOptions(int count);
+
+  /// No description provided for @chatChipLocalPicks.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{count} local pick} other{{count} local picks}}'**
+  String chatChipLocalPicks(int count);
+
+  /// No description provided for @chatChipEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{count} event} other{{count} events}}'**
+  String chatChipEvents(int count);
+
+  /// No description provided for @chatChipFerryOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{count} ferry option} other{{count} ferry options}}'**
+  String chatChipFerryOptions(int count);
+
+  /// No description provided for @chatChipEventSources.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{count} event source} other{{count} event sources}}'**
+  String chatChipEventSources(int count);
+
+  /// No description provided for @chatTryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get chatTryAgain;
+
+  /// No description provided for @chatQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get chatQueued;
+
+  /// No description provided for @chatRemoveQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove queued message'**
+  String get chatRemoveQueued;
+
+  /// No description provided for @agentScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan your trip'**
+  String get agentScreenTitle;
+
+  /// No description provided for @agentScreenStartOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Start over'**
+  String get agentScreenStartOver;
+
+  /// No description provided for @agentScreenEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell me about your dream trip'**
+  String get agentScreenEmptyTitle;
+
+  /// No description provided for @agentScreenEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'I\'ll search for places and build an itinerary you can load into the route planner.'**
+  String get agentScreenEmptyMessage;
+
+  /// No description provided for @agentScreenSuggestionParis.
+  ///
+  /// In en, this message translates to:
+  /// **'2 days in Paris'**
+  String get agentScreenSuggestionParis;
+
+  /// No description provided for @agentScreenSuggestionRome.
+  ///
+  /// In en, this message translates to:
+  /// **'Museums in Rome'**
+  String get agentScreenSuggestionRome;
+
+  /// No description provided for @agentScreenSuggestionTokyo.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekend in Tokyo'**
+  String get agentScreenSuggestionTokyo;
+
+  /// No description provided for @agentScreenItineraryReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Itinerary ready — {count} locations'**
+  String agentScreenItineraryReady(int count);
+
+  /// No description provided for @agentScreenViewTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'View trip'**
+  String get agentScreenViewTrip;
+
+  /// No description provided for @agentScreenLoadIntoRoutePlanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Load into route planner'**
+  String get agentScreenLoadIntoRoutePlanner;
+
+  /// No description provided for @agentScreenLoadIntoPlanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Load into Planner'**
+  String get agentScreenLoadIntoPlanner;
+
+  /// No description provided for @refineTargetDay.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day}'**
+  String refineTargetDay(int day);
+
+  /// No description provided for @refineTargetDayCity.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day} — {city}'**
+  String refineTargetDayCity(int day, String city);
+
+  /// No description provided for @refineTargetWholeTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole trip'**
+  String get refineTargetWholeTrip;
+
+  /// No description provided for @refineAssistantTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip assistant'**
+  String get refineAssistantTitle;
+
+  /// No description provided for @refineHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Refining · {target}'**
+  String refineHeader(String target);
+
+  /// No description provided for @refineAssistantHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask anything about this trip…'**
+  String get refineAssistantHint;
+
+  /// No description provided for @refineHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for changes...'**
+  String get refineHint;
+
+  /// No description provided for @chatDictationPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone access was blocked. Check your browser settings.'**
+  String get chatDictationPermission;
+
+  /// No description provided for @chatDictationUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input isn\'t available in this browser.'**
+  String get chatDictationUnsupported;
+
+  /// No description provided for @chatDictationUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input isn\'t available right now.'**
+  String get chatDictationUnavailable;
+
+  /// No description provided for @chatDictationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t transcribe audio. You can type instead.'**
+  String get chatDictationFailed;
+
+  /// No description provided for @placeSearchAddTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Location'**
+  String get placeSearchAddTitle;
+
+  /// No description provided for @placeSearchEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Location'**
+  String get placeSearchEditTitle;
+
+  /// No description provided for @placeSearchManualCoords.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Manual Coordinates'**
+  String get placeSearchManualCoords;
+
+  /// No description provided for @placeSearchManualCoordsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter latitude/longitude manually instead of searching places'**
+  String get placeSearchManualCoordsSubtitle;
+
+  /// No description provided for @placeSearchNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Location Name *'**
+  String get placeSearchNameLabel;
+
+  /// No description provided for @placeSearchNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Location name is required'**
+  String get placeSearchNameRequired;
+
+  /// No description provided for @placeSearchCategoryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Category (optional)'**
+  String get placeSearchCategoryLabel;
+
+  /// No description provided for @placeSearchCategoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g., restaurant, museum, coffee_shop'**
+  String get placeSearchCategoryHint;
+
+  /// No description provided for @placeSearchVisitDurationLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit Duration (minutes, optional)'**
+  String get placeSearchVisitDurationLabel;
+
+  /// No description provided for @placeSearchDurationInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid duration in minutes'**
+  String get placeSearchDurationInvalid;
+
+  /// No description provided for @placeSearchSearchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Search for a place'**
+  String get placeSearchSearchLabel;
+
+  /// No description provided for @placeSearchSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type to search for restaurants, attractions, etc.'**
+  String get placeSearchSearchHint;
+
+  /// No description provided for @placeSearchLatitude.
+  ///
+  /// In en, this message translates to:
+  /// **'Latitude'**
+  String get placeSearchLatitude;
+
+  /// No description provided for @placeSearchLongitude.
+  ///
+  /// In en, this message translates to:
+  /// **'Longitude'**
+  String get placeSearchLongitude;
+
+  /// No description provided for @placeSearchLatitudeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Latitude *'**
+  String get placeSearchLatitudeRequired;
+
+  /// No description provided for @placeSearchLongitudeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Longitude *'**
+  String get placeSearchLongitudeRequired;
+
+  /// No description provided for @placeSearchLatitudeRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Latitude is required'**
+  String get placeSearchLatitudeRequiredError;
+
+  /// No description provided for @placeSearchLongitudeRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Longitude is required'**
+  String get placeSearchLongitudeRequiredError;
+
+  /// No description provided for @placeSearchLatitudeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter valid latitude (-90 to 90)'**
+  String get placeSearchLatitudeInvalid;
+
+  /// No description provided for @placeSearchLongitudeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter valid longitude (-180 to 180)'**
+  String get placeSearchLongitudeInvalid;
+
+  /// No description provided for @placeSearchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No places found. Try a different search term.'**
+  String get placeSearchNoResults;
+
+  /// No description provided for @placeSearchError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error: {error}'**
+  String placeSearchError(String error);
+
+  /// No description provided for @addToTripAddedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Added to {title}'**
+  String addToTripAddedTo(String title);
+
+  /// No description provided for @addToTripViewTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'View trip'**
+  String get addToTripViewTrip;
+
+  /// No description provided for @addToTripTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to trip'**
+  String get addToTripTitle;
+
+  /// No description provided for @addToTripDuplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'Already on this trip.'**
+  String get addToTripDuplicate;
+
+  /// No description provided for @addToTripAddAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Add anyway'**
+  String get addToTripAddAnyway;
+
+  /// No description provided for @addToTripLoadTripError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load that trip: {error}'**
+  String addToTripLoadTripError(String error);
+
+  /// No description provided for @addToTripAddPlaceError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the place: {error}'**
+  String addToTripAddPlaceError(String error);
+
+  /// No description provided for @addToTripLoadTripsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your trips.'**
+  String get addToTripLoadTripsError;
+
+  /// No description provided for @addToTripNoTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'No trips yet — plan a trip first, then add places to it.'**
+  String get addToTripNoTrips;
+
+  /// No description provided for @addToTripUnscheduled.
+  ///
+  /// In en, this message translates to:
+  /// **'Unscheduled'**
+  String get addToTripUnscheduled;
+
+  /// No description provided for @addToTripDay.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day}'**
+  String addToTripDay(int day);
+
+  /// No description provided for @routeOptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Route Optimizer'**
+  String get routeOptTitle;
+
+  /// No description provided for @routeOptClearAllTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all locations'**
+  String get routeOptClearAllTooltip;
+
+  /// No description provided for @routeOptLocationsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Locations ({count})'**
+  String routeOptLocationsCount(int count);
+
+  /// No description provided for @routeOptAddLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Location'**
+  String get routeOptAddLocation;
+
+  /// No description provided for @routeOptEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No locations added yet'**
+  String get routeOptEmptyTitle;
+
+  /// No description provided for @routeOptEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Add locations to optimize your route'**
+  String get routeOptEmptyMessage;
+
+  /// No description provided for @routeOptAddFirstLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Your First Location'**
+  String get routeOptAddFirstLocation;
+
+  /// No description provided for @routeOptOptimizing.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimizing...'**
+  String get routeOptOptimizing;
+
+  /// No description provided for @routeOptOptimize.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimize Route'**
+  String get routeOptOptimize;
+
+  /// No description provided for @routeOptClearAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All Locations'**
+  String get routeOptClearAllTitle;
+
+  /// No description provided for @routeOptClearAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to clear all locations? This action cannot be undone.'**
+  String get routeOptClearAllBody;
+
+  /// No description provided for @routeOptClearAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All'**
+  String get routeOptClearAllConfirm;
+
+  /// No description provided for @routeOptEditLocationTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit location'**
+  String get routeOptEditLocationTooltip;
+
+  /// No description provided for @routeOptDeleteLocationTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete location'**
+  String get routeOptDeleteLocationTooltip;
+
+  /// No description provided for @optParamsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimization Parameters'**
+  String get optParamsTitle;
+
+  /// No description provided for @optParamsStartDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Start Date'**
+  String get optParamsStartDate;
+
+  /// No description provided for @optParamsSelectDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Select date'**
+  String get optParamsSelectDate;
+
+  /// No description provided for @optParamsStartTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Start Time'**
+  String get optParamsStartTime;
+
+  /// No description provided for @optParamsSelectTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Select time'**
+  String get optParamsSelectTime;
+
+  /// No description provided for @optParamsReturnToStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Return to Starting Point'**
+  String get optParamsReturnToStart;
+
+  /// No description provided for @optParamsClearDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear Date'**
+  String get optParamsClearDate;
+
+  /// No description provided for @optParamsClearTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear Time'**
+  String get optParamsClearTime;
+
+  /// No description provided for @flightSearchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find Flights'**
+  String get flightSearchTitle;
+
+  /// No description provided for @flightSearchFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get flightSearchFrom;
+
+  /// No description provided for @flightSearchTo.
+  ///
+  /// In en, this message translates to:
+  /// **'To'**
+  String get flightSearchTo;
+
+  /// No description provided for @flightSearchDepartDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Departure date'**
+  String get flightSearchDepartDate;
+
+  /// No description provided for @flightSearchReturnOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Return (optional)'**
+  String get flightSearchReturnOptional;
+
+  /// No description provided for @flightSearchClearReturnTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear return date'**
+  String get flightSearchClearReturnTooltip;
+
+  /// No description provided for @flightSearchChildAges.
+  ///
+  /// In en, this message translates to:
+  /// **'Child ages'**
+  String get flightSearchChildAges;
+
+  /// No description provided for @flightSearchCabinEconomy.
+  ///
+  /// In en, this message translates to:
+  /// **'Economy'**
+  String get flightSearchCabinEconomy;
+
+  /// No description provided for @flightSearchCabinPremiumEconomy.
+  ///
+  /// In en, this message translates to:
+  /// **'Premium economy'**
+  String get flightSearchCabinPremiumEconomy;
+
+  /// No description provided for @flightSearchCabinBusiness.
+  ///
+  /// In en, this message translates to:
+  /// **'Business'**
+  String get flightSearchCabinBusiness;
+
+  /// No description provided for @flightSearchCabinFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'First'**
+  String get flightSearchCabinFirst;
+
+  /// No description provided for @flightSearchBaggagePersonalItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal item'**
+  String get flightSearchBaggagePersonalItem;
+
+  /// No description provided for @flightSearchBaggageCarryOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Carry-on'**
+  String get flightSearchBaggageCarryOn;
+
+  /// No description provided for @flightSearchBaggageChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked bag'**
+  String get flightSearchBaggageChecked;
+
+  /// No description provided for @flightSearchPresetCheapest.
+  ///
+  /// In en, this message translates to:
+  /// **'Cheapest'**
+  String get flightSearchPresetCheapest;
+
+  /// No description provided for @flightSearchPresetFastest.
+  ///
+  /// In en, this message translates to:
+  /// **'Fastest'**
+  String get flightSearchPresetFastest;
+
+  /// No description provided for @flightSearchPresetBalanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get flightSearchPresetBalanced;
+
+  /// No description provided for @flightSearchSearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching…'**
+  String get flightSearchSearching;
+
+  /// No description provided for @flightSearchSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Search Flights'**
+  String get flightSearchSubmit;
+
+  /// No description provided for @flightSearchWatchRoute.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch this route — email me on a drop'**
+  String get flightSearchWatchRoute;
+
+  /// No description provided for @flightSearchErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load flights'**
+  String get flightSearchErrorTitle;
+
+  /// No description provided for @flightSearchHintInitial.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose an origin, destination, and date to find flights.'**
+  String get flightSearchHintInitial;
+
+  /// No description provided for @flightSearchHintEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No flights found for this route and date.'**
+  String get flightSearchHintEmpty;
+
+  /// No description provided for @flightCardSavings.
+  ///
+  /// In en, this message translates to:
+  /// **'Saves {amount} vs next option'**
+  String flightCardSavings(String amount);
+
+  /// No description provided for @flightCardBagIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Bag included'**
+  String get flightCardBagIncluded;
+
+  /// No description provided for @flightCardBagPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'incl. bag +{fee}'**
+  String flightCardBagPaid(String fee);
+
+  /// No description provided for @flightCardBagUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Bag fee unknown'**
+  String get flightCardBagUnknown;
+
+  /// No description provided for @flightCardOpenLinkError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open link'**
+  String get flightCardOpenLinkError;
+
+  /// No description provided for @flightCardBestMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'BEST MATCH'**
+  String get flightCardBestMatch;
+
+  /// No description provided for @flightCardFlight.
+  ///
+  /// In en, this message translates to:
+  /// **'Flight'**
+  String get flightCardFlight;
+
+  /// No description provided for @flightCardScore.
+  ///
+  /// In en, this message translates to:
+  /// **'score {score}'**
+  String flightCardScore(String score);
+
+  /// No description provided for @flightCardBook.
+  ///
+  /// In en, this message translates to:
+  /// **'Book'**
+  String get flightCardBook;
+
+  /// No description provided for @flightSheetOutbound.
+  ///
+  /// In en, this message translates to:
+  /// **'Outbound'**
+  String get flightSheetOutbound;
+
+  /// No description provided for @flightSheetReturn.
+  ///
+  /// In en, this message translates to:
+  /// **'Return'**
+  String get flightSheetReturn;
+
+  /// No description provided for @flightSheetRoundTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'Round trip'**
+  String get flightSheetRoundTrip;
+
+  /// No description provided for @flightSheetBookThisFlight.
+  ///
+  /// In en, this message translates to:
+  /// **'Book this flight'**
+  String get flightSheetBookThisFlight;
+
+  /// No description provided for @flightSheetBookWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Book with {airline}'**
+  String flightSheetBookWith(String airline);
+
+  /// No description provided for @flightSheetBagPersonalItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal item'**
+  String get flightSheetBagPersonalItem;
+
+  /// No description provided for @flightSheetBagCarryOnCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{carry-on} other{{count} carry-ons}}'**
+  String flightSheetBagCarryOnCount(int count);
+
+  /// No description provided for @flightSheetBagCheckedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{checked bag} other{{count} checked bags}}'**
+  String flightSheetBagCheckedCount(int count);
+
+  /// No description provided for @flightSheetIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Included: {list}'**
+  String flightSheetIncluded(String list);
+
+  /// No description provided for @flightSheetBagFeeNote.
+  ///
+  /// In en, this message translates to:
+  /// **'+{fee} bag fee included in price'**
+  String flightSheetBagFeeNote(String fee);
+
+  /// No description provided for @flightSheetBagUnknownNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Your bag is not included — check the fee with the airline'**
+  String get flightSheetBagUnknownNote;
+
+  /// No description provided for @flightSheetLayover.
+  ///
+  /// In en, this message translates to:
+  /// **'Layover {airport}'**
+  String flightSheetLayover(String airport);
+
+  /// No description provided for @flightSheetLayoverWithDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Layover {airport} · {duration}'**
+  String flightSheetLayoverWithDuration(String airport, String duration);
+
+  /// No description provided for @airportFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'City or airport'**
+  String get airportFieldHint;
+
+  /// No description provided for @guidesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local guides'**
+  String get guidesTitle;
+
+  /// No description provided for @guidesErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load guides'**
+  String get guidesErrorTitle;
+
+  /// No description provided for @guidesEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No guides yet'**
+  String get guidesEmptyTitle;
+
+  /// No description provided for @guidesEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Guides from real locals appear here as they publish.'**
+  String get guidesEmptyMessage;
+
+  /// No description provided for @guidesElsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Elsewhere'**
+  String get guidesElsewhere;
+
+  /// No description provided for @guidesByline.
+  ///
+  /// In en, this message translates to:
+  /// **'by {name}'**
+  String guidesByline(String name);
+
+  /// No description provided for @guideDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local guide'**
+  String get guideDetailTitle;
+
+  /// No description provided for @guideDetailErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this guide'**
+  String get guideDetailErrorTitle;
+
+  /// No description provided for @guideDetailErrorMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your connection and try again.'**
+  String get guideDetailErrorMessage;
+
+  /// No description provided for @guideDetailByline.
+  ///
+  /// In en, this message translates to:
+  /// **'By {name}'**
+  String guideDetailByline(String name);
+
+  /// No description provided for @guideDetailPlacesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Places in this guide'**
+  String get guideDetailPlacesTitle;
+
+  /// No description provided for @guideDetailNoPinsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No places pinned yet'**
+  String get guideDetailNoPinsTitle;
+
+  /// No description provided for @guideDetailNoPinsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This guide is all narrative for now.'**
+  String get guideDetailNoPinsMessage;
+
+  /// No description provided for @appMapCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Map credits'**
+  String get appMapCredits;
+
+  /// No description provided for @flightStops.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nonstop} =1{1 stop} other{{count} stops}}'**
+  String flightStops(int count);
+
+  /// No description provided for @flightStopsEachWay.
+  ///
+  /// In en, this message translates to:
+  /// **'{stops} each way'**
+  String flightStopsEachWay(String stops);
+
+  /// No description provided for @flightStopsSplit.
+  ///
+  /// In en, this message translates to:
+  /// **'{outbound} / {inbound}'**
+  String flightStopsSplit(String outbound, String inbound);
 }
 
 class _AppLocalizationsDelegate

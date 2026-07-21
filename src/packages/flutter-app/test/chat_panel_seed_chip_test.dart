@@ -7,6 +7,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
 import 'package:travel_route_planner/widgets/chat_panel.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Replays a canned event list; no network.
 class _ScriptedPlanService extends PlanService {
   final List<PlanEvent> events;
@@ -47,6 +49,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
           home: Scaffold(
             body: ChatPanel(state: provider, notifier: provider.notifier),
           ),

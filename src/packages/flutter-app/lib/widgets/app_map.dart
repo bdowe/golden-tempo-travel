@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
+import '../l10n/l10n.dart';
+
 /// Space-dark canvas behind the tiles: unloaded/failed satellite tiles read as
 /// "not lit yet" instead of a broken grey hole. Pass as
 /// `MapOptions.backgroundColor` wherever [appMapTileLayers] is used.
@@ -47,7 +49,7 @@ Widget appMapAttribution() {
     showFlutterMapAttribution: false,
     openButton: (context, open) => IconButton(
       onPressed: open,
-      tooltip: 'Map credits',
+      tooltip: context.l10n.appMapCredits,
       icon: const Icon(Icons.info_outline, size: 16, color: Colors.white70),
     ),
     attributions: const [

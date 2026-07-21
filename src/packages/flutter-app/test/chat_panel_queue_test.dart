@@ -9,6 +9,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
 import 'package:travel_route_planner/widgets/chat_panel.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Yields one text_delta per call ('reply N'), parking on [gate] after the
 /// delta when set so tests can interact mid-stream. No network.
 class _GatedPlanService extends PlanService {
@@ -43,6 +45,7 @@ Future<StateNotifierProvider<PlanNotifier, PlanState>> _pumpPanel(
   await tester.pumpWidget(
     ProviderScope(
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: ChatPanel(state: provider, notifier: provider.notifier),
         ),

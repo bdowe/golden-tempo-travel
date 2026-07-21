@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/price_alert.dart';
 import '../providers/alerts_provider.dart';
 import '../providers/notifications_provider.dart';
@@ -64,17 +65,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     });
     final auth = ref.watch(authProvider);
     final state = ref.watch(alertsProvider);
+    final l10n = context.l10n;
 
     Widget body;
     if (!auth.isSignedIn) {
       body = EmptyState(
         icon: Icons.notifications_none,
-        title: 'Sign in to watch fares',
-        message: 'Price alerts email you when a flight you care about drops.',
+        title: l10n.alertsSignInTitle,
+        message: l10n.alertsSignInMessage,
         actions: [
           FilledButton(
             onPressed: _signIn,
-            child: const Text('Sign in'),
+            child: Text(l10n.alertsSignIn),
           ),
         ],
       );
@@ -83,22 +85,20 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     } else if (state.error != null && state.alerts.isEmpty) {
       body = EmptyState(
         icon: Icons.cloud_off,
-        title: 'Could not load alerts',
+        title: l10n.alertsLoadErrorTitle,
         message: state.error,
         actions: [
           FilledButton(
             onPressed: () => ref.read(alertsProvider.notifier).load(),
-            child: const Text('Retry'),
+            child: Text(l10n.commonRetry),
           ),
         ],
       );
     } else if (state.alerts.isEmpty) {
-      body = const EmptyState(
+      body = EmptyState(
         icon: Icons.notifications_none,
-        title: 'No alerts yet',
-        message:
-            'Search a flight and tap "Watch this route" — we\'ll email you '
-            'when the price drops.',
+        title: l10n.alertsEmptyTitle,
+        message: l10n.alertsEmptyMessage,
       );
     } else {
       body = RefreshIndicator(
@@ -115,7 +115,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Price alerts'),
+        title: Text(l10n.alertsTitle),
         actions: [if (auth.isSignedIn) const _NotificationBell()],
       ),
       body: PageContainer(child: body),
@@ -133,7 +133,7 @@ class _NotificationBell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final bell = IconButton(
-      tooltip: 'Notifications',
+      tooltip: context.l10n.notifTitle,
       icon: const Icon(Icons.notifications_none),
       onPressed: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const NotificationCenterScreen()),
@@ -148,26 +148,26 @@ class _AlertCard extends ConsumerWidget {
   final PriceAlert alert;
   const _AlertCard({required this.alert});
 
-  String _priceLine() {
+  String _priceLine(AppLocalizations l10n) {
     final cur = alert.currency ?? '';
     final checked = alert.lastCheckedPrice;
     final parts = <String>[];
     if (checked != null) {
-      parts.add('Last seen ${formatMoney(checked, cur)}');
+      parts.add(l10n.alertsLastSeen(formatMoney(checked, cur)));
     }
     if (alert.targetPrice != null) {
-      parts.add('target ${formatMoney(alert.targetPrice!, cur)}');
+      parts.add(l10n.alertsTargetPrice(formatMoney(alert.targetPrice!, cur)));
     } else {
-      parts.add('watching for any drop');
+      parts.add(l10n.alertsWatchingAnyDrop);
     }
     return parts.join(' · ');
   }
 
-  String _datesLine() {
+  String _datesLine(AppLocalizations l10n) {
     var s = alert.departDate;
     if (alert.returnDate != null) s += ' → ${alert.returnDate}';
     if (alert.flexDays > 0) s += ' · ±${alert.flexDays}d';
-    if (alert.adults > 1) s += ' · ${alert.adults} adults';
+    if (alert.adults > 1) s += ' · ${l10n.alertsAdults(alert.adults)}';
     if (alert.cabinClass != 'economy') {
       s += ' · ${alert.cabinClass.replaceAll('_', ' ')}';
     }
@@ -176,24 +176,25 @@ class _AlertCard extends ConsumerWidget {
 
   /// "down $X from when you started watching" — only when the latest check is
   /// below the baseline the watch started from (both present).
-  String? _baselineDeltaLine() {
+  String? _baselineDeltaLine(AppLocalizations l10n) {
     final base = alert.baselinePrice;
     final checked = alert.lastCheckedPrice;
     if (base == null || checked == null || checked >= base) return null;
     final cur = alert.currency ?? '';
-    return 'Down ${formatMoney(base - checked, cur)} from when you started watching';
+    return l10n.alertsBaselineDelta(formatMoney(base - checked, cur));
   }
 
   /// "Checked 2 hours ago" from the last check time, if we have one.
-  String? _freshnessLine() {
+  String? _freshnessLine(AppLocalizations l10n) {
     final at = alert.lastCheckedAt;
     if (at == null) return null;
     final parsed = DateTime.tryParse(at);
     if (parsed == null) return null;
-    return 'Checked ${relativeTime(parsed.toLocal())}';
+    return l10n.alertsChecked(relativeTime(l10n, parsed.toLocal()));
   }
 
   Future<void> _editTarget(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
     final cur = alert.currency ?? '';
     final controller = TextEditingController(
       text: alert.targetPrice?.toStringAsFixed(0) ?? '',
@@ -205,14 +206,12 @@ class _AlertCard extends ConsumerWidget {
         String? error;
         return StatefulBuilder(
           builder: (ctx, setState) => AlertDialog(
-            title: const Text('Set target price'),
+            title: Text(l10n.alertsSetTargetTitle),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Get notified when the fare hits or drops below this price.',
-                ),
+                Text(l10n.alertsSetTargetBody),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: controller,
@@ -220,7 +219,7 @@ class _AlertCard extends ConsumerWidget {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Notify me at or below',
+                    labelText: l10n.alertsNotifyAtOrBelow,
                     prefixText: cur.isEmpty ? null : '$cur ',
                     border: const OutlineInputBorder(),
                     errorText: error,
@@ -233,7 +232,7 @@ class _AlertCard extends ConsumerWidget {
                   TextButton(
                     onPressed: () => Navigator.of(dialogCtx)
                         .pop((target: null, clear: true)),
-                    child: const Text('Watch for any drop instead'),
+                    child: Text(l10n.alertsWatchAnyDropInstead),
                   ),
                 ],
               ],
@@ -241,18 +240,18 @@ class _AlertCard extends ConsumerWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogCtx).pop(),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               FilledButton(
                 onPressed: () {
                   final v = double.tryParse(controller.text.trim());
                   if (v == null || v <= 0) {
-                    setState(() => error = 'Enter a valid target price');
+                    setState(() => error = l10n.alertsInvalidTarget);
                     return;
                   }
                   Navigator.of(dialogCtx).pop((target: v, clear: false));
                 },
-                child: const Text('Save'),
+                child: Text(l10n.commonSave),
               ),
             ],
           ),
@@ -275,11 +274,12 @@ class _AlertCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final notifier = ref.read(alertsProvider.notifier);
     final paused = alert.status == 'paused';
     final expired = alert.status == 'expired';
-    final baselineDelta = _baselineDeltaLine();
-    final freshness = _freshnessLine();
+    final baselineDelta = _baselineDeltaLine(l10n);
+    final freshness = _freshnessLine(l10n);
 
     Future<void> guard(Future<void> Function() action) async {
       try {
@@ -312,10 +312,10 @@ class _AlertCard extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(_datesLine(), style: theme.textTheme.bodySmall),
+                  Text(_datesLine(l10n), style: theme.textTheme.bodySmall),
                   const SizedBox(height: 2),
                   Text(
-                    _priceLine(),
+                    _priceLine(l10n),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -343,7 +343,7 @@ class _AlertCard extends ConsumerWidget {
               ),
             ),
             PopupMenuButton<String>(
-              tooltip: 'Alert actions',
+              tooltip: l10n.alertsActionsTooltip,
               onSelected: (v) {
                 if (v == 'edit_target') _editTarget(context, ref);
                 if (v == 'pause') guard(() => notifier.setPaused(alert.id, true));
@@ -357,15 +357,15 @@ class _AlertCard extends ConsumerWidget {
                   PopupMenuItem(
                     value: 'edit_target',
                     child: Text(alert.targetPrice == null
-                        ? 'Set target price'
-                        : 'Edit target price'),
+                        ? l10n.alertsSetTargetTitle
+                        : l10n.alertsEditTarget),
                   ),
                 if (!expired)
                   PopupMenuItem(
                     value: paused ? 'resume' : 'pause',
-                    child: Text(paused ? 'Resume' : 'Pause'),
+                    child: Text(paused ? l10n.alertsResume : l10n.alertsPause),
                   ),
-                const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                PopupMenuItem(value: 'delete', child: Text(l10n.commonDelete)),
               ],
             ),
           ],
@@ -384,23 +384,24 @@ class _AlertPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final String label;
     final Color bg;
     final Color fg;
     if (alert.status == 'expired') {
-      label = 'Expired';
+      label = l10n.alertsStatusExpired;
       bg = theme.colorScheme.surfaceContainerHighest;
       fg = theme.colorScheme.onSurfaceVariant;
     } else if (alert.status == 'paused') {
-      label = 'Paused';
+      label = l10n.alertsStatusPaused;
       bg = theme.colorScheme.surfaceContainerHighest;
       fg = theme.colorScheme.onSurfaceVariant;
     } else if (alert.hasTriggered) {
-      label = 'Price dropped';
+      label = l10n.alertsStatusDropped;
       bg = Colors.green.withValues(alpha: 0.15);
       fg = Colors.green.shade800;
     } else {
-      label = 'Watching';
+      label = l10n.alertsStatusWatching;
       bg = theme.colorScheme.primaryContainer.withValues(alpha: 0.5);
       fg = theme.colorScheme.onPrimaryContainer;
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/local_guide.dart';
 import '../providers/local_provider.dart';
 import '../theme/app_colors.dart';
@@ -15,38 +16,38 @@ class GuidesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final guides = ref.watch(allGuidesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Local guides')),
+      appBar: AppBar(title: Text(l10n.guidesTitle)),
       body: PageContainer(
         child: guides.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => EmptyState(
             icon: Icons.cloud_off,
-            title: 'Could not load guides',
+            title: l10n.guidesErrorTitle,
             message: '$e',
             actions: [
               FilledButton(
                 onPressed: () => ref.invalidate(allGuidesProvider),
-                child: const Text('Retry'),
+                child: Text(l10n.commonRetry),
               ),
             ],
           ),
           data: (all) {
             if (all.isEmpty) {
-              return const EmptyState(
+              return EmptyState(
                 icon: Icons.menu_book_outlined,
-                title: 'No guides yet',
-                message:
-                    'Guides from real locals appear here as they publish.',
+                title: l10n.guidesEmptyTitle,
+                message: l10n.guidesEmptyMessage,
               );
             }
             // Group by city, preserving the server's newest-first order
             // within and across groups.
             final byCity = <String, List<LocalGuide>>{};
             for (final g in all) {
-              final city = g.city.isEmpty ? 'Elsewhere' : g.city;
+              final city = g.city.isEmpty ? l10n.guidesElsewhere : g.city;
               byCity.putIfAbsent(city, () => []).add(g);
             }
             // One flat entry per visual row (header / guide tile / group
@@ -111,7 +112,7 @@ class _GuideListTile extends StatelessWidget {
         title: Text(guide.title, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: guide.sourceName.isEmpty
             ? null
-            : Text('by ${guide.sourceName}'
+            : Text('${context.l10n.guidesByline(guide.sourceName)}'
                 '${guide.neighborhood.isNotEmpty ? ' · ${guide.neighborhood}' : ''}'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(

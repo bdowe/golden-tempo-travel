@@ -117,7 +117,7 @@ class ContinueChatCard extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.xs),
                 child: Text(
-                  relativeTime(updated),
+                  relativeTime(context.l10n, updated),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),

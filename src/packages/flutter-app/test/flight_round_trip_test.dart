@@ -18,6 +18,10 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/flights_api_service.dart';
 import 'package:travel_route_planner/widgets/create_alert_sheet.dart';
 import 'package:travel_route_planner/widgets/flight_offer_card.dart';
+import 'package:travel_route_planner/l10n/l10n.dart';
+import 'package:travel_route_planner/utils/flight_labels.dart';
+
+import 'support/l10n_test_app.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -148,6 +152,11 @@ FlightOffer _roundTripOffer() => const FlightOffer(
 String _fmt(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+/// The generated English localizations, for asserting label copy without
+/// pumping a widget.
+Future<AppLocalizations> _en() =>
+    AppLocalizations.delegate.load(const Locale('en'));
+
 void main() {
   group('FlightSearchRequest JSON', () {
     test('omits return_date when null (one-way unchanged)', () {
@@ -167,7 +176,7 @@ void main() {
   });
 
   group('FlightOffer model', () {
-    test('parses return_segments from API JSON', () {
+    test('parses return_segments from API JSON', () async {
       final offer = FlightOffer.fromJson({
         'id': 'off_rt',
         'price': 842.4,
@@ -206,17 +215,20 @@ void main() {
       expect(offer.isRoundTrip, isTrue);
       expect(offer.returnSegments.single.from, 'CDG');
       expect(offer.returnDurationLabel, '8h 15m');
-      expect(offer.combinedStopsLabel, 'Nonstop');
+      expect(combinedStopsLabel(await _en(), offer), 'Nonstop');
     });
 
-    test('one-way offer without return fields is unchanged', () {
+    test('one-way offer without return fields is unchanged', () async {
+      final l10n = await _en();
       final offer = _oneWayOffer();
       expect(offer.isRoundTrip, isFalse);
       expect(offer.returnSegments, isEmpty);
-      expect(offer.combinedStopsLabel, offer.stopsLabel);
+      expect(combinedStopsLabel(l10n, offer), stopsLabel(l10n, offer.stops));
     });
 
-    test('combinedStopsLabel covers matching and differing directions', () {
+    test('combinedStopsLabel covers matching and differing directions',
+        () async {
+      final l10n = await _en();
       FlightOffer offer({required int stops, required int returnLegs}) =>
           FlightOffer(
             id: 'o',
@@ -231,16 +243,26 @@ void main() {
             returnSegments: List.filled(returnLegs, _returnLeg),
             returnDurationMinutes: 60,
           );
-      expect(offer(stops: 1, returnLegs: 2).combinedStopsLabel,
+      expect(combinedStopsLabel(l10n, offer(stops: 1, returnLegs: 2)),
           '1 stop each way');
-      expect(offer(stops: 0, returnLegs: 2).combinedStopsLabel,
+      expect(combinedStopsLabel(l10n, offer(stops: 0, returnLegs: 2)),
           'Nonstop / 1 stop');
+    });
+
+    // Stop counts are the app's clearest plural: Spanish needs "1 escala" vs
+    // "2 escalas", which a fixed English model getter could never express.
+    test('stop counts pluralize in Spanish', () async {
+      final es = await AppLocalizations.delegate.load(const Locale('es'));
+      expect(stopsLabel(es, 0), 'Sin escalas');
+      expect(stopsLabel(es, 1), '1 escala');
+      expect(stopsLabel(es, 3), '3 escalas');
     });
   });
 
   group('FlightOfferCard', () {
     Future<void> pumpCard(WidgetTester tester, FlightOffer offer) async {
       await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(body: FlightOfferCard(offer: offer)),
       ));
     }
@@ -296,6 +318,7 @@ void main() {
       await tester.pumpWidget(ProviderScope(
         overrides: [alertsApiServiceProvider.overrideWithValue(service)],
         child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
           home: Scaffold(
             body: Builder(
               builder: (context) => FilledButton(
@@ -364,6 +387,7 @@ void main() {
           authProvider.overrideWith((ref) => _FakeAuthNotifier(_user())),
         ],
         child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
           home: FlightSearchScreen(
             prefillOrigin: 'JFK',
             prefillDestination: 'CDG',
@@ -573,6 +597,7 @@ void main() {
   group('baggage: FlightOfferCard badges', () {
     Future<void> pumpCard(WidgetTester tester, FlightOffer offer) {
       return tester.pumpWidget(MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(body: FlightOfferCard(offer: offer)),
       ));
     }
@@ -639,6 +664,7 @@ void main() {
           authProvider.overrideWith((ref) => _FakeAuthNotifier(_user())),
         ],
         child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
           home: FlightSearchScreen(
             prefillOrigin: 'JFK',
             prefillDestination: 'CDG',

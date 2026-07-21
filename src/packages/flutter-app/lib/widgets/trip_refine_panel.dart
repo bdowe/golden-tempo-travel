@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/plan_provider.dart';
 import 'chat_panel.dart';
 
@@ -23,6 +24,10 @@ class RefineTarget {
   const RefineTarget.day(int day, {String? city}) : this._('day', day, city);
   const RefineTarget.city(String city) : this._('city', null, city);
 
+  /// Canonical **English** section name. This is embedded verbatim in the
+  /// refine seed prompt sent to the agent (`trip_detail_screen.dart`), so it is
+  /// never localized — see [displayLabel] for the user-facing equivalent
+  /// (specs/i18n-spanish).
   String get label {
     switch (scope) {
       case 'day':
@@ -31,6 +36,20 @@ class RefineTarget {
         return city!;
       default:
         return 'Whole trip';
+    }
+  }
+
+  /// Localized twin of [label], for anything the user reads.
+  String displayLabel(AppLocalizations l10n) {
+    switch (scope) {
+      case 'day':
+        return city == null
+            ? l10n.refineTargetDay(day!)
+            : l10n.refineTargetDayCity(day!, city!);
+      case 'city':
+        return city!;
+      default:
+        return l10n.refineTargetWholeTrip;
     }
   }
 }
@@ -56,6 +75,7 @@ class TripRefinePanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     ref.listen(tripRefineProvider(tripId).select((s) => s.tripUpdateCount),
         (prev, next) {
       if (next > (prev ?? 0)) onTripUpdated();
@@ -78,8 +98,8 @@ class TripRefinePanel extends ConsumerWidget {
               Expanded(
                 child: Text(
                   target.assistant
-                      ? 'Trip assistant'
-                      : 'Refining · ${target.label}',
+                      ? l10n.refineAssistantTitle
+                      : l10n.refineHeader(target.displayLabel(l10n)),
                   style: theme.textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
@@ -87,7 +107,7 @@ class TripRefinePanel extends ConsumerWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.close),
-                tooltip: 'Close',
+                tooltip: l10n.commonClose,
                 onPressed: onClose,
               ),
             ],
@@ -99,8 +119,8 @@ class TripRefinePanel extends ConsumerWidget {
             state: tripRefineProvider(tripId),
             notifier: tripRefineProvider(tripId).notifier,
             inputHint: target.assistant
-                ? 'Ask anything about this trip…'
-                : 'Ask for changes...',
+                ? l10n.refineAssistantHint
+                : l10n.refineHint,
           ),
         ),
       ],
