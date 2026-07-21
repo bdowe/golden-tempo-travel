@@ -22,7 +22,9 @@
 #   BACKUP_DIR        where dumps land (default /opt/goldentempo/backups)
 #   PG_SERVICE        compose service name of postgres (default postgres)
 #   PG_USER / PG_DB   database credentials (default travel / travel_planner)
-#   RETENTION_DAYS    local prune horizon (default 14)
+#   RETENTION_COUNT   how many dumps to keep, locally AND on the remote
+#                     (default 10; count-based so a stalled backup job can
+#                     never age-out every existing copy)
 #   RCLONE_REMOTE     rclone destination (default r2:goldentempo-backups)
 #   BACKUP_HEARTBEAT_FILE  freshness marker written on a good local dump
 #                     (default $BACKUP_DIR/.last_success); the API's
@@ -35,7 +37,7 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/goldentempo/backups}"
 PG_SERVICE="${PG_SERVICE:-postgres}"
 PG_USER="${PG_USER:-travel}"
 PG_DB="${PG_DB:-travel_planner}"
-RETENTION_DAYS="${RETENTION_DAYS:-14}"
+RETENTION_COUNT="${RETENTION_COUNT:-10}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-r2:goldentempo-backups}"
 BACKUP_HEARTBEAT_FILE="${BACKUP_HEARTBEAT_FILE:-$BACKUP_DIR/.last_success}"
 
@@ -62,10 +64,13 @@ mv "$tmp" "$out"
 
 echo "[backup] wrote $(du -h "$out" | cut -f1) $out"
 
-# Prune local dumps older than the retention horizon.
-find "$BACKUP_DIR" -maxdepth 1 -name "${PG_DB}-*.dump.gz" -type f \
-    -mtime +"$RETENTION_DAYS" -print -delete |
-    sed 's/^/[backup] pruned /'
+# Prune local dumps beyond the newest RETENTION_COUNT. Dump names embed the
+# date (YYYY-MM-DD), so a reverse lexical sort is newest-first; count-based
+# (not age-based) so if backups ever silently stop, the last N copies survive
+# instead of aging out to nothing.
+find "$BACKUP_DIR" -maxdepth 1 -name "${PG_DB}-*.dump.gz" -type f |
+    sort -r | tail -n +$((RETENTION_COUNT + 1)) |
+    while IFS= read -r f; do rm -f "$f" && echo "[backup] pruned $f"; done
 
 # Freshness heartbeat: a good local dump exists. Written BEFORE the best-effort
 # off-site copy so an unconfigured/failed rclone (which exits 0) never withholds
@@ -86,3 +91,15 @@ if ! rclone listremotes | grep -qx "${remote_name}:"; then
 fi
 rclone copy "$out" "$RCLONE_REMOTE/"
 echo "[backup] copied $out to $RCLONE_REMOTE/"
+
+# Prune the remote to the same newest-RETENTION_COUNT window. Best-effort like
+# the copy itself: a prune hiccup must not fail a backup that already succeeded
+# locally and uploaded. awk (not grep) filters so an empty match set doesn't
+# trip pipefail.
+rclone lsf "$RCLONE_REMOTE/" --files-only |
+    awk "/^${PG_DB}-.*\.dump\.gz$/" | sort -r | tail -n +$((RETENTION_COUNT + 1)) |
+    while IFS= read -r f; do
+        rclone deletefile "$RCLONE_REMOTE/$f" &&
+            echo "[backup] pruned remote $f" ||
+            echo "[backup] WARNING: failed to prune remote $f" >&2
+    done
