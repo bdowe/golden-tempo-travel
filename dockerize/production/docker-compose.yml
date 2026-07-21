@@ -78,6 +78,13 @@ services:
       # same private compose bridge network. TLS would only encrypt
       # loopback-equivalent traffic between two containers on one machine.
       - DATABASE_URL=postgres://travel:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/travel_planner?sslmode=disable
+    volumes:
+      # The backup-freshness self-check (ops_health.go) reads the heartbeat
+      # backup.sh writes at /opt/goldentempo/backups/.last_success — a HOST
+      # path. Without this read-only mount the containerized api sees no
+      # heartbeat at all and reports "backups stale" forever, however fresh
+      # the dumps are.
+      - ./backups:/opt/goldentempo/backups:ro
     depends_on:
       chrome:
         condition: service_started
