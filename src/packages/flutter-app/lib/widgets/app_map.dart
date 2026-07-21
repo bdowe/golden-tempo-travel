@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../l10n/l10n.dart';
 
@@ -7,6 +8,90 @@ import '../l10n/l10n.dart';
 /// "not lit yet" instead of a broken grey hole. Pass as
 /// `MapOptions.backgroundColor` wherever [appMapTileLayers] is used.
 const Color appMapBackground = Color(0xFF0A0F1A);
+
+/// Web Mercator that draws exactly **one** world.
+///
+/// flutter_map's stock [Epsg3857] replicates longitude, so tiles, pins and
+/// route lines repeat sideways whenever the world is narrower than the
+/// viewport. Our maps are short, fixed-height bands (240px) that auto-fit a
+/// trip's full extent: on a wide window a tall trip forces a zoom low enough
+/// that two or three copies of the planet sit side by side — visually a bug.
+/// Drawing a single world shows [appMapBackground] past the edges instead.
+///
+/// This wraps rather than extends [Epsg3857] because the two knobs that drive
+/// repetition live in different places: `replicatesWorldLongitude` is a
+/// virtual getter (markers, polylines, camera), while `wrapLng` is a
+/// `@nonVirtual` field on [Crs] that the tile layer reads to pick a wrapping
+/// [TileBounds]. Only a CRS constructed with `wrapLng: null` stops the tiles
+/// repeating; all the projection math is delegated to a real [Epsg3857].
+class AppMapCrs extends Crs {
+  /// Create the app's single-world Web Mercator CRS.
+  const AppMapCrs() : super(code: 'EPSG:3857', infinite: false);
+
+  static const Epsg3857 _mercator = Epsg3857();
+
+  @override
+  Projection get projection => _mercator.projection;
+
+  @override
+  bool get replicatesWorldLongitude => false;
+
+  @override
+  (double, double) transform(double x, double y, double scale) =>
+      _mercator.transform(x, y, scale);
+
+  @override
+  (double, double) untransform(double x, double y, double scale) =>
+      _mercator.untransform(x, y, scale);
+
+  @override
+  (double, double) latLngToXY(LatLng latlng, double scale) =>
+      _mercator.latLngToXY(latlng, scale);
+
+  @override
+  Offset latLngToOffset(LatLng latlng, double zoom) =>
+      _mercator.latLngToOffset(latlng, zoom);
+
+  @override
+  LatLng offsetToLatLng(Offset point, double zoom) =>
+      _mercator.offsetToLatLng(point, zoom);
+
+  @override
+  Rect? getProjectedBounds(double zoom) => _mercator.getProjectedBounds(zoom);
+}
+
+/// Shared [MapOptions] for every [FlutterMap] in the app: single-world
+/// rendering, the space-dark backdrop, and a camera that can't wander off the
+/// planet. Callers pass whichever framing they have — a center+zoom or a
+/// [CameraFit] — plus their interaction flags.
+MapOptions appMapOptions({
+  LatLng? initialCenter,
+  double? initialZoom,
+  CameraFit? initialCameraFit,
+  required InteractionOptions interactionOptions,
+}) {
+  return MapOptions(
+    crs: const AppMapCrs(),
+    backgroundColor: appMapBackground,
+    // Keeps the camera *center* on the world, so a pan can't drift off into
+    // empty background. Deliberately not CameraConstraint.contain: that one
+    // rejects any camera it cannot fit inside the bounds (returning null),
+    // which would freeze a map taller than the world is wide.
+    cameraConstraint: CameraConstraint.containCenter(
+      bounds: LatLngBounds(const LatLng(-85, -180), const LatLng(85, 180)),
+    ),
+    // Without a floor, zooming out shrinks the single world to a postage
+    // stamp and then past the smallest tile level into empty background.
+    // z1 = a 512px world, which still fills our 240px map bands vertically
+    // and is far below any real trip's auto-fit zoom (that would need ~130°
+    // of latitude in one trip), so the fit is never clamped by this.
+    minZoom: 1,
+    initialCenter: initialCenter ?? const LatLng(0, 0),
+    initialZoom: initialZoom ?? 13,
+    initialCameraFit: initialCameraFit,
+    interactionOptions: interactionOptions,
+  );
+}
 
 /// Shared basemap for every map in the app: Esri World Imagery satellite
 /// tiles with a labels-only overlay designed for dark imagery, so maps get a

@@ -280,19 +280,17 @@ class _GuideMapState extends State<_GuideMap> {
       flags: InteractiveFlag.all & ~InteractiveFlag.scrollWheelZoom,
     );
     final options = points.length == 1
-        ? MapOptions(
+        ? appMapOptions(
             initialCenter: points.first,
             initialZoom: 13,
             interactionOptions: interaction,
-            backgroundColor: appMapBackground,
           )
-        : MapOptions(
+        : appMapOptions(
             initialCameraFit: CameraFit.bounds(
               bounds: LatLngBounds.fromPoints(points),
               padding: const EdgeInsets.all(32),
             ),
             interactionOptions: interaction,
-            backgroundColor: appMapBackground,
           );
 
     return ClipRRect(
