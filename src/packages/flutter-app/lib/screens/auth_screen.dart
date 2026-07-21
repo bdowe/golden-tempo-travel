@@ -28,15 +28,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   late bool _isLogin = widget.initialIsLogin;
 
   // Auto-submit after a password-manager autofill. An extension fill is
-  // distinctive: both fields jump from empty to a full value in one change
-  // event, within milliseconds of each other. Manual typing changes one
-  // character at a time and human paste-then-paste is seconds apart, so
-  // neither matches. Each auto-submit consumes the fill timestamps — a
-  // failed attempt is never retried without a fresh fill gesture (keeps us
-  // clear of the server-side login lockout).
-  static const _fillWindow = Duration(milliseconds: 500);
+  // distinctive: each field goes from empty to its full value within one
+  // rapid burst (a single change event, or keystroke-simulated characters
+  // milliseconds apart), and the two fields fill within ~a second of each
+  // other. A human types one field over seconds — the burst window lapses —
+  // and can't complete both fields back-to-back. Each auto-submit consumes
+  // the fill timestamps — a failed attempt is never retried without a
+  // fresh fill gesture (keeps us clear of the server-side login lockout).
+  static const _burstWindow = Duration(milliseconds: 400);
+  static const _fillWindow = Duration(milliseconds: 1500);
   String _prevEmail = '';
   String _prevPassword = '';
+  DateTime? _emailBurstStart;
+  DateTime? _passwordBurstStart;
   DateTime? _emailFillAt;
   DateTime? _passwordFillAt;
   Timer? _autoSubmitTimer;
@@ -61,13 +65,31 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final value = isEmail ? _emailController.text : _passwordController.text;
     final prev = isEmail ? _prevEmail : _prevPassword;
     if (value == prev) return;
-    final oneShotFill = prev.isEmpty && value.length > 1;
-    final fillAt = oneShotFill ? DateTime.now() : null;
+    // Any new change invalidates a pending auto-submit; _maybeAutoSubmit
+    // re-arms it below only if the fill signature still holds.
+    _autoSubmitTimer?.cancel();
+    final now = DateTime.now();
+    // The burst starts when the field first becomes non-empty; it ends (and
+    // the field no longer counts as manager-filled) once changes keep
+    // arriving past the burst window — that's a human typing.
+    var burstStart = isEmail ? _emailBurstStart : _passwordBurstStart;
+    if (value.isEmpty) {
+      burstStart = null;
+    } else if (prev.isEmpty) {
+      burstStart = now;
+    }
+    final filled =
+        value.isNotEmpty &&
+        burstStart != null &&
+        now.difference(burstStart) <= _burstWindow;
+    final fillAt = filled ? now : null;
     if (isEmail) {
       _prevEmail = value;
+      _emailBurstStart = burstStart;
       _emailFillAt = fillAt;
     } else {
       _prevPassword = value;
+      _passwordBurstStart = burstStart;
       _passwordFillAt = fillAt;
     }
     _maybeAutoSubmit();
@@ -81,7 +103,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (emailAt.difference(passwordAt).abs() > _fillWindow) return;
     if (ref.read(authProvider).loading) return;
     _autoSubmitTimer?.cancel();
-    _autoSubmitTimer = Timer(const Duration(milliseconds: 250), () {
+    // Debounced past the burst window so it fires once the fill has fully
+    // arrived, with the complete values in both controllers.
+    _autoSubmitTimer = Timer(const Duration(milliseconds: 350), () {
       if (!mounted || !_isLogin) return;
       _emailFillAt = null;
       _passwordFillAt = null;
@@ -96,8 +120,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final password = _passwordController.text;
     final ok = _isLogin
         ? await notifier.login(email, password)
-        : await notifier.register(email, password,
-            displayName: _displayNameController.text.trim());
+        : await notifier.register(
+            email,
+            password,
+            displayName: _displayNameController.text.trim(),
+          );
     // Tell the platform the autofill session succeeded so the browser /
     // password manager offers to save the credentials.
     if (ok) TextInput.finishAutofillContext();
@@ -170,9 +197,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     const BrandLogo.mark(size: 72),
                     const SizedBox(height: 16),
                     Text(
-                      _isLogin ? l10n.authWelcomeBack : l10n.authCreateAccountTitle,
-                      style: theme.textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      _isLogin
+                          ? l10n.authWelcomeBack
+                          : l10n.authCreateAccountTitle,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -184,8 +214,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         AutofillHints.username,
                         AutofillHints.email,
                       ],
-                      decoration:
-                          InputDecoration(labelText: l10n.authEmailLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.authEmailLabel,
+                      ),
                       validator: (v) {
                         final value = (v ?? '').trim();
                         if (value.isEmpty) return l10n.authEmailRequired;
@@ -206,8 +237,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ],
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _submit(),
-                      decoration:
-                          InputDecoration(labelText: l10n.authPasswordLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.authPasswordLabel,
+                      ),
                       validator: (v) {
                         if ((v ?? '').isEmpty) return l10n.authPasswordRequired;
                         if (!_isLogin && v!.length < 8) {
@@ -246,9 +278,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(_isLogin
-                              ? l10n.authSignIn
-                              : l10n.authCreateAccount),
+                          : Text(
+                              _isLogin
+                                  ? l10n.authSignIn
+                                  : l10n.authCreateAccount,
+                            ),
                     ),
                     if (!_isLogin) ...[
                       const SizedBox(height: 12),
@@ -257,9 +291,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: auth.loading ? null : _toggleMode,
-                      child: Text(_isLogin
-                          ? l10n.authNoAccountPrompt
-                          : l10n.authHaveAccountPrompt),
+                      child: Text(
+                        _isLogin
+                            ? l10n.authNoAccountPrompt
+                            : l10n.authHaveAccountPrompt,
+                      ),
                     ),
                     if (_isLogin)
                       TextButton(
@@ -282,16 +318,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 class _RequestResetDialog extends StatefulWidget {
   final String initialEmail;
   final Future<void> Function(String email) onRequest;
-  const _RequestResetDialog(
-      {required this.initialEmail, required this.onRequest});
+  const _RequestResetDialog({
+    required this.initialEmail,
+    required this.onRequest,
+  });
 
   @override
   State<_RequestResetDialog> createState() => _RequestResetDialogState();
 }
 
 class _RequestResetDialogState extends State<_RequestResetDialog> {
-  late final TextEditingController _email =
-      TextEditingController(text: widget.initialEmail);
+  late final TextEditingController _email = TextEditingController(
+    text: widget.initialEmail,
+  );
   bool _sending = false;
   String? _error;
 

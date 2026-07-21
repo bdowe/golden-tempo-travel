@@ -31,8 +31,11 @@ class _FakeAuthService extends AuthService {
   }
 
   @override
-  Future<AuthResponse> register(String email, String password,
-      {String? displayName}) async {
+  Future<AuthResponse> register(
+    String email,
+    String password, {
+    String? displayName,
+  }) async {
     registerCalls.add((email, password));
     return AuthResponse(user: _user, token: 'tok');
   }
@@ -64,14 +67,13 @@ Widget _wrap(_FakeAuthService service) {
   );
 }
 
-Finder _fieldByLabel(String label) => find.ancestor(
-      of: find.text(label),
-      matching: find.byType(TextFormField),
-    );
+Finder _fieldByLabel(String label) =>
+    find.ancestor(of: find.text(label), matching: find.byType(TextFormField));
 
 void main() {
-  testWidgets('password-manager style double fill auto-submits sign-in',
-      (tester) async {
+  testWidgets('password-manager style double fill auto-submits sign-in', (
+    tester,
+  ) async {
     final service = _FakeAuthService();
     await tester.pumpWidget(_wrap(service));
     await tester.pump();
@@ -93,9 +95,56 @@ void main() {
 
     await tester.enterText(_fieldByLabel('Email'), 'brian@example.com');
     // The fill window compares wall-clock timestamps, so let real time pass
-    // (runAsync escapes the fake-async zone), well outside the 500ms window.
+    // (runAsync escapes the fake-async zone), well outside the 1500ms
+    // cross-field window.
     await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 700)));
+      () => Future<void>.delayed(const Duration(milliseconds: 1800)),
+    );
+    await tester.enterText(_fieldByLabel('Password'), 'hunter2hunter2');
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(service.loginCalls, isEmpty);
+  });
+
+  testWidgets('keystroke-simulated burst fill auto-submits', (tester) async {
+    final service = _FakeAuthService();
+    await tester.pumpWidget(_wrap(service));
+    await tester.pump();
+
+    // Some managers fill by simulating keystrokes: many change events,
+    // milliseconds apart. Type each field character-by-character with real
+    // ~10ms gaps — well inside the 400ms per-field burst window.
+    Future<void> burstType(String label, String value) async {
+      for (var i = 1; i <= value.length; i++) {
+        await tester.enterText(_fieldByLabel(label), value.substring(0, i));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+      }
+    }
+
+    await burstType('Email', 'b@c.io');
+    await burstType('Password', 'hunter2');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(service.loginCalls, [('b@c.io', 'hunter2')]);
+  });
+
+  testWidgets('slow per-char typing does not auto-submit', (tester) async {
+    final service = _FakeAuthService();
+    await tester.pumpWidget(_wrap(service));
+    await tester.pump();
+
+    // Human typing: characters spread past the 400ms burst window kill the
+    // field's fill signature even though it started fast.
+    const email = 'b@c.io';
+    for (var i = 1; i <= email.length; i++) {
+      await tester.enterText(_fieldByLabel('Email'), email.substring(0, i));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+    }
     await tester.enterText(_fieldByLabel('Password'), 'hunter2hunter2');
     await tester.pump(const Duration(seconds: 1));
 
