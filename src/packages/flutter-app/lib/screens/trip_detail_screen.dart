@@ -1918,13 +1918,32 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Groups items into consecutive runs sharing the same locality, labelling
   /// each run with the date range precomputed for that location (keyed by the
   /// first item's position).
-  List<({String label, String? dateRange, List<ItineraryItem> items})>
-      _buildGroups(
+  ///
+  /// [label] is the display city and stays shared across runs (it feeds the
+  /// per-city weather/events/local-intel lookups). [key] identifies the *run*:
+  /// a trip that revisits a city (Athens → Fira → Oia → Fira) yields two runs
+  /// with the same label, and everything keyed per-header — the header
+  /// [GlobalKey]s, the collapse sets, the `key#day` day keys — must tell them
+  /// apart or two live widgets share one GlobalKey and the itinerary fails to
+  /// build. Repeats get a `#2`, `#3`, … suffix; the scroll helpers parse day
+  /// keys with `lastIndexOf('#')`, so a suffixed key round-trips fine.
+  List<
+      ({
+        String key,
+        String label,
+        String? dateRange,
+        List<ItineraryItem> items
+      })> _buildGroups(
     List<ItineraryItem> items,
     Map<int, String> locationDates,
   ) {
-    final groups =
-        <({String label, String? dateRange, List<ItineraryItem> items})>[];
+    final groups = <({
+      String key,
+      String label,
+      String? dateRange,
+      List<ItineraryItem> items
+    })>[];
+    final seen = <String, int>{};
     String? currentKey;
     List<ItineraryItem>? current;
     for (final item in items) {
@@ -1932,8 +1951,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       if (current == null || locality != currentKey) {
         current = [];
         currentKey = locality;
+        final label = locality ?? _kOtherPlaces;
+        final n = (seen[label] ?? 0) + 1;
+        seen[label] = n;
         groups.add((
-          label: locality ?? _kOtherPlaces,
+          key: n == 1 ? label : '$label#$n',
+          label: label,
           dateRange: locationDates[item.position],
           items: current,
         ));
@@ -1948,8 +1971,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Each day is a [MultiSliver] whose header pins below the city header while
   /// the day's items scroll past, then is pushed off by the next day. Legacy
   /// items with no day fall back to flat day-trip batching with no day headers.
-  List<Widget> _buildGroupItemSlivers(String cityKey, List<ItineraryItem> items,
-      ThemeData theme, DateTime? tripStart,
+  ///
+  /// [cityKey] is the display city (weather lookup, refine target); [groupKey]
+  /// identifies this run of it and prefixes the day keys, so a revisited city's
+  /// two runs never share a day header (see [_buildGroups]).
+  List<Widget> _buildGroupItemSlivers(String cityKey, String groupKey,
+      List<ItineraryItem> items, ThemeData theme, DateTime? tripStart,
       {required bool showTonight, ({DateTime? start, DateTime? end})? range}) {
     if (!items.any((it) => it.day != null)) {
       return _dayTripSectionSlivers(items, theme);
@@ -1985,7 +2012,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         i++;
       }
       if (day != null) {
-        final dayKey = '$cityKey#$day';
+        final dayKey = '$groupKey#$day';
         final collapsed = _collapsedDays.contains(dayKey);
         final header = _daySubHeader(
             day, tripStart, theme, collapsed, _runTravelMin(run), () {
@@ -2064,18 +2091,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Material keeps items from showing through while pinned.
   Widget _cityHeader(
       Trip trip,
-      ({String label, String? dateRange, List<ItineraryItem> items}) group,
+      ({
+        String key,
+        String label,
+        String? dateRange,
+        List<ItineraryItem> items
+      }) group,
       ThemeData theme) {
     final l10n = context.l10n;
-    final cityCollapsed = _collapsedCities.contains(group.label);
+    final cityCollapsed = _collapsedCities.contains(group.key);
     return Material(
       color: theme.scaffoldBackgroundColor,
       child: InkWell(
         onTap: () => setState(() {
           if (cityCollapsed) {
-            _collapsedCities.remove(group.label);
+            _collapsedCities.remove(group.key);
           } else {
-            _collapsedCities.add(group.label);
+            _collapsedCities.add(group.key);
           }
         }),
         child: Padding(
@@ -3987,14 +4019,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                           (trip.items ?? const <ItineraryItem>[])
                               .any((i) => i.day != null);
                       // Tonight caption (specs/happening-now): day numbers
-                      // repeat across city groups (keys are '$cityKey#$day'),
+                      // repeat across city groups (keys are '$groupKey#$day'),
                       // so resolve the FIRST group containing today's day
                       // once, here — exactly one caption can ever render.
-                      String? firstTodayGroupLabel;
+                      // Matched on the run key, not the label: a revisited
+                      // city has two runs sharing a label.
+                      String? firstTodayGroupKey;
                       if (todayDay != null) {
                         for (final group in groups) {
                           if (group.items.any((it) => it.day == todayDay)) {
-                            firstTodayGroupLabel = group.label;
+                            firstTodayGroupKey = group.key;
                             break;
                           }
                         }
@@ -4226,12 +4260,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     children: [
                                       SliverPinnedHeader(
                                           child: KeyedSubtree(
+                                              // Keyed by the run, not the city:
+                                              // a revisited city renders two
+                                              // headers at once and a shared
+                                              // GlobalKey would break the build.
                                               key: _cityHeaderKeys.putIfAbsent(
-                                                  group.label, GlobalKey.new),
+                                                  group.key, GlobalKey.new),
                                               child: _cityHeader(
                                                   trip, group, theme))),
                                       if (!_collapsedCities
-                                          .contains(group.label)) ...[
+                                          .contains(group.key)) ...[
                                         // Embedded bookings render only in the
                                         // unfiltered view: a category filter can
                                         // merge adjacent same-label runs, which
@@ -4243,11 +4281,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                               departureOnly: false)),
                                         ..._buildGroupItemSlivers(
                                             group.label,
+                                            group.key,
                                             group.items,
                                             theme,
                                             tripStart,
-                                            showTonight: group.label ==
-                                                firstTodayGroupLabel,
+                                            showTonight: group.key ==
+                                                firstTodayGroupKey,
                                             range: groupRanges[group.label]),
                                         // Curated local recommendations for this
                                         // city — the "legit info you can't
