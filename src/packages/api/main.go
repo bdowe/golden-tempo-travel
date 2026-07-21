@@ -739,12 +739,12 @@ func buildRouter() *mux.Router {
 	// Define routes
 	router.HandleFunc("/", helloHandler).Methods("GET")
 	router.HandleFunc("/hello", helloHandler).Methods("GET")
-	router.HandleFunc("/health", healthHandler).Methods("GET")
+	router.HandleFunc("/health", healthHandler).Methods("GET", "HEAD")
 
 	// API versioning
 	api := router.PathPrefix("/api/v1").Subrouter()
 	api.HandleFunc("/hello", helloHandler).Methods("GET")
-	api.HandleFunc("/health", healthHandler).Methods("GET")
+	api.HandleFunc("/health", healthHandler).Methods("GET", "HEAD")
 	api.HandleFunc("/optimize-route", optimizeRouteHandler).Methods("POST")
 	api.HandleFunc("/places/search", placesSearchHandler).Methods("GET")
 	api.HandleFunc("/places/autocomplete", placesAutocompleteHandler).Methods("GET")
