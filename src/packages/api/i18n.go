@@ -202,6 +202,7 @@ var messages = map[string]map[string]string{
 	"email.verify.body":            {"en": "Welcome to Golden Tempo Travel!\n\nConfirm your email address by opening this link:\n\n%s\n\nThe link expires in 24 hours. If you didn't create an account, you can ignore this email.", "es": "¡Te damos la bienvenida a Golden Tempo Travel!\n\nConfirma tu dirección de correo abriendo este enlace:\n\n%s\n\nEl enlace caduca en 24 horas. Si no creaste una cuenta, puedes ignorar este correo."},
 	"email.verify.subject":         {"en": "Confirm your email — Golden Tempo Travel", "es": "Confirma tu correo — Golden Tempo Travel"},
 
+	"ics.booked":        {"en": "Booked", "es": "Reservado"},
 	"ics.mode.bus":      {"en": "Bus", "es": "Autobús"},
 	"ics.mode.car":      {"en": "Car", "es": "Coche"},
 	"ics.mode.ferry":    {"en": "Ferry", "es": "Ferri"},

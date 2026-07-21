@@ -330,11 +330,18 @@ func TestExportCalendar_ICSShapeAndEscaping(t *testing.T) {
 	if n := strings.Count(body, "BEGIN:VEVENT"); n != 3 {
 		t.Fatalf("expected 3 VEVENTs (item+stay+segment), got %d\n%s", n, body)
 	}
-	// Item all-day event: day 2 → 2026-08-02.
-	if !strings.Contains(body, "DTSTART;VALUE=DATE:20260802") {
-		t.Fatalf("item DTSTART wrong; body:\n%s", body)
+	// The whole-trip import is labeled in the user's calendar.
+	if !strings.Contains(body, "X-WR-CALNAME:Greek Islands") {
+		t.Fatalf("missing calendar name; body:\n%s", body)
 	}
-	// Stay check-in 2026-08-01.
+	// Item is a TIMED floating event: day 2 → 2026-08-02, "morning" → 09:00–12:00.
+	if !strings.Contains(body, "DTSTART:20260802T090000") || !strings.Contains(body, "DTEND:20260802T120000") {
+		t.Fatalf("item timed DTSTART/DTEND wrong; body:\n%s", body)
+	}
+	if strings.Contains(body, "DTSTART:20260802T090000Z") {
+		t.Fatalf("timed events must be floating (no Z); body:\n%s", body)
+	}
+	// Stay check-in 2026-08-01 stays all-day alongside the timed item.
 	if !strings.Contains(body, "DTSTART;VALUE=DATE:20260801") {
 		t.Fatalf("stay DTSTART wrong; body:\n%s", body)
 	}

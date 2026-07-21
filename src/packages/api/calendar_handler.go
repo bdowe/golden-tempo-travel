@@ -12,11 +12,38 @@ import (
 
 // calendar_handler.go — GET /api/v1/export/{token}/calendar.ics, the trip as an
 // RFC 5545 iCalendar file. Token-gated and PUBLIC (the signed token is the
-// capability). Everything is an all-day VEVENT so it drops cleanly onto a
-// calendar's day grid. Zero external deps — the string is built by hand with
-// careful TEXT escaping and line folding.
+// capability). Stays and transport are all-day VEVENTs (the data model has no
+// clock times for them); itinerary items become timed events derived from their
+// time_of_day bucket (specs/calendar-export-timed-events). Zero external deps —
+// the string is built by hand with careful TEXT escaping and line folding.
 
-const icsDateLayout = "20060102"
+const (
+	icsDateLayout = "20060102"
+	// icsDateTimeLayout is a FLOATING local date-time: no trailing Z and no
+	// TZID, so the event renders at the same wall clock in whatever timezone
+	// the traveler's device is in. That is the right semantic for a trip — 9am
+	// in Athens should stay 9am when you land.
+	icsDateTimeLayout = "20060102T150405"
+)
+
+// icsEvent is one resolved VEVENT, shared by the whole-trip calendar and the
+// per-event endpoint (calendar_event_handler.go) so both render identically.
+type icsEvent struct {
+	// UID is the pre-suffix identity ("item-<uuid>"); the builder appends
+	// "@goldentempo". The scheme is byte-stable BY CONTRACT: adding a single
+	// event after a whole-trip import dedupes on it. Never change a prefix.
+	UID string
+
+	// Start/End are exclusive-end. All-day events format as DATE values;
+	// timed events as floating DATE-TIMEs (see icsDateTimeLayout).
+	Start, End time.Time
+	AllDay     bool
+
+	Summary     string
+	Location    string
+	Description string
+	URL         string
+}
 
 // calendarHandler streams the trip's .ics attachment.
 func calendarHandler(w http.ResponseWriter, r *http.Request) {
@@ -48,34 +75,37 @@ func buildICS(locale string, d exportData) string {
 	b.line("CALSCALE:GREGORIAN")
 	b.line("METHOD:PUBLISH")
 
-	stamp := time.Now().UTC().Format("20060102T150405Z")
+	// X-WR-CALNAME labels the import in Google/Apple Calendar ("Greek Islands"
+	// instead of an unnamed pile of events). Non-standard but widely honored.
+	// Deliberately NOT set on the single-event file (some clients offer to
+	// create a whole calendar named after that one event), and X-WR-TIMEZONE is
+	// deliberately absent — it would pin the floating item times to one zone.
+	if name := strings.TrimSpace(d.Trip.Title); name != "" {
+		b.line("X-WR-CALNAME:" + escapeICSText(name))
+	}
+
+	stamp := icsNow().UTC().Format("20060102T150405Z")
 	events := 0
 
 	for _, it := range d.Items {
-		start, end, summary, location, description, ok := itemEventFieldsIn(locale, d.Trip, it)
-		if !ok {
-			continue // no trip start_date or no day → not datable
+		if ev, ok := itemEventFieldsIn(locale, d.Trip, it); ok {
+			b.event(stamp, ev) // no trip start_date or no day → not datable
+			events++
 		}
-		b.event(stamp, "item-"+it.ID.String(), start, end, summary, location, description)
-		events++
 	}
 
 	for _, a := range d.Accommodations {
-		start, end, summary, location, ok := stayEventFieldsIn(locale, a)
-		if !ok {
-			continue
+		if ev, ok := stayEventFieldsIn(locale, a); ok {
+			b.event(stamp, ev)
+			events++
 		}
-		b.event(stamp, "acc-"+a.ID.String(), start, end, summary, location, "")
-		events++
 	}
 
 	for _, s := range d.Segments {
-		start, end, summary, description, ok := segmentEventFieldsIn(locale, s)
-		if !ok {
-			continue
+		if ev, ok := segmentEventFieldsIn(locale, s); ok {
+			b.event(stamp, ev)
+			events++
 		}
-		b.event(stamp, "seg-"+s.ID.String(), start, end, summary, "", description)
-		events++
 	}
 
 	// Fallback: a datable-but-empty export still yields one trip-span event.
@@ -84,8 +114,13 @@ func buildICS(locale string, d exportData) string {
 		if d.Trip.EndDate.Valid && d.Trip.EndDate.Time.After(d.Trip.StartDate.Time) {
 			end = d.Trip.EndDate.Time.AddDate(0, 0, 1)
 		}
-		b.event(stamp, "trip-"+d.Trip.ID.String(), d.Trip.StartDate.Time, end,
-			d.Trip.Title, "", "")
+		b.event(stamp, icsEvent{
+			UID:     "trip-" + d.Trip.ID.String(),
+			Start:   d.Trip.StartDate.Time,
+			End:     end,
+			AllDay:  true,
+			Summary: d.Trip.Title,
+		})
 	}
 
 	b.line("END:VCALENDAR")
@@ -94,53 +129,148 @@ func buildICS(locale string, d exportData) string {
 
 // The three per-kind field resolvers below are shared by the whole-trip
 // calendar and the single-event endpoint (calendar_event_handler.go) so both
-// render identical all-day VEVENTs. All ends are exclusive; ok=false means the
-// event is undated and gets no VEVENT.
+// render identical VEVENTs. All ends are exclusive; ok=false means the event is
+// undated and gets no VEVENT.
 
-// The three unsuffixed forms below are English-locale shims kept so
-// calendar_event_handler.go (the per-event .ics) compiles unchanged; it does
-// not thread a request locale yet. Follow-up: pass requestLocale there and
-// delete these.
-
-// stayEventFieldsIn resolves an accommodation's VEVENT fields: check-in through
-// check-out (or one night when check-out is missing/not after check-in). The
-// SUMMARY is mirrored byte-for-byte by the Flutter client's Google Calendar
-// link (bookings_section.dart) — change both together.
-func stayEventFieldsIn(locale string, a store.Accommodation) (start, end time.Time, summary, location string, ok bool) {
+// stayEventFieldsIn resolves an accommodation's VEVENT: check-in through
+// check-out (or one night when check-out is missing/not after check-in),
+// all-day. The SUMMARY is mirrored byte-for-byte by the Flutter client's Google
+// Calendar link (bookings_section.dart) — change both together.
+func stayEventFieldsIn(locale string, a store.Accommodation) (icsEvent, bool) {
 	if !a.CheckIn.Valid {
-		return time.Time{}, time.Time{}, "", "", false
+		return icsEvent{}, false
 	}
-	end = a.CheckIn.Time.AddDate(0, 0, 1)
+	end := a.CheckIn.Time.AddDate(0, 0, 1)
 	if a.CheckOut.Valid && a.CheckOut.Time.After(a.CheckIn.Time) {
 		end = a.CheckOut.Time
 	}
-	return a.CheckIn.Time, end, tr(locale, "ics.stayTitle", a.Name), strPtrVal(a.Address), true
+	return icsEvent{
+		UID:         "acc-" + a.ID.String(),
+		Start:       a.CheckIn.Time,
+		End:         end,
+		AllDay:      true,
+		Summary:     tr(locale, "ics.stayTitle", a.Name),
+		Location:    strPtrVal(a.Address),
+		Description: icsStayDescription(locale, a),
+		URL:         strings.TrimSpace(strPtrVal(a.Url)),
+	}, true
 }
 
-// segmentEventFieldsIn resolves a transport segment's VEVENT fields: departure
-// day through arrival day inclusive (single day when arrival is missing). The
-// SUMMARY is mirrored by the Flutter client — see stayEventFieldsIn.
-func segmentEventFieldsIn(locale string, s store.TripSegment) (start, end time.Time, summary, description string, ok bool) {
+// segmentEventFieldsIn resolves a transport segment's VEVENT: departure day
+// through arrival day inclusive (single day when arrival is missing), all-day —
+// the model carries dates only, no clock times. The SUMMARY is mirrored by the
+// Flutter client — see stayEventFieldsIn.
+func segmentEventFieldsIn(locale string, s store.TripSegment) (icsEvent, bool) {
 	if !s.DepartDate.Valid {
-		return time.Time{}, time.Time{}, "", "", false
+		return icsEvent{}, false
 	}
-	end = s.DepartDate.Time.AddDate(0, 0, 1)
+	end := s.DepartDate.Time.AddDate(0, 0, 1)
 	if s.ArriveDate.Valid && s.ArriveDate.Time.After(s.DepartDate.Time) {
 		end = s.ArriveDate.Time.AddDate(0, 0, 1)
 	}
-	summary = tr(locale, "ics.segmentTitle", localizedMode(locale, s.Mode), segmentRouteIn(locale, s))
-	return s.DepartDate.Time, end, summary, strPtrVal(s.Notes), true
+	return icsEvent{
+		UID:         "seg-" + s.ID.String(),
+		Start:       s.DepartDate.Time,
+		End:         end,
+		AllDay:      true,
+		Summary:     tr(locale, "ics.segmentTitle", localizedMode(locale, s.Mode), segmentRouteIn(locale, s)),
+		Description: icsSegmentDescription(locale, s),
+		URL:         strings.TrimSpace(strPtrVal(s.Url)),
+	}, true
 }
 
-// itemEventFieldsIn resolves an itinerary item's VEVENT fields: the single trip
-// day the item is assigned to. The SUMMARY is the item's own name — traveler
-// data, never translated.
-func itemEventFieldsIn(locale string, trip store.Trip, it store.ItineraryItem) (start, end time.Time, summary, location, description string, ok bool) {
-	start, ok = itemStartDate(trip, it)
+// itemEventFieldsIn resolves an itinerary item's VEVENT on the single trip day
+// it is assigned to: a timed event when time_of_day gives a window, otherwise
+// all-day. The SUMMARY is the item's own name — traveler data, never translated.
+func itemEventFieldsIn(locale string, trip store.Trip, it store.ItineraryItem) (icsEvent, bool) {
+	day, ok := itemStartDate(trip, it)
 	if !ok {
-		return time.Time{}, time.Time{}, "", "", "", false
+		return icsEvent{}, false
 	}
-	return start, start.AddDate(0, 0, 1), it.Name, strPtrVal(it.Address), icsItemDescription(locale, it), true
+	ev := icsEvent{
+		UID:         "item-" + it.ID.String(),
+		Summary:     it.Name,
+		Location:    strPtrVal(it.Address),
+		Description: icsItemDescription(locale, it),
+	}
+	if start, end, timed := itemTimeWindow(day, strPtrVal(it.TimeOfDay)); timed {
+		ev.Start, ev.End, ev.AllDay = start, end, false
+	} else {
+		ev.Start, ev.End, ev.AllDay = day, day.AddDate(0, 0, 1), true
+	}
+	return ev, true
+}
+
+// itemTimeWindow maps a time_of_day bucket onto clock times on the item's day:
+// morning 09:00–12:00, afternoon 13:00–17:00, evening 19:00–22:00. ok=false for
+// an empty or unrecognized bucket, which keeps the item all-day.
+//
+// These windows are a product-level GUESS, not traveler data — the model stores
+// only the bucket. Real start_time/end_time columns are the eventual upgrade;
+// mirrored in Dart by _itemTimeWindow (calendar_links.dart), change both
+// together. The returned times use time.UTC purely as a container: they are
+// formatted with icsDateTimeLayout, which emits no zone, so they are floating.
+// Building them from day.Date() components (never Add) keeps DST out of it.
+func itemTimeWindow(day time.Time, timeOfDay string) (start, end time.Time, ok bool) {
+	var startHour, endHour int
+	switch strings.ToLower(strings.TrimSpace(timeOfDay)) {
+	case "morning":
+		startHour, endHour = 9, 12
+	case "afternoon":
+		startHour, endHour = 13, 17
+	case "evening":
+		startHour, endHour = 19, 22
+	default:
+		return time.Time{}, time.Time{}, false
+	}
+	y, m, d := day.Date()
+	return time.Date(y, m, d, startHour, 0, 0, 0, time.UTC),
+		time.Date(y, m, d, endHour, 0, 0, 0, time.UTC), true
+}
+
+// icsStayDescription mirrors the print packet's stay meta line (toPrintStay):
+// provider, price note, booked flag, and the readable form of the booking link
+// — the raw href rides the URL property instead.
+func icsStayDescription(locale string, a store.Accommodation) string {
+	parts := icsDetailParts(
+		strPtrVal(a.Provider),
+		strPtrVal(a.PriceNote),
+		icsBookedLabel(locale, a.Booked),
+		displayURL(strPtrVal(a.Url)),
+	)
+	return strings.Join(parts, " · ")
+}
+
+// icsSegmentDescription mirrors toPrintSegment: provider, price note, booked
+// flag, the traveler's own notes, then the readable link.
+func icsSegmentDescription(locale string, s store.TripSegment) string {
+	parts := icsDetailParts(
+		strPtrVal(s.Provider),
+		strPtrVal(s.PriceNote),
+		icsBookedLabel(locale, s.Booked),
+		strPtrVal(s.Notes),
+		displayURL(strPtrVal(s.Url)),
+	)
+	return strings.Join(parts, " · ")
+}
+
+// icsDetailParts trims and drops empties so a missing field never leaves a
+// dangling " ·  · " in the description.
+func icsDetailParts(vals ...string) []string {
+	parts := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if v = strings.TrimSpace(v); v != "" {
+			parts = append(parts, v)
+		}
+	}
+	return parts
+}
+
+func icsBookedLabel(locale string, booked bool) string {
+	if !booked {
+		return ""
+	}
+	return tr(locale, "ics.booked")
 }
 
 // itemStartDate resolves an item's all-day start: trip.start_date + (day-1).
@@ -165,6 +295,9 @@ func icsItemDescription(locale string, it store.ItineraryItem) string {
 	return strings.Join(parts, " · ")
 }
 
+// icsNow is the DTSTAMP clock, swappable so tests can pin a whole document.
+var icsNow = time.Now
+
 // icsBuilder accumulates CRLF-terminated, RFC-folded content lines.
 type icsBuilder struct {
 	sb strings.Builder
@@ -175,20 +308,31 @@ func (b *icsBuilder) line(s string) {
 	b.sb.WriteString("\r\n")
 }
 
-// event writes one all-day VEVENT. start/end are DATE values (end exclusive).
-// summary/location/description are raw text — escaped here.
-func (b *icsBuilder) event(stamp, uid string, start, end time.Time, summary, location, description string) {
+// event writes one VEVENT — a DATE pair when ev.AllDay, otherwise a floating
+// DATE-TIME pair. Text properties are escaped here; ev's fields are raw.
+func (b *icsBuilder) event(stamp string, ev icsEvent) {
 	b.line("BEGIN:VEVENT")
-	b.line("UID:" + uid + "@goldentempo")
+	b.line("UID:" + ev.UID + "@goldentempo")
 	b.line("DTSTAMP:" + stamp)
-	b.line("DTSTART;VALUE=DATE:" + start.Format(icsDateLayout))
-	b.line("DTEND;VALUE=DATE:" + end.Format(icsDateLayout))
-	b.line("SUMMARY:" + escapeICSText(summary))
-	if strings.TrimSpace(location) != "" {
-		b.line("LOCATION:" + escapeICSText(location))
+	if ev.AllDay {
+		b.line("DTSTART;VALUE=DATE:" + ev.Start.Format(icsDateLayout))
+		b.line("DTEND;VALUE=DATE:" + ev.End.Format(icsDateLayout))
+	} else {
+		b.line("DTSTART:" + ev.Start.Format(icsDateTimeLayout))
+		b.line("DTEND:" + ev.End.Format(icsDateTimeLayout))
 	}
-	if strings.TrimSpace(description) != "" {
-		b.line("DESCRIPTION:" + escapeICSText(description))
+	b.line("SUMMARY:" + escapeICSText(ev.Summary))
+	if strings.TrimSpace(ev.Location) != "" {
+		b.line("LOCATION:" + escapeICSText(ev.Location))
+	}
+	if strings.TrimSpace(ev.Description) != "" {
+		b.line("DESCRIPTION:" + escapeICSText(ev.Description))
+	}
+	if u := strings.TrimSpace(ev.URL); u != "" {
+		// URL is typed URI, not TEXT (RFC 5545 §3.8.4.6) — escaping it would
+		// corrupt commas and semicolons inside query strings. Folding still
+		// applies via line().
+		b.line("URL:" + u)
 	}
 	b.line("END:VEVENT")
 }
