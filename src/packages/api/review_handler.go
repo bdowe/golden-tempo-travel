@@ -47,7 +47,7 @@ func getTripReviewHandler(w http.ResponseWriter, r *http.Request) {
 	// check; weather enrichment always runs (keyless + cached).
 	checkHours, _ := strconv.ParseBool(r.URL.Query().Get("check_hours"))
 
-	findings := reviewTrip(r.Context(), data,
+	findings := reviewTrip(r.Context(), requestLocale(r.Context()), data,
 		reviewOptions{CheckHours: checkHours, Budget: &br},
 		reviewDeps{Weather: weatherService, Places: placesService})
 	writeJSON(w, http.StatusOK, ReviewResponse{Findings: findings})

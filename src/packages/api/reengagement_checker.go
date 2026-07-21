@@ -225,46 +225,49 @@ func weeklyNudgePayload() []byte {
 
 // --- email builders (pure, unit-tested) ---
 
-// buildTripReminderEmail renders the trip-reminder email. Pure — unit-tested.
-func buildTripReminderEmail(kind, tripTitle, startDate, tripURL, unsubscribeURL string) (subject, body string) {
+// buildTripReminderEmail renders the trip-reminder email in the recipient's
+// language. Pure — unit-tested.
+func buildTripReminderEmail(locale, kind, tripTitle, startDate, tripURL, unsubscribeURL string) (subject, body string) {
 	var b strings.Builder
 	if kind == reminderKindToday {
-		subject = fmt.Sprintf("Your trip \"%s\" starts today", tripTitle)
-		fmt.Fprintf(&b, "Today's the day — \"%s\" begins.\n\n", tripTitle)
+		subject = tr(locale, "email.reminder.subject_today", tripTitle)
+		fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.reminder.lead_today", tripTitle))
 	} else {
-		subject = fmt.Sprintf("Your trip \"%s\" starts in %d days", tripTitle, reminderDaysSoon)
-		fmt.Fprintf(&b, "Your trip \"%s\" is coming up in %d days.\n\n", tripTitle, reminderDaysSoon)
+		subject = tr(locale, "email.reminder.subject_soon", tripTitle, reminderDaysSoon)
+		fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.reminder.lead_soon", tripTitle, reminderDaysSoon))
 	}
 	if startDate != "" {
-		fmt.Fprintf(&b, "Departure: %s\n", startDate)
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.reminder.departure", startDate))
 	}
-	fmt.Fprintf(&b, "\nOpen your itinerary: %s\n", tripURL)
-	b.WriteString("\nSafe travels!\n")
-	fmt.Fprintf(&b, "\nTo stop trip reminders, unsubscribe here: %s\n", unsubscribeURL)
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.reminder.open", tripURL))
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.reminder.signoff"))
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.reminder.unsubscribe", unsubscribeURL))
 	return subject, b.String()
 }
 
-// buildWeeklyNudgeEmail renders the weekly planning nudge. Pure — unit-tested.
-// name is the recipient's display name ("" => a generic greeting).
-func buildWeeklyNudgeEmail(name, appURL, unsubscribeURL string) (subject, body string) {
-	subject = "Pick up where you left off"
+// buildWeeklyNudgeEmail renders the weekly planning nudge in the recipient's
+// language. Pure — unit-tested. name is the recipient's display name
+// ("" => a generic greeting).
+func buildWeeklyNudgeEmail(locale, name, appURL, unsubscribeURL string) (subject, body string) {
+	subject = tr(locale, "email.nudge.subject")
 	var b strings.Builder
 	if strings.TrimSpace(name) != "" {
-		fmt.Fprintf(&b, "Hi %s,\n\n", name)
+		fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.nudge.greeting", name))
 	} else {
-		b.WriteString("Hi there,\n\n")
+		fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.nudge.greeting_generic"))
 	}
-	b.WriteString("You started planning a trip but haven't been back in a while — ")
-	b.WriteString("your work is saved right where you left it.\n\n")
-	fmt.Fprintf(&b, "Jump back in: %s\n", appURL)
-	fmt.Fprintf(&b, "\nNot planning anything right now? Unsubscribe from these nudges: %s\n", unsubscribeURL)
+	fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.nudge.body"))
+	fmt.Fprintf(&b, "%s\n", tr(locale, "email.nudge.resume", appURL))
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.nudge.unsubscribe", unsubscribeURL))
 	return subject, b.String()
 }
 
 func sendReminderEmail(row store.ListTripsForReminderRow, kind string) {
 	tripURL := publicAppURL("trips/", row.ID.String())
 	unsub := unsubscribeURL(row.UserID, unsubReminders)
-	subject, body := buildTripReminderEmail(kind, row.Title, dateString(row.StartDate), tripURL, unsub)
+	// No request context in a background tick: the language is the one the
+	// account synced (ListTripsForReminder carries it on the row).
+	subject, body := buildTripReminderEmail(localeOrDefault(row.Locale), kind, row.Title, dateString(row.StartDate), tripURL, unsub)
 	if err := emailService.SendMarketing(row.Email, subject, body, unsub); err != nil {
 		log.Printf("re-engagement: reminder email to %s failed: %v", row.Email, err)
 	}
@@ -277,7 +280,7 @@ func sendNudgeEmail(row store.ListUsersForWeeklyNudgeRow) {
 	if row.DisplayName != nil {
 		name = *row.DisplayName
 	}
-	subject, body := buildWeeklyNudgeEmail(name, appURL, unsub)
+	subject, body := buildWeeklyNudgeEmail(localeOrDefault(row.Locale), name, appURL, unsub)
 	if err := emailService.SendMarketing(row.Email, subject, body, unsub); err != nil {
 		log.Printf("re-engagement: nudge email to %s failed: %v", row.Email, err)
 	}

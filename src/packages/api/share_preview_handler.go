@@ -17,7 +17,7 @@ import (
 // sharePreviewTmpl uses html/template — all fields are auto-escaped; never
 // build this page with fmt.Sprintf.
 var sharePreviewTmpl = template.Must(template.New("share-preview").Parse(`<!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
   <meta charset="utf-8">
   <title>{{.Title}} — Golden Tempo Travel</title>
@@ -38,6 +38,7 @@ var sharePreviewTmpl = template.Must(template.New("share-preview").Parse(`<!DOCT
 </html>`))
 
 type sharePreviewData struct {
+	Lang        string
 	Title       string
 	Description string
 	URL         string
@@ -69,19 +70,25 @@ func truncatePreview(s string, max int) string {
 // posture as sharedTripHandler; no new queries.
 func sharePreviewHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Crawlers rarely send a useful Accept-Language, but localeMiddleware also
+	// honors the ?lang= a localized share link carries.
+	locale := requestLocale(r.Context())
 	if dbPool == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("<html><body><h2>Temporarily unavailable</h2></body></html>"))
+		w.Write([]byte("<html lang=\"" + locale + "\"><body><h2>" +
+			template.HTMLEscapeString(tr(locale, "share.temporarilyUnavailable")) + "</h2></body></html>"))
 		return
 	}
 	share, trip, ok := resolveShare(r)
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("<html><body><h2>This trip isn't available</h2><p>The link may have been turned off.</p></body></html>"))
+		w.Write([]byte("<html lang=\"" + locale + "\"><body><h2>" +
+			template.HTMLEscapeString(tr(locale, "share.unavailableTitle")) + "</h2><p>" +
+			template.HTMLEscapeString(tr(locale, "share.unavailableBody")) + "</p></body></html>"))
 		return
 	}
 
-	ownerName := "a traveler"
+	ownerName := tr(locale, "share.aTraveler")
 	if owner, err := store.New(dbPool).GetUserByID(r.Context(), share.OwnerID); err == nil &&
 		owner.DisplayName != nil && *owner.DisplayName != "" {
 		ownerName = *owner.DisplayName
@@ -90,9 +97,11 @@ func sharePreviewHandler(w http.ResponseWriter, r *http.Request) {
 	var descParts []string
 	if trip.StartDate.Valid && trip.EndDate.Valid {
 		descParts = append(descParts,
-			trip.StartDate.Time.Format("Jan 2")+" – "+trip.EndDate.Time.Format("Jan 2, 2006"))
+			localizedDate(locale, trip.StartDate.Time, dateStyleMonthDay)+" – "+
+				tr(locale, "share.dateWithYear",
+					localizedDate(locale, trip.EndDate.Time, dateStyleMonthDay), trip.EndDate.Time.Year()))
 	}
-	descParts = append(descParts, "Planned by "+ownerName)
+	descParts = append(descParts, tr(locale, "share.plannedBy", ownerName))
 	if trip.Summary != nil {
 		if first := strings.TrimSpace(strings.SplitN(*trip.Summary, "\n", 2)[0]); first != "" {
 			descParts = append(descParts, first)
@@ -101,6 +110,7 @@ func sharePreviewHandler(w http.ResponseWriter, r *http.Request) {
 
 	base := previewBaseURL(r)
 	data := sharePreviewData{
+		Lang:        locale,
 		Title:       truncatePreview(trip.Title, 70),
 		Description: truncatePreview(strings.Join(descParts, " · "), 200),
 		URL:         base + "/app/share/" + share.Token,

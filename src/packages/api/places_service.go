@@ -185,6 +185,10 @@ func (gps *GooglePlacesService) SearchPlaces(ctx context.Context, query string) 
 	params := url.Values{}
 	params.Add("query", query)
 	params.Add("key", gps.APIKey)
+	// Ask the provider for the traveler's language so place names and addresses
+	// come back localized (specs/i18n-spanish). Falls back to "en" outside a
+	// request, which is what background callers want anyway.
+	params.Add("language", requestLocale(ctx))
 
 	gps.searchCalls.upstream.Add(1)
 	resp, err := gps.doGet(ctx, placesTextSearchURL+"?"+params.Encode())
@@ -257,6 +261,10 @@ func (gps *GooglePlacesService) GetPlaceAutocomplete(ctx context.Context, input 
 	params := url.Values{}
 	params.Add("input", input)
 	params.Add("key", gps.APIKey)
+	// Ask the provider for the traveler's language so place names and addresses
+	// come back localized (specs/i18n-spanish). Falls back to "en" outside a
+	// request, which is what background callers want anyway.
+	params.Add("language", requestLocale(ctx))
 
 	gps.autocompleteCalls.upstream.Add(1)
 	resp, err := gps.doGet(ctx, placesAutocompleteURL+"?"+params.Encode())
@@ -315,6 +323,10 @@ func (gps *GooglePlacesService) GetPlaceDetails(ctx context.Context, placeID str
 	params.Add("place_id", placeID)
 	params.Add("fields", "place_id,name,formatted_address,geometry,types,rating,price_level,opening_hours,website,formatted_phone_number")
 	params.Add("key", gps.APIKey)
+	// Ask the provider for the traveler's language so place names and addresses
+	// come back localized (specs/i18n-spanish). Falls back to "en" outside a
+	// request, which is what background callers want anyway.
+	params.Add("language", requestLocale(ctx))
 
 	gps.detailsCalls.upstream.Add(1)
 	resp, err := gps.doGet(ctx, placesDetailsURL+"?"+params.Encode())

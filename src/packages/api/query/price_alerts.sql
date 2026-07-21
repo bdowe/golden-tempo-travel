@@ -34,7 +34,9 @@ WHERE id = $1 AND user_id = $2;
 -- name: ListDuePriceAlerts :many
 -- Active alerts not yet checked in this cycle, oldest-checked first. The
 -- caller passes the freshness cutoff (now - check interval) and batch size.
-SELECT sqlc.embed(price_alerts), users.email AS owner_email
+-- owner_locale rides along because the checker emails with no request context
+-- to negotiate a language from (NULL => English).
+SELECT sqlc.embed(price_alerts), users.email AS owner_email, users.locale AS owner_locale
 FROM price_alerts
 JOIN users ON users.id = price_alerts.user_id
 WHERE price_alerts.status = 'active'

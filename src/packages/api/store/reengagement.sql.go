@@ -20,7 +20,10 @@ SELECT t.id,
        COALESCE(t.chat_id, t.id::text)::text AS lineage_key,
        u.email,
        u.display_name,
-       u.reminders_opt_out
+       u.reminders_opt_out,
+       -- The email is rendered with no request context, so the recipient's
+       -- stored language rides along with the row (NULL => English).
+       u.locale
 FROM trips t
 JOIN users u ON u.id = t.user_id
 WHERE t.status = 'planned'
@@ -59,6 +62,7 @@ type ListTripsForReminderRow struct {
 	Email           string      `json:"email"`
 	DisplayName     *string     `json:"display_name"`
 	RemindersOptOut bool        `json:"reminders_opt_out"`
+	Locale          *string     `json:"locale"`
 }
 
 // Latest trip per lineage that is planned and departs on the target date
@@ -86,6 +90,7 @@ func (q *Queries) ListTripsForReminder(ctx context.Context, arg ListTripsForRemi
 			&i.Email,
 			&i.DisplayName,
 			&i.RemindersOptOut,
+			&i.Locale,
 		); err != nil {
 			return nil, err
 		}
@@ -101,7 +106,10 @@ const listUsersForWeeklyNudge = `-- name: ListUsersForWeeklyNudge :many
 SELECT u.id,
        u.email,
        u.display_name,
-       u.nudges_opt_out
+       u.nudges_opt_out,
+       -- Same as ListTripsForReminder: request-less job, so the language comes
+       -- from the row (NULL => English).
+       u.locale
 FROM users u
 WHERE (u.last_weekly_nudge_at IS NULL OR u.last_weekly_nudge_at < $1)
   AND (
@@ -130,6 +138,7 @@ type ListUsersForWeeklyNudgeRow struct {
 	Email        string    `json:"email"`
 	DisplayName  *string   `json:"display_name"`
 	NudgesOptOut bool      `json:"nudges_opt_out"`
+	Locale       *string   `json:"locale"`
 }
 
 // Users who started planning but went quiet: their most recent activity (max
@@ -154,6 +163,7 @@ func (q *Queries) ListUsersForWeeklyNudge(ctx context.Context, arg ListUsersForW
 			&i.Email,
 			&i.DisplayName,
 			&i.NudgesOptOut,
+			&i.Locale,
 		); err != nil {
 			return nil, err
 		}

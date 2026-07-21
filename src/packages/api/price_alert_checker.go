@@ -326,7 +326,10 @@ func (c *alertChecker) settle(ctx context.Context, q *store.Queries, row store.L
 	}); err != nil {
 		log.Printf("price alerts: insert notification %s: %v", a.ID, err)
 	}
-	safeGo("sendAlertEmail", func() { sendAlertEmail(row.OwnerEmail, a, lowest, matchedParam) })
+	// Background tick, no request to negotiate from: the owner's stored language
+	// rides along on the due-alert row.
+	locale := localeOrDefault(row.OwnerLocale)
+	safeGo("sendAlertEmail", func() { sendAlertEmail(locale, row.OwnerEmail, a, lowest, matchedParam) })
 	tripID := tripIDPtr(a)
 	safeGo("recordEvent", func() {
 		recordEvent(a.UserID, "alert_triggered", tripID, map[string]any{
@@ -409,54 +412,54 @@ func lowestOffer(offers []FlightOffer) (FlightOffer, bool) {
 	return best, found
 }
 
-// buildAlertEmail renders the notification. Pure — unit-tested.
-func buildAlertEmail(a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) (subject, body string) {
+// buildAlertEmail renders the notification in the recipient's language.
+// Pure — unit-tested.
+func buildAlertEmail(locale string, a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) (subject, body string) {
 	route := fmt.Sprintf("%s → %s", a.Origin, a.Destination)
 	price := fmt.Sprintf("%s %.0f", lowest.Currency, scoringPrice(lowest))
 	if a.TargetPrice != nil {
-		subject = fmt.Sprintf("Target price hit: %s now %s", route, price)
+		subject = tr(locale, "email.alert.subject_target", route, price)
 	} else {
-		subject = fmt.Sprintf("Price drop: %s now %s", route, price)
+		subject = tr(locale, "email.alert.subject_drop", route, price)
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Good news — the fare you're watching dropped.\n\n")
-	fmt.Fprintf(&b, "Route: %s\n", route)
+	fmt.Fprintf(&b, "%s\n\n", tr(locale, "email.alert.lead"))
+	fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.route", route))
 	// For a flexible watch the cheapest date in the window may differ from the
 	// nominal departure; name it so the traveler books the right day.
 	if a.FlexDays > 0 && matched.Valid {
-		fmt.Fprintf(&b, "Departing: %s (cheapest in your ±%dd window)\n", dateString(matched), a.FlexDays)
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.departing_flex", dateString(matched), a.FlexDays))
 	} else {
-		fmt.Fprintf(&b, "Departing: %s\n", dateString(a.DepartDate))
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.departing", dateString(a.DepartDate)))
 	}
 	if ret := dateString(a.ReturnDate); ret != "" {
-		fmt.Fprintf(&b, "Returning: %s\n", ret)
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.returning", ret))
 	}
-	fmt.Fprintf(&b, "Cabin: %s · Adults: %d\n", a.CabinClass, a.Adults)
+	fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.cabin", a.CabinClass, a.Adults))
 	switch a.Baggage {
 	case baggageCarryOn:
-		fmt.Fprintf(&b, "Price includes a carry-on bag per traveler\n")
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.bag_carry_on"))
 	case baggageChecked:
-		fmt.Fprintf(&b, "Price includes a checked bag per traveler\n")
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.bag_checked"))
 	}
-	fmt.Fprintf(&b, "\nBest price now: %s", price)
+	fmt.Fprintf(&b, "\n%s", tr(locale, "email.alert.best_price", price))
 	if len(lowest.Airlines) > 0 {
-		fmt.Fprintf(&b, " on %s", strings.Join(lowest.Airlines, "/"))
+		fmt.Fprintf(&b, " %s", tr(locale, "email.alert.on_airlines", strings.Join(lowest.Airlines, "/")))
 	}
 	b.WriteString("\n")
 	if a.TargetPrice != nil {
-		fmt.Fprintf(&b, "Your target: %s %.0f\n", lowest.Currency, *a.TargetPrice)
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.your_target", lowest.Currency, *a.TargetPrice))
 	} else if a.LastCheckedPrice != nil {
-		fmt.Fprintf(&b, "Previously: %s %.0f\n", lowest.Currency, *a.LastCheckedPrice)
+		fmt.Fprintf(&b, "%s\n", tr(locale, "email.alert.previously", lowest.Currency, *a.LastCheckedPrice))
 	}
-	fmt.Fprintf(&b, "\nSearch it again and book: %s\n", publicAppURL("alerts"))
-	b.WriteString("\nPrices change frequently and this fare may not last. ")
-	b.WriteString("Manage or mute this alert under Price alerts in the app.\n")
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.alert.book", publicAppURL("alerts")))
+	fmt.Fprintf(&b, "\n%s\n", tr(locale, "email.alert.footer"))
 	return subject, b.String()
 }
 
-func sendAlertEmail(to string, a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) {
-	subject, body := buildAlertEmail(a, lowest, matched)
+func sendAlertEmail(locale, to string, a store.PriceAlert, lowest FlightOffer, matched pgtype.Date) {
+	subject, body := buildAlertEmail(locale, a, lowest, matched)
 	if err := emailService.Send(to, subject, body); err != nil {
 		log.Printf("price alerts: email to %s failed: %v", to, err)
 	}

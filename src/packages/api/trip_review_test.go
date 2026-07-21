@@ -32,7 +32,7 @@ func i32p(v int32) *int32 { return &v }
 
 func TestCheckDates_Undated(t *testing.T) {
 	d := exportData{Trip: store.Trip{ID: uuid.New(), Status: "draft"}}
-	fs := checkDates(d)
+	fs := checkDates("en", d)
 	if len(fs) != 1 || fs[0].Category != "dates" || fs[0].Severity != "info" {
 		t.Fatalf("undated trip = %+v", fs)
 	}
@@ -45,7 +45,7 @@ func TestCheckDates_ItemPastSpan(t *testing.T) {
 		{ID: uuid.New(), Name: "Louvre", Day: i32p(2)},
 		{ID: uuid.New(), Name: "Way Out", Day: i32p(9)},
 	}
-	fs := checkDates(exportData{Trip: trip, Items: items})
+	fs := checkDates("en", exportData{Trip: trip, Items: items})
 	if len(fs) != 1 || fs[0].Severity != "warn" || fs[0].Day == nil || *fs[0].Day != 9 {
 		t.Fatalf("past-span = %+v", fs)
 	}
@@ -57,7 +57,7 @@ func TestCheckUnscheduled_Grouped(t *testing.T) {
 		{ID: uuid.New(), Name: "B"}, // day nil
 		{ID: uuid.New(), Name: "C", Day: i32p(1)},
 	}}
-	fs := checkUnscheduled(d)
+	fs := checkUnscheduled("en", d)
 	if len(fs) != 1 || fs[0].Category != "unscheduled" {
 		t.Fatalf("unscheduled = %+v", fs)
 	}
@@ -71,7 +71,7 @@ func TestCheckDensity_EmptyAndPacked(t *testing.T) {
 		// day 2 empty
 		{ID: uuid.New(), Name: "C", Day: i32p(3)},
 	}
-	fs := checkDensity(exportData{Trip: store.Trip{ID: uuid.New()}, Items: items})
+	fs := checkDensity("en", exportData{Trip: store.Trip{ID: uuid.New()}, Items: items})
 	cats := map[string][]Finding{}
 	for _, f := range fs {
 		cats[f.Severity] = append(cats[f.Severity], f)
@@ -89,7 +89,7 @@ func TestCheckLodging_GateAndCoverage(t *testing.T) {
 		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-04")} // 3 nights: 1,2,3
 
 	// No accommodations, planned → all 3 nights flagged.
-	fs := checkLodging(exportData{Trip: trip})
+	fs := checkLodging("en", exportData{Trip: trip})
 	if len(fs) != 3 {
 		t.Fatalf("planned no-lodging = %d findings, want 3: %+v", len(fs), fs)
 	}
@@ -97,7 +97,7 @@ func TestCheckLodging_GateAndCoverage(t *testing.T) {
 	// One stay covering nights 1-2 (checkout 08-03, exclusive) → only night 3 flagged.
 	acc := []store.Accommodation{{ID: uuid.New(), Name: "Hotel",
 		CheckIn: dateVal(t, "2026-08-01"), CheckOut: dateVal(t, "2026-08-03")}}
-	fs = checkLodging(exportData{Trip: trip, Accommodations: acc})
+	fs = checkLodging("en", exportData{Trip: trip, Accommodations: acc})
 	if len(fs) != 1 || fs[0].Day == nil || *fs[0].Day != 3 {
 		t.Fatalf("partial lodging = %+v", fs)
 	}
@@ -105,7 +105,7 @@ func TestCheckLodging_GateAndCoverage(t *testing.T) {
 	// Empty draft (draft status, no accommodations) is not nagged.
 	draft := trip
 	draft.Status = "draft"
-	if fs := checkLodging(exportData{Trip: draft}); len(fs) != 0 {
+	if fs := checkLodging("en", exportData{Trip: draft}); len(fs) != 0 {
 		t.Fatalf("empty draft should be silent, got %+v", fs)
 	}
 }
@@ -117,14 +117,14 @@ func TestCheckTransit_MissingLeg(t *testing.T) {
 		{ID: uuid.New(), Name: "Duomo", City: strp("Florence"), Day: i32p(2)},
 	}
 	// No segments → missing Rome→Florence leg.
-	fs := checkTransit(exportData{Trip: trip, Items: items})
+	fs := checkTransit("en", exportData{Trip: trip, Items: items})
 	if len(fs) != 1 || fs[0].Category != "transit" {
 		t.Fatalf("missing leg = %+v", fs)
 	}
 	// A connecting segment suppresses it.
 	segs := []store.TripSegment{{ID: uuid.New(), Mode: "train",
 		Origin: strp("Rome"), Destination: strp("Florence")}}
-	if fs := checkTransit(exportData{Trip: trip, Items: items, Segments: segs}); len(fs) != 0 {
+	if fs := checkTransit("en", exportData{Trip: trip, Items: items, Segments: segs}); len(fs) != 0 {
 		t.Fatalf("connected legs should be silent, got %+v", fs)
 	}
 }
@@ -132,15 +132,15 @@ func TestCheckTransit_MissingLeg(t *testing.T) {
 func TestCheckBudget_OverBudget(t *testing.T) {
 	over := -50.0
 	br := &BudgetResponse{Currency: "USD", Spent: 150, Remaining: &over}
-	fs := checkBudget(exportData{Trip: store.Trip{ID: uuid.New()}}, br)
+	fs := checkBudget("en", exportData{Trip: store.Trip{ID: uuid.New()}}, br)
 	if len(fs) != 1 || fs[0].Category != "budget" || fs[0].Severity != "warn" {
 		t.Fatalf("over budget = %+v", fs)
 	}
 	within := 10.0
-	if fs := checkBudget(exportData{Trip: store.Trip{ID: uuid.New()}}, &BudgetResponse{Remaining: &within}); len(fs) != 0 {
+	if fs := checkBudget("en", exportData{Trip: store.Trip{ID: uuid.New()}}, &BudgetResponse{Remaining: &within}); len(fs) != 0 {
 		t.Fatalf("within budget should be silent, got %+v", fs)
 	}
-	if fs := checkBudget(exportData{Trip: store.Trip{ID: uuid.New()}}, nil); len(fs) != 0 {
+	if fs := checkBudget("en", exportData{Trip: store.Trip{ID: uuid.New()}}, nil); len(fs) != 0 {
 		t.Fatalf("no budget should be silent, got %+v", fs)
 	}
 }
@@ -160,7 +160,7 @@ func TestCheckBookings_Unbooked(t *testing.T) {
 			{ID: uuid.New(), Mode: "train", Origin: strp("Rome"), Destination: strp("Florence"), Booked: false, Auto: true},
 		},
 	}
-	fs := checkBookings(d)
+	fs := checkBookings("en", d)
 	if len(fs) != 2 {
 		t.Fatalf("expected 2 unbooked findings (auto drafts skipped), got %+v", fs)
 	}
@@ -233,7 +233,7 @@ func TestCheckWeather_RainyOutdoorDay(t *testing.T) {
 	d := exportData{Trip: trip, Items: items}
 
 	weather := weatherStub(t, true, 22, 14) // rainy, mild
-	fs := checkWeather(context.Background(), d, weather)
+	fs := checkWeather(context.Background(), "en", d, weather)
 	var gotRain bool
 	for _, f := range fs {
 		if f.Category != "weather" || f.Severity != "info" {
@@ -251,14 +251,14 @@ func TestCheckWeather_RainyOutdoorDay(t *testing.T) {
 	indoor := exportData{Trip: trip, Items: []store.ItineraryItem{
 		{ID: uuid.New(), Name: "Louvre", City: strp("Paris"), Category: strp("museum"), Day: i32p(1)},
 	}}
-	for _, f := range checkWeather(context.Background(), indoor, weather) {
+	for _, f := range checkWeather(context.Background(), "en", indoor, weather) {
 		if strings.Contains(f.Message, "umbrella") {
 			t.Fatalf("indoor day should not get an umbrella finding: %+v", f)
 		}
 	}
 
 	// Nil service is a silent no-op.
-	if fs := checkWeather(context.Background(), d, nil); len(fs) != 0 {
+	if fs := checkWeather(context.Background(), "en", d, nil); len(fs) != 0 {
 		t.Fatalf("nil weather service should yield no findings, got %+v", fs)
 	}
 }
@@ -273,7 +273,7 @@ func TestCheckWeather_HotDay(t *testing.T) {
 	}}
 	weather := weatherStub(t, false, 37, 26) // hot, dry
 	var gotHot bool
-	for _, f := range checkWeather(context.Background(), d, weather) {
+	for _, f := range checkWeather(context.Background(), "en", d, weather) {
 		if strings.Contains(f.Message, "very hot") {
 			gotHot = true
 		}
@@ -313,7 +313,7 @@ func TestCheckHours_ClosedOnScheduledWeekday(t *testing.T) {
 	d := exportData{Trip: trip, Items: items}
 
 	svc, rt := placesDouble(t, closedMondayDetailsJSON)
-	fs := checkHours(context.Background(), d, svc)
+	fs := checkHours(context.Background(), "en", d, svc)
 	if len(fs) != 1 || fs[0].Category != "hours" || fs[0].Severity != "warn" {
 		t.Fatalf("expected one closed-weekday warn, got %+v", fs)
 	}
@@ -325,7 +325,7 @@ func TestCheckHours_ClosedOnScheduledWeekday(t *testing.T) {
 	}
 
 	// Nil service is a silent no-op.
-	if fs := checkHours(context.Background(), d, nil); len(fs) != 0 {
+	if fs := checkHours(context.Background(), "en", d, nil); len(fs) != 0 {
 		t.Fatalf("nil places service should yield no findings, got %+v", fs)
 	}
 }
@@ -341,7 +341,7 @@ func TestReviewTrip_CheckHoursGate(t *testing.T) {
 	deps := reviewDeps{Places: svc}
 
 	// CheckHours=false → the hours check never runs (no Google call, no hours finding).
-	for _, f := range reviewTrip(context.Background(), d, reviewOptions{CheckHours: false}, deps) {
+	for _, f := range reviewTrip(context.Background(), "en", d, reviewOptions{CheckHours: false}, deps) {
 		if f.Category == "hours" {
 			t.Fatalf("hours finding leaked with CheckHours=false: %+v", f)
 		}
@@ -352,7 +352,7 @@ func TestReviewTrip_CheckHoursGate(t *testing.T) {
 
 	// CheckHours=true → the finding appears.
 	var gotHours bool
-	for _, f := range reviewTrip(context.Background(), d, reviewOptions{CheckHours: true}, deps) {
+	for _, f := range reviewTrip(context.Background(), "en", d, reviewOptions{CheckHours: true}, deps) {
 		if f.Category == "hours" {
 			gotHours = true
 		}
@@ -373,7 +373,7 @@ func TestFix_Lodging(t *testing.T) {
 	items := []store.ItineraryItem{
 		{ID: uuid.New(), Name: "Beach", City: strp("Nice"), Day: i32p(3)},
 	}
-	fs := checkLodging(exportData{Trip: trip, Accommodations: acc, Items: items})
+	fs := checkLodging("en", exportData{Trip: trip, Accommodations: acc, Items: items})
 	if len(fs) != 1 || fs[0].Fix == nil {
 		t.Fatalf("expected one lodging finding with a fix, got %+v", fs)
 	}
@@ -402,7 +402,7 @@ func TestFix_TransitGreekFerry(t *testing.T) {
 		{ID: uuid.New(), Name: "Acropolis", City: strp("Athens"), Day: i32p(1)},
 		{ID: uuid.New(), Name: "Portara", City: strp("Naxos"), Day: i32p(2)},
 	}
-	fs := checkTransit(exportData{Trip: trip, Items: items})
+	fs := checkTransit("en", exportData{Trip: trip, Items: items})
 	if len(fs) != 1 || fs[0].Fix == nil {
 		t.Fatalf("expected one transit finding with a fix, got %+v", fs)
 	}
@@ -426,7 +426,7 @@ func TestFix_TransitGreekFerry(t *testing.T) {
 		{ID: uuid.New(), Name: "Colosseum", City: strp("Rome"), Day: i32p(1)},
 		{ID: uuid.New(), Name: "Duomo", City: strp("Florence"), Day: i32p(2)},
 	}
-	gf := checkTransit(exportData{Trip: trip, Items: nonGreek})
+	gf := checkTransit("en", exportData{Trip: trip, Items: nonGreek})
 	if len(gf) != 1 || gf[0].Fix == nil || gf[0].Fix.Label != "Add transport" ||
 		gf[0].Fix.Mode == nil || *gf[0].Fix.Mode != "flight" {
 		t.Fatalf("non-greek transit fix = %+v", gf)
@@ -446,14 +446,14 @@ func TestFix_TransitRespectsTravelMode(t *testing.T) {
 			TravelMode: mode}
 	}
 
-	fs := checkTransit(exportData{Trip: tripWith(strp("car")), Items: items})
+	fs := checkTransit("en", exportData{Trip: tripWith(strp("car")), Items: items})
 	if len(fs) != 1 || fs[0].Fix == nil || fs[0].Fix.Label != "Add drive" ||
 		fs[0].Fix.Mode == nil || *fs[0].Fix.Mode != "car" {
 		t.Fatalf("car-trip transit fix = %+v", fs)
 	}
 
 	// mixed is not a segment mode → keeps the flight default.
-	fs = checkTransit(exportData{Trip: tripWith(strp("mixed")), Items: items})
+	fs = checkTransit("en", exportData{Trip: tripWith(strp("mixed")), Items: items})
 	if len(fs) != 1 || fs[0].Fix == nil || *fs[0].Fix.Mode != "flight" {
 		t.Fatalf("mixed-trip transit fix = %+v", fs)
 	}
@@ -463,7 +463,7 @@ func TestFix_TransitRespectsTravelMode(t *testing.T) {
 		{ID: uuid.New(), Name: "Acropolis", City: strp("Athens"), Day: i32p(1)},
 		{ID: uuid.New(), Name: "Portara", City: strp("Naxos"), Day: i32p(2)},
 	}
-	fs = checkTransit(exportData{Trip: tripWith(strp("car")), Items: greek})
+	fs = checkTransit("en", exportData{Trip: tripWith(strp("car")), Items: greek})
 	if len(fs) != 1 || fs[0].Fix == nil || *fs[0].Fix.Mode != "ferry" {
 		t.Fatalf("greek car-trip transit fix = %+v", fs)
 	}
@@ -479,7 +479,7 @@ func TestFix_BookingsEntityType(t *testing.T) {
 			{ID: uuid.New(), Mode: "flight", Origin: strp("JFK"), Destination: strp("CDG"), Booked: false},
 		},
 	}
-	fs := checkBookings(d)
+	fs := checkBookings("en", d)
 	if len(fs) != 2 {
 		t.Fatalf("expected 2 booking findings, got %+v", fs)
 	}
@@ -503,7 +503,7 @@ func TestFix_DatesBeyondSpan(t *testing.T) {
 		StartDate: dateVal(t, "2026-08-01"), EndDate: dateVal(t, "2026-08-03")} // 3-day span
 	id := uuid.New()
 	items := []store.ItineraryItem{{ID: id, Name: "Way Out", Day: i32p(9)}}
-	fs := checkDates(exportData{Trip: trip, Items: items})
+	fs := checkDates("en", exportData{Trip: trip, Items: items})
 	if len(fs) != 1 || fs[0].Fix == nil {
 		t.Fatalf("expected one beyond-span finding with a fix, got %+v", fs)
 	}
@@ -528,7 +528,7 @@ func TestFix_OverPacked_LighterDayAndNone(t *testing.T) {
 		items = append(items, store.ItineraryItem{ID: id, Name: fmt.Sprintf("A%d", i), Day: i32p(1)})
 	}
 	items = append(items, store.ItineraryItem{ID: uuid.New(), Name: "B", Day: i32p(2)})
-	fs := checkDensity(exportData{Trip: store.Trip{ID: tripID}, Items: items})
+	fs := checkDensity("en", exportData{Trip: store.Trip{ID: tripID}, Items: items})
 	var packed *Finding
 	for i := range fs {
 		if fs[i].Severity == "warn" && strings.Contains(fs[i].Message, "too packed") {
@@ -550,7 +550,7 @@ func TestFix_OverPacked_LighterDayAndNone(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		solo = append(solo, store.ItineraryItem{ID: uuid.New(), Name: fmt.Sprintf("C%d", i), Day: i32p(1)})
 	}
-	sf := checkDensity(exportData{Trip: store.Trip{ID: tripID}, Items: solo})
+	sf := checkDensity("en", exportData{Trip: store.Trip{ID: tripID}, Items: solo})
 	for _, f := range sf {
 		if strings.Contains(f.Message, "too packed") && f.Fix != nil {
 			t.Fatalf("no lighter day exists — over-packed fix should be nil, got %+v", f.Fix)
@@ -568,7 +568,7 @@ func TestFix_WeatherRainAddPacking(t *testing.T) {
 	}}
 	weather := weatherStub(t, true, 22, 14)
 	var gotFix bool
-	for _, f := range checkWeather(context.Background(), d, weather) {
+	for _, f := range checkWeather(context.Background(), "en", d, weather) {
 		if strings.Contains(f.Message, "umbrella") {
 			if f.Fix == nil || f.Fix.Action != "add_packing" ||
 				f.Fix.PackingItem == nil || *f.Fix.PackingItem != "Umbrella" {
@@ -595,7 +595,7 @@ func TestReviewTrip_CleanTripNoFindings(t *testing.T) {
 		Accommodations: []store.Accommodation{{ID: uuid.New(), Name: "Hotel", Booked: true,
 			CheckIn: dateVal(t, "2026-08-01"), CheckOut: dateVal(t, "2026-08-02")}},
 	}
-	fs := reviewTrip(context.Background(), d, reviewOptions{}, reviewDeps{})
+	fs := reviewTrip(context.Background(), "en", d, reviewOptions{}, reviewDeps{})
 	if len(fs) != 0 {
 		t.Fatalf("clean trip should have no findings, got %+v", fs)
 	}
@@ -610,8 +610,8 @@ func TestReviewTrip_DeterministicOrder(t *testing.T) {
 	d := exportData{Trip: trip, Items: []store.ItineraryItem{
 		{ID: uuid.New(), Name: "A"}, // unscheduled
 	}}
-	ja, _ := json.Marshal(reviewTrip(context.Background(), d, reviewOptions{}, reviewDeps{}))
-	jb, _ := json.Marshal(reviewTrip(context.Background(), d, reviewOptions{}, reviewDeps{}))
+	ja, _ := json.Marshal(reviewTrip(context.Background(), "en", d, reviewOptions{}, reviewDeps{}))
+	jb, _ := json.Marshal(reviewTrip(context.Background(), "en", d, reviewOptions{}, reviewDeps{}))
 	if string(ja) != string(jb) {
 		t.Fatalf("nondeterministic order:\n%s\n%s", ja, jb)
 	}

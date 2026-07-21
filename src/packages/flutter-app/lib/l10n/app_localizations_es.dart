@@ -900,7 +900,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get tripModeBus => 'Autobús';
 
   @override
-  String get tripModeFerry => 'Ferry';
+  String get tripModeFerry => 'Ferri';
 
   @override
   String tripUpdateFailed(String error) {
@@ -2782,4 +2782,32 @@ class AppLocalizationsEs extends AppLocalizations {
   String flightStopsSplit(String outbound, String inbound) {
     return '$outbound / $inbound';
   }
+
+  @override
+  String calendarStayTitle(String name) {
+    return 'Alojamiento: $name';
+  }
+
+  @override
+  String calendarSegmentTitle(String mode, String route) {
+    return '$mode: $route';
+  }
+
+  @override
+  String get calendarModeFlight => 'Vuelo';
+
+  @override
+  String get calendarModeTrain => 'Tren';
+
+  @override
+  String get calendarModeBus => 'Autobús';
+
+  @override
+  String get calendarModeCar => 'Coche';
+
+  @override
+  String get calendarModeFerry => 'Ferri';
+
+  @override
+  String get calendarModeOther => 'Otro';
 }

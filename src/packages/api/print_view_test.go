@@ -81,7 +81,7 @@ func TestBuildPrintDays_StayNights(t *testing.T) {
 			CheckIn: dateVal(t, "2026-08-01"), CheckOut: dateVal(t, "2026-08-05"),
 		}},
 	}
-	days, _, otherStays, _ := buildPrintDays(d, nil)
+	days, _, otherStays, _ := buildPrintDays("en", d, nil)
 	if len(days) != 5 {
 		t.Fatalf("expected 5 day sections, got %d", len(days))
 	}
@@ -115,7 +115,7 @@ func TestBuildPrintDays_StayEdgeCases(t *testing.T) {
 	d := exportData{Trip: trip, Accommodations: []store.Accommodation{{
 		Name: "One Night Inn", CheckIn: dateVal(t, "2026-08-02"), CheckOut: dateVal(t, "2026-08-03"),
 	}}}
-	days, _, _, _ := buildPrintDays(d, nil)
+	days, _, _, _ := buildPrintDays("en", d, nil)
 	if len(days[1].Stays) != 1 || len(days[0].Stays) != 0 || len(days[2].Stays) != 0 {
 		t.Fatalf("single-night stay placement wrong: %+v", days)
 	}
@@ -128,7 +128,7 @@ func TestBuildPrintDays_StayEdgeCases(t *testing.T) {
 	d = exportData{Trip: trip, Accommodations: []store.Accommodation{{
 		Name: "Open Ended", CheckIn: dateVal(t, "2026-08-03"),
 	}}}
-	days, _, otherStays, _ := buildPrintDays(d, nil)
+	days, _, otherStays, _ := buildPrintDays("en", d, nil)
 	if len(days[2].Stays) != 1 || len(otherStays) != 0 {
 		t.Fatalf("check-in-only stay should land on its night: days=%+v other=%+v", days, otherStays)
 	}
@@ -137,7 +137,7 @@ func TestBuildPrintDays_StayEdgeCases(t *testing.T) {
 	d = exportData{Trip: trip, Accommodations: []store.Accommodation{{
 		Name: "Elsewhere", CheckIn: dateVal(t, "2026-09-01"), CheckOut: dateVal(t, "2026-09-03"),
 	}}}
-	days, _, otherStays, _ = buildPrintDays(d, nil)
+	days, _, otherStays, _ = buildPrintDays("en", d, nil)
 	for i, day := range days {
 		if len(day.Stays) != 0 {
 			t.Fatalf("out-of-range stay leaked onto day %d", i+1)
@@ -149,7 +149,7 @@ func TestBuildPrintDays_StayEdgeCases(t *testing.T) {
 
 	// No dates at all ⇒ reference list.
 	d = exportData{Trip: trip, Accommodations: []store.Accommodation{{Name: "Dateless"}}}
-	_, _, otherStays, _ = buildPrintDays(d, nil)
+	_, _, otherStays, _ = buildPrintDays("en", d, nil)
 	if len(otherStays) != 1 {
 		t.Fatalf("dateless stay should be a reference entry, got %+v", otherStays)
 	}
@@ -173,7 +173,7 @@ func TestBuildPrintDays_Segments(t *testing.T) {
 				DepartDate: dateVal(t, "2026-07-31"), ArriveDate: dateVal(t, "2026-08-01")},
 		},
 	}
-	days, _, _, otherSegs := buildPrintDays(d, nil)
+	days, _, _, otherSegs := buildPrintDays("en", d, nil)
 
 	if len(days[1].Segments) != 1 {
 		t.Fatalf("train should attach to day 2, got %+v", days[1].Segments)
@@ -211,7 +211,7 @@ func TestBuildPrintDays_ItemsAndDayTrips(t *testing.T) {
 			{Name: "Runaway", City: strp("Athens"), Day: i32p(5000)},
 		},
 	}
-	days, unscheduled, _, _ := buildPrintDays(d, nil)
+	days, unscheduled, _, _ := buildPrintDays("en", d, nil)
 
 	if len(days) != 5 {
 		t.Fatalf("expected 5 days, got %d", len(days))
@@ -266,7 +266,7 @@ func TestBuildPrintDays_UndatedTrip(t *testing.T) {
 		Accommodations: []store.Accommodation{{Name: "Hôtel", CheckIn: dateVal(t, "2026-08-01")}},
 		Segments:       []store.TripSegment{{Mode: "train", DepartDate: dateVal(t, "2026-08-01")}},
 	}
-	days, unscheduled, otherStays, otherSegs := buildPrintDays(d, nil)
+	days, unscheduled, otherStays, otherSegs := buildPrintDays("en", d, nil)
 
 	// Item-less relative days are dropped; the rest have no calendar date.
 	if len(days) != 2 || days[0].Label != "Day 1" || days[1].Label != "Day 3" {
@@ -355,13 +355,13 @@ func TestDisplayURL(t *testing.T) {
 
 func TestFormatWeatherLine(t *testing.T) {
 	pct := 20
-	if got := formatWeatherLine(WeatherDay{TempMinC: 15.4, TempMaxC: 24.6, PrecipPct: &pct}, false); got != "15–25°C, 20% chance of rain" {
+	if got := formatWeatherLine("en", WeatherDay{TempMinC: 15.4, TempMaxC: 24.6, PrecipPct: &pct}, false); got != "15–25°C, 20% chance of rain" {
 		t.Fatalf("forecast line = %q", got)
 	}
-	if got := formatWeatherLine(WeatherDay{TempMinC: 18, TempMaxC: 27, PrecipMM: 6}, true); got != "Typical: 18–27°C, 6mm rain" {
+	if got := formatWeatherLine("en", WeatherDay{TempMinC: 18, TempMaxC: 27, PrecipMM: 6}, true); got != "Typical: 18–27°C, 6mm rain" {
 		t.Fatalf("historical line = %q", got)
 	}
-	if got := formatWeatherLine(WeatherDay{TempMinC: 18, TempMaxC: 27, PrecipMM: 0.2}, false); got != "18–27°C" {
+	if got := formatWeatherLine("en", WeatherDay{TempMinC: 18, TempMaxC: 27, PrecipMM: 0.2}, false); got != "18–27°C" {
 		t.Fatalf("dry line = %q", got)
 	}
 }
@@ -429,13 +429,13 @@ func TestLoadPrintWeather_Resilient(t *testing.T) {
 
 func TestBuildPrintView_HasContent(t *testing.T) {
 	// A dated but empty trip renders the empty state, not 5 hollow days.
-	view := buildPrintView(exportData{Trip: printFixtureTrip(t)}, nil, nil)
+	view := buildPrintView("en", exportData{Trip: printFixtureTrip(t)}, nil, nil)
 	if view.HasContent || len(view.Days) != 0 {
 		t.Fatalf("empty trip should have no content, got %+v", view)
 	}
 	// A budget alone counts as content.
 	target := 100.0
-	view = buildPrintView(exportData{Trip: printFixtureTrip(t)},
+	view = buildPrintView("en", exportData{Trip: printFixtureTrip(t)},
 		buildPrintBudget(&store.TripBudget{TargetAmount: &target, Currency: "USD"}, nil), nil)
 	if !view.HasContent || view.Budget == nil {
 		t.Fatalf("budget-only trip should have content, got %+v", view)
@@ -445,6 +445,7 @@ func TestBuildPrintView_HasContent(t *testing.T) {
 func TestPrintViewTemplate_Escapes(t *testing.T) {
 	evil := `<script>alert(1)</script>`
 	view := printViewData{
+		T:       newPrintLabels("en"),
 		Title:   evil,
 		Summary: evil,
 		Days: []printDaySection{{
@@ -475,6 +476,9 @@ func TestPrintViewTemplate_Escapes(t *testing.T) {
 
 func TestPrintViewTemplate_DaySections(t *testing.T) {
 	view := printViewData{
+		// The template renders its static chrome from T (specs/i18n-spanish),
+		// so a literal built in a test needs the English label set.
+		T:     newPrintLabels("en"),
 		Title: "Greece",
 		Days: []printDaySection{
 			{Label: "Day 1", Date: "Sat, Aug 1", Hub: "Athens", Weather: "18–27°C",

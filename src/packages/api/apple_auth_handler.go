@@ -150,8 +150,10 @@ func findOrCreateAppleUser(r *http.Request, claims appleClaims, formName string)
 		if displayName == "" {
 			displayName = defaultDisplayName(email)
 		}
+		signupLocale := requestLocale(ctx)
 		user, err = q.CreateUser(ctx, store.CreateUserParams{
 			Email: email, PasswordHash: nil, DisplayName: &displayName,
+			Locale: &signupLocale,
 		})
 		if err != nil {
 			return store.User{}, err

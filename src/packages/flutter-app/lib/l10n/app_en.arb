@@ -1803,5 +1803,32 @@
         "type": "String"
       }
     }
-  }
+  },
+  "calendarStayTitle": "Stay: {name}",
+  "@calendarStayTitle": {
+    "description": "Calendar event title for a stay. MUST stay byte-identical to the Go .ics export's ics.stayTitle — the Google link and the downloaded .ics are the same event.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarSegmentTitle": "{mode}: {route}",
+  "@calendarSegmentTitle": {
+    "description": "Calendar event title for a transport segment. Mirrors the Go .ics export's ics.segmentTitle.",
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      },
+      "route": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarModeFlight": "Flight",
+  "calendarModeTrain": "Train",
+  "calendarModeBus": "Bus",
+  "calendarModeCar": "Car",
+  "calendarModeFerry": "Ferry",
+  "calendarModeOther": "Other"
 }

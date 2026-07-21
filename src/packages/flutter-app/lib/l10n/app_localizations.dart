@@ -4813,6 +4813,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{outbound} / {inbound}'**
   String flightStopsSplit(String outbound, String inbound);
+
+  /// Calendar event title for a stay. MUST stay byte-identical to the Go .ics export's ics.stayTitle — the Google link and the downloaded .ics are the same event.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay: {name}'**
+  String calendarStayTitle(String name);
+
+  /// Calendar event title for a transport segment. Mirrors the Go .ics export's ics.segmentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{mode}: {route}'**
+  String calendarSegmentTitle(String mode, String route);
+
+  /// No description provided for @calendarModeFlight.
+  ///
+  /// In en, this message translates to:
+  /// **'Flight'**
+  String get calendarModeFlight;
+
+  /// No description provided for @calendarModeTrain.
+  ///
+  /// In en, this message translates to:
+  /// **'Train'**
+  String get calendarModeTrain;
+
+  /// No description provided for @calendarModeBus.
+  ///
+  /// In en, this message translates to:
+  /// **'Bus'**
+  String get calendarModeBus;
+
+  /// No description provided for @calendarModeCar.
+  ///
+  /// In en, this message translates to:
+  /// **'Car'**
+  String get calendarModeCar;
+
+  /// No description provided for @calendarModeFerry.
+  ///
+  /// In en, this message translates to:
+  /// **'Ferry'**
+  String get calendarModeFerry;
+
+  /// No description provided for @calendarModeOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get calendarModeOther;
 }
 
 class _AppLocalizationsDelegate

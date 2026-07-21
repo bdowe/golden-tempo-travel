@@ -93,8 +93,16 @@ func publicAppURL(parts ...string) string {
 }
 
 // sendVerificationEmail is called fire-and-forget after registration (same
-// pattern as the profile distiller kickoff) and from the resend endpoint.
+// pattern as the profile distiller kickoff). Registration has no locale to hand
+// down that the account doesn't already carry, so the language comes from the
+// stored users.locale (NULL => English); callers inside a request that know the
+// negotiated locale use sendVerificationEmailIn instead.
 func sendVerificationEmail(user store.User) {
+	sendVerificationEmailIn(user, localeOrDefault(user.Locale))
+}
+
+// sendVerificationEmailIn is sendVerificationEmail with an explicit locale.
+func sendVerificationEmailIn(user store.User, locale string) {
 	// Per-address throttle (abuse_caps.go): checked before issuing a token so a
 	// throttled resend doesn't invalidate a still-valid prior token. Keyed by
 	// purpose so verify and reset don't block each other. Anti email-bombing.
@@ -111,10 +119,8 @@ func sendVerificationEmail(user store.User) {
 		return
 	}
 	link := publicAppURL("verify/", token)
-	body := "Welcome to Golden Tempo Travel!\n\n" +
-		"Confirm your email address by opening this link:\n\n" + link + "\n\n" +
-		"The link expires in 24 hours. If you didn't create an account, you can ignore this email."
-	if err := emailSend(user.Email, "Confirm your email — Golden Tempo Travel", body); err != nil {
+	body := tr(locale, "email.verify.body", link)
+	if err := emailSend(user.Email, tr(locale, "email.verify.subject"), body); err != nil {
 		log.Printf("verification email: send to %s failed: %v", user.Email, err)
 	}
 }
@@ -126,7 +132,10 @@ func requestVerificationHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "already verified"})
 		return
 	}
-	safeGo("sendVerificationEmail", func() { sendVerificationEmail(user) })
+	// Request-driven: the client states its language on the request, which is
+	// fresher than whatever the account last synced.
+	locale := requestLocale(r.Context())
+	safeGo("sendVerificationEmail", func() { sendVerificationEmailIn(user, locale) })
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -157,6 +166,7 @@ func verifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	locale := requestLocale(r.Context())
 	q := store.New(dbPool)
 	et, err := q.GetValidEmailToken(r.Context(), store.GetValidEmailTokenParams{
 		TokenHash: hashEmailToken(token), Purpose: "verify",
@@ -165,7 +175,8 @@ func verifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, "<html><body><h2>Link expired or already used</h2><p>Request a new verification email from your account.</p></body></html>")
+			fmt.Fprintf(w, "<html lang=%q><body><h2>%s</h2><p>%s</p></body></html>",
+				locale, tr(locale, "page.verify.expired.title"), tr(locale, "page.verify.expired.body"))
 			return
 		}
 		writeJSONError(w, http.StatusNotFound, "invalid or expired token")
@@ -181,7 +192,11 @@ func verifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, "<html><body><h2>Email verified ✓</h2><p>You're all set — head back to <a href=%q>Golden Tempo Travel</a>.</p></body></html>", publicBaseURL())
+		// The brand link is substituted as markup so the sentence around it can
+		// reorder per language without splitting the anchor.
+		homeLink := fmt.Sprintf("<a href=%q>Golden Tempo Travel</a>", publicBaseURL())
+		fmt.Fprintf(w, "<html lang=%q><body><h2>%s</h2><p>%s</p></body></html>",
+			locale, tr(locale, "page.verify.ok.title"), tr(locale, "page.verify.ok.body", homeLink))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "verified"})
@@ -207,6 +222,7 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	locale := requestLocale(r.Context())
 	q := store.New(dbPool)
 	user, err := q.GetUserByEmail(r.Context(), email)
 	if err == nil {
@@ -227,12 +243,8 @@ func requestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("password reset: could not issue token for %s: %v", u.Email, err)
 				return
 			}
-			body := "Someone (hopefully you) asked to reset your Golden Tempo Travel password.\n\n" +
-				"Reset your password: " + publicAppURL("reset/", token) + "\n\n" +
-				"If the link doesn't open, use this reset code instead:\n\n    " + token + "\n\n" +
-				"In the app, choose \"Forgot password?\", paste the code, and pick a new password. " +
-				"The link and code are valid for 1 hour and work once. If this wasn't you, ignore this email — your password is unchanged."
-			if err := emailSend(u.Email, "Reset your password — Golden Tempo Travel", body); err != nil {
+			body := tr(locale, "email.reset.body", publicAppURL("reset/", token), token)
+			if err := emailSend(u.Email, tr(locale, "email.reset.subject"), body); err != nil {
 				log.Printf("password reset: send to %s failed: %v", u.Email, err)
 			}
 		})

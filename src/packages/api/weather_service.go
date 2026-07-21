@@ -98,8 +98,10 @@ func (s *WeatherService) geocode(ctx context.Context, city string) (geoResult, e
 			Longitude float64 `json:"longitude"`
 		} `json:"results"`
 	}
-	u := fmt.Sprintf("%s/v1/search?name=%s&count=1&language=en&format=json",
-		s.GeocodeBaseURL, url.QueryEscape(city))
+	// Geocoding language was hardcoded to English before i18n; the traveler's
+	// locale now decides how the matched place is named (specs/i18n-spanish).
+	u := fmt.Sprintf("%s/v1/search?name=%s&count=1&language=%s&format=json",
+		s.GeocodeBaseURL, url.QueryEscape(city), requestLocale(ctx))
 	if err := s.getJSON(ctx, u, &out); err != nil {
 		return geoResult{}, err
 	}

@@ -107,14 +107,34 @@ class BookingsSection extends StatelessWidget {
 
   /// Calendar-event title for a segment, mirroring the Go export's
   /// `capitalize(mode) + ": " + segmentRoute(s)`.
-  static String _segmentCalendarTitle(TripSegment s) {
-    final mode = s.mode.isEmpty
-        ? 'Trip'
-        : s.mode[0].toUpperCase() + s.mode.substring(1);
+  /// Calendar event title for a transport segment.
+  ///
+  /// This MUST stay byte-identical to the Go `.ics` export
+  /// (calendar_handler.go `segmentEventFieldsIn`): the traveler picks between
+  /// a Google Calendar link built here and an `.ics` file built there for the
+  /// SAME event, so any divergence shows up as two differently-named entries.
+  /// That is why the empty-route case falls back to the mode label rather than
+  /// returning the mode alone, matching Go's `segmentRouteIn`.
+  static String _segmentCalendarTitle(AppLocalizations l10n, TripSegment s) {
+    final mode = _calendarModeLabel(l10n, s.mode);
     final route =
         [s.origin, s.destination].whereType<String>().join(' → ');
-    return route.isEmpty ? mode : '$mode: $route';
+    return l10n.calendarSegmentTitle(mode, route.isEmpty ? mode : route);
   }
+
+  /// Mirrors Go's `localizedMode`: known modes translate, anything else keeps
+  /// its raw value capitalized.
+  static String _calendarModeLabel(AppLocalizations l10n, String mode) =>
+      switch (mode.trim().toLowerCase()) {
+        'flight' => l10n.calendarModeFlight,
+        'train' => l10n.calendarModeTrain,
+        'bus' => l10n.calendarModeBus,
+        'car' => l10n.calendarModeCar,
+        'ferry' => l10n.calendarModeFerry,
+        'other' => l10n.calendarModeOther,
+        '' => '',
+        _ => mode[0].toUpperCase() + mode.substring(1),
+      };
 
   static IconData _modeIcon(String mode) => switch (mode) {
         'flight' => Icons.flight_takeoff,
@@ -329,7 +349,7 @@ class BookingsSection extends StatelessWidget {
                                 kind: 'stay',
                                 eventId: a.id,
                                 analyticsKind: 'stay',
-                                title: 'Stay: ${a.name}',
+                                title: l10n.calendarStayTitle(a.name),
                                 start: range.start,
                                 endExclusive: range.endExclusive,
                                 location: a.address,
@@ -429,7 +449,7 @@ class BookingsSection extends StatelessWidget {
                                 kind: 'segment',
                                 eventId: s.id,
                                 analyticsKind: 'transport',
-                                title: _segmentCalendarTitle(s),
+                                title: _segmentCalendarTitle(l10n, s),
                                 start: range.start,
                                 endExclusive: range.endExclusive,
                                 details: s.notes,
