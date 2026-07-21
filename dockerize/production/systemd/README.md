@@ -29,7 +29,7 @@ journalctl -u goldentempo-backup.service -n 50   # last run's output
 The service is `Type=oneshot`; the timer fires it daily ~04:10 with
 `Persistent=true` (a backup missed while the host was off runs on next boot).
 Knobs come from `EnvironmentFile=/opt/goldentempo/.env` — see the `backup.sh`
-header and the Backups block in `.env.sample` (`BACKUP_DIR`, `RETENTION_DAYS`,
+header and the Backups block in `.env.sample` (`BACKUP_DIR`, `RETENTION_COUNT`,
 `RCLONE_REMOTE`, `BACKUP_HEARTBEAT_FILE`, `BACKUP_STALE_HOURS`).
 
 ## Verify the backups actually restore
