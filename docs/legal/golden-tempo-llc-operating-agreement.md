@@ -10,14 +10,15 @@
 > rise (outside investment, Phase 2 merchant sales, or a second member).
 
 This Operating Agreement (the "Agreement") is made effective as of
-__________________, 20____ (the "Effective Date") by **Brian Dowe** (the
+**July 5, 2026** (the "Effective Date") by **Brian Dowe** (the
 "Member"), the sole member of **Golden Tempo LLC** (the "Company").
 
 ## Article I — Formation
 
 1.1 **Formation.** The Company was formed as a New Jersey limited liability
 company by the filing of a Certificate of Formation with the New Jersey
-Division of Revenue and Enterprise Services on __________________, 20____.
+Division of Revenue and Enterprise Services on **July 5, 2026**
+(Entity ID 0451490397).
 
 1.2 **Name.** The business of the Company shall be conducted under the name
 "Golden Tempo LLC" or such alternate names (including registered DBAs such as
