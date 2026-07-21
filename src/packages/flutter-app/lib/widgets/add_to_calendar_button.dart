@@ -28,6 +28,10 @@ class AddToCalendarButton extends ConsumerWidget {
   final DateTime endExclusive;
   final String? location;
   final String? details;
+
+  /// All-day (the default) vs a timed event — mirror of the .ics semantics;
+  /// pass the range resolver's `allDay`.
+  final bool allDay;
   final bool appleEnabled;
 
   const AddToCalendarButton({
@@ -41,6 +45,7 @@ class AddToCalendarButton extends ConsumerWidget {
     required this.endExclusive,
     this.location,
     this.details,
+    this.allDay = true,
     this.appleEnabled = false,
   });
 
@@ -51,6 +56,7 @@ class AddToCalendarButton extends ConsumerWidget {
         title: title,
         start: start,
         endExclusive: endExclusive,
+        allDay: allDay,
         location: location,
         details: details,
       ),

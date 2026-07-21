@@ -1725,22 +1725,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
-  /// Google-Calendar details line for an itinerary item, mirroring the Go
-  /// export's icsItemDescription: time-of-day + local attribution.
-  String _itemCalendarDetails(ItineraryItem item) {
-    final tod = item.timeOfDay;
-    final rec = item.localSourceName?.trim();
-    return [
-      if (tod != null && tod.isNotEmpty)
-        tod[0].toUpperCase() + tod.substring(1),
-      if (rec != null && rec.isNotEmpty) context.l10n.tripRecommendedBy(rec),
-    ].join(' · ');
-  }
-
   /// Opens a prefilled Google Calendar event for one itinerary item — a pure
-  /// URL, so no token mint and no offline gate.
+  /// URL, so no token mint and no offline gate. Timed when the item carries a
+  /// time_of_day, matching the .ics.
   Future<void> _addItemToGoogleCalendar(ItineraryItem item) async {
-    final range = itemCalendarRange(_trip?.startDate, item.day);
+    final range = itemCalendarRange(_trip?.startDate, item.day,
+        timeOfDay: item.timeOfDay);
     if (range == null) return;
     await trackedLaunchUrl(
       context,
@@ -1748,8 +1738,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         title: item.name,
         start: range.start,
         endExclusive: range.endExclusive,
+        allDay: range.allDay,
         location: item.address,
-        details: _itemCalendarDetails(item),
+        details: itemCalendarDetails(context.l10n, item),
       ),
       provider: 'google_calendar',
       surface: 'event_calendar',

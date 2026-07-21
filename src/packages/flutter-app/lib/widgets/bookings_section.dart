@@ -352,8 +352,9 @@ class BookingsSection extends StatelessWidget {
                                 title: l10n.calendarStayTitle(a.name),
                                 start: range.start,
                                 endExclusive: range.endExclusive,
+                                allDay: range.allDay,
                                 location: a.address,
-                                details: a.provider,
+                                details: stayCalendarDetails(l10n, a),
                                 appleEnabled: appleCalendarEnabled,
                               ),
                             if (a.url != null && a.url!.isNotEmpty)
@@ -452,7 +453,8 @@ class BookingsSection extends StatelessWidget {
                                 title: _segmentCalendarTitle(l10n, s),
                                 start: range.start,
                                 endExclusive: range.endExclusive,
-                                details: s.notes,
+                                allDay: range.allDay,
+                                details: segmentCalendarDetails(l10n, s),
                                 appleEnabled: appleCalendarEnabled,
                               ),
                             if (s.url != null && s.url!.isNotEmpty)

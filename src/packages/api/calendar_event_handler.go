@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -48,32 +47,28 @@ func calendarEventHandler(w http.ResponseWriter, r *http.Request) {
 // renders a one-VEVENT VCALENDAR. ok=false for an unknown kind, a missing id,
 // or an undated event — callers answer one opaque 404 for all of them.
 func buildSingleEventICS(locale string, d exportData, kind string, id uuid.UUID) (body, filename string, ok bool) {
-	var (
-		uid, summary, location, description string
-		start, end                          time.Time
-	)
+	// The UID comes from the resolver, so the dedupe scheme has exactly one
+	// definition shared with the whole-trip export.
+	var ev icsEvent
 	switch kind {
 	case "stay":
 		for _, a := range d.Accommodations {
 			if a.ID == id {
-				start, end, summary, location, ok = stayEventFieldsIn(locale, a)
-				uid = "acc-" + a.ID.String()
+				ev, ok = stayEventFieldsIn(locale, a)
 				break
 			}
 		}
 	case "segment":
 		for _, s := range d.Segments {
 			if s.ID == id {
-				start, end, summary, description, ok = segmentEventFieldsIn(locale, s)
-				uid = "seg-" + s.ID.String()
+				ev, ok = segmentEventFieldsIn(locale, s)
 				break
 			}
 		}
 	case "item":
 		for _, it := range d.Items {
 			if it.ID == id {
-				start, end, summary, location, description, ok = itemEventFieldsIn(locale, d.Trip, it)
-				uid = "item-" + it.ID.String()
+				ev, ok = itemEventFieldsIn(locale, d.Trip, it)
 				break
 			}
 		}
@@ -88,8 +83,10 @@ func buildSingleEventICS(locale string, d exportData, kind string, id uuid.UUID)
 	b.line("PRODID:-//Golden Tempo Travel//Trip Export//EN")
 	b.line("CALSCALE:GREGORIAN")
 	b.line("METHOD:PUBLISH")
-	stamp := time.Now().UTC().Format("20060102T150405Z")
-	b.event(stamp, uid, start, end, summary, location, description)
+	// No X-WR-CALNAME here: on a single-event file some clients offer to create
+	// a whole new calendar named after that one event.
+	stamp := icsNow().UTC().Format("20060102T150405Z")
+	b.event(stamp, ev)
 	b.line("END:VCALENDAR")
-	return b.String(), tripSlug(summary), true
+	return b.String(), tripSlug(ev.Summary), true
 }
