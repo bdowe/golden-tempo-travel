@@ -80,3 +80,44 @@ func notifyInviteAccepted(ownerID uuid.UUID, accepter store.User, trip store.Tri
 		log.Printf("notifications: invite_accepted for owner %s failed: %v", ownerID, err)
 	}
 }
+
+// notifyShareJoined tells a trip owner that someone redeemed a share link.
+// Fired only on the join that actually created the membership (the upsert
+// reports inserted), so re-opening the link never re-notifies. The role rides
+// in the payload: viewer joins read as "is now following", editor joins as
+// "joined".
+func notifyShareJoined(ownerID uuid.UUID, joiner store.User, trip store.Trip, role string) {
+	if dbPool == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// As in notifyInviteAccepted: the fallback label is read by the OWNER, so
+	// it renders in the owner's stored locale; the other values are payload
+	// keys and traveler data.
+	locale := defaultLocale
+	if owner, err := store.New(dbPool).GetUserByID(ctx, ownerID); err == nil {
+		locale = localeOrDefault(owner.Locale)
+	}
+	name := tr(locale, "notif.aTraveler")
+	if joiner.DisplayName != nil && *joiner.DisplayName != "" {
+		name = *joiner.DisplayName
+	}
+	payload, err := json.Marshal(map[string]string{
+		"joiner_name": name,
+		"trip_title":  trip.Title,
+		"role":        role,
+	})
+	if err != nil {
+		return
+	}
+	if _, err := store.New(dbPool).InsertNotification(ctx, store.InsertNotificationParams{
+		UserID:  ownerID,
+		Type:    "share_joined",
+		Payload: payload,
+		TripID:  pgtype.UUID{Bytes: trip.ID, Valid: true},
+	}); err != nil {
+		log.Printf("notifications: share_joined for owner %s failed: %v", ownerID, err)
+	}
+}

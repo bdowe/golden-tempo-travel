@@ -1,13 +1,15 @@
 -- name: CreateTripCollaborator :one
 -- Idempotent join, upgrade-never-downgrade: redeeming an editor link (or
 -- invite) upgrades an existing viewer membership; redeeming a viewer link as
--- an editor keeps editor. Returns the resulting role.
+-- an editor keeps editor. Returns the resulting role plus whether this call
+-- created the membership (xmax = 0 only on a fresh insert), so callers can
+-- fire first-join-only side effects without re-notifying on every re-redeem.
 INSERT INTO trip_collaborators (chat_id, owner_id, user_id, role)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL
 DO UPDATE SET role = CASE WHEN EXCLUDED.role = 'editor' THEN 'editor'
                           ELSE trip_collaborators.role END
-RETURNING role;
+RETURNING role, (xmax = 0)::boolean AS inserted;
 
 -- name: ListCollaboratorsByOwnerAndChat :many
 SELECT c.user_id, c.created_at, c.role, u.email,

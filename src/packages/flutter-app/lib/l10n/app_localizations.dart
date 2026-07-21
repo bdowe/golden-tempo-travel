@@ -3626,6 +3626,12 @@ abstract class AppLocalizations {
   /// **'{who} joined \"{trip}\"'**
   String notifJoinedTrip(String who, String trip);
 
+  /// No description provided for @notifFollowedTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'{who} is now following \"{trip}\"'**
+  String notifFollowedTrip(String who, String trip);
+
   /// No description provided for @notifEditedTrip.
   ///
   /// In en, this message translates to:

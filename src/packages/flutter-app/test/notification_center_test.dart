@@ -185,6 +185,40 @@ void main() {
     expect(find.text('Bob joined "Lisbon"'), findsOneWidget);
   });
 
+  testWidgets('share_joined viewer renders "<who> is now following <trip>"',
+      (tester) async {
+    await _pump(tester, [
+      const AppNotification(
+        id: 's1',
+        type: 'share_joined',
+        payload: {
+          'joiner_name': 'Cara',
+          'trip_title': 'Naxos',
+          'role': 'viewer',
+        },
+        createdAt: '2026-07-16T12:00:00Z',
+      ),
+    ]);
+    expect(find.text('Cara is now following "Naxos"'), findsOneWidget);
+  });
+
+  testWidgets('share_joined editor renders "<who> joined <trip>"',
+      (tester) async {
+    await _pump(tester, [
+      const AppNotification(
+        id: 's2',
+        type: 'share_joined',
+        payload: {
+          'joiner_name': 'Dan',
+          'trip_title': 'Naxos',
+          'role': 'editor',
+        },
+        createdAt: '2026-07-16T12:00:00Z',
+      ),
+    ]);
+    expect(find.text('Dan joined "Naxos"'), findsOneWidget);
+  });
+
   testWidgets('unknown type with no title humanizes the type name',
       (tester) async {
     await _pump(tester, [

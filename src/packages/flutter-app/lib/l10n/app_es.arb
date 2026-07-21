@@ -588,6 +588,7 @@
   "notifSomeone": "Alguien",
   "notifACollaborator": "Un colaborador",
   "notifJoinedTrip": "{who} se unió a «{trip}»",
+  "notifFollowedTrip": "{who} ahora sigue «{trip}»",
   "notifEditedTrip": "{who} editó «{trip}»",
   "sharedTitle": "Viaje compartido",
   "sharedUnavailableTitle": "Este enlace no está disponible",

@@ -83,20 +83,28 @@ func joinSharedTripHandler(w http.ResponseWriter, r *http.Request) {
 		// Viewer tokens create a viewer "follow"; editor tokens (and an
 		// editor redeeming any link) yield editor — the upsert never
 		// downgrades.
-		role, err := store.New(dbPool).CreateTripCollaborator(r.Context(), store.CreateTripCollaboratorParams{
+		row, err := store.New(dbPool).CreateTripCollaborator(r.Context(), store.CreateTripCollaboratorParams{
 			ChatID: share.ChatID, OwnerID: share.OwnerID, UserID: user.ID, Role: share.Role,
 		})
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "could not join trip")
 			return
 		}
-		access = role
+		access = row.Role
 		safeGo("recordEvent", func() {
 			recordEvent(user.ID, "collaborator_joined", &trip.ID, map[string]any{
 				"owner_id": share.OwnerID.String(),
-				"role":     role,
+				"role":     row.Role,
 			})
 		})
+		// Tell the owner on the first join only — the idempotent upsert
+		// reports whether this call created the membership, so re-opening
+		// the link (or the client retrying) never re-notifies.
+		if row.Inserted {
+			safeGo("notifyShareJoined", func() {
+				notifyShareJoined(share.OwnerID, user, trip, row.Role)
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, JoinSharedTripResponse{TripID: trip.ID.String(), Access: access})
 }
