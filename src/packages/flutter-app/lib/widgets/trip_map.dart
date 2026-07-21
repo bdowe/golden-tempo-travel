@@ -299,27 +299,24 @@ class _TripMapState extends State<TripMap> {
     // Center on the selected place when one is set (e.g. the map was just
     // (re)built after a list tap); otherwise fit the whole trip.
     final MapOptions options = selected != null
-        ? MapOptions(
+        ? appMapOptions(
             initialCenter: selected,
             initialZoom: 15,
             interactionOptions: interaction,
-            backgroundColor: appMapBackground,
           )
         : fitPoints.length == 1
             // Single point: bounds collapse, so center with a sensible zoom.
-            ? MapOptions(
+            ? appMapOptions(
                 initialCenter: fitPoints.first,
                 initialZoom: 13,
                 interactionOptions: interaction,
-                backgroundColor: appMapBackground,
               )
-            : MapOptions(
+            : appMapOptions(
                 initialCameraFit: CameraFit.bounds(
                   bounds: LatLngBounds.fromPoints(fitPoints),
                   padding: _fitPadding,
                 ),
                 interactionOptions: interaction,
-                backgroundColor: appMapBackground,
               );
 
     return Stack(
