@@ -188,7 +188,7 @@ func TestLowestOffer(t *testing.T) {
 func TestBuildAlertEmail(t *testing.T) {
 	t.Setenv("PUBLIC_BASE_URL", "https://app.example.com")
 	a := alertFixture(func(a *store.PriceAlert) { a.TargetPrice = f64(450) })
-	subject, body := buildAlertEmail(a, FlightOffer{Price: 412, Currency: "USD", Airlines: []string{"Air France"}}, pgtype.Date{})
+	subject, body := buildAlertEmail("en", a, FlightOffer{Price: 412, Currency: "USD", Airlines: []string{"Air France"}}, pgtype.Date{})
 
 	if !strings.Contains(subject, "Target price hit") || !strings.Contains(subject, "BOS → CDG") {
 		t.Fatalf("subject = %q", subject)

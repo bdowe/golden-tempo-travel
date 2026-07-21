@@ -120,24 +120,32 @@ func createTripInviteHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not create invite")
 		return
 	}
+	// The invite is read by the RECIPIENT, so their stored language wins when
+	// they already have an account. Strangers have no stored locale, so the
+	// inviter's request locale is the only signal there is. Resolved here (in
+	// the request) rather than in the goroutine, which has no context; the
+	// lookup can't leak account existence because the response is unchanged.
+	inviteLocale := requestLocale(r.Context())
+	if recipient, err := q.GetUserByEmail(r.Context(), email); err == nil {
+		inviteLocale = localeOrDefault(recipient.Locale)
+	}
 	// Fire-and-forget like sendVerificationEmail; degraded SMTP logs the
 	// body, and a send failure never fails the request.
-	safeGo("sendInviteEmail", func() { sendInviteEmail(user, invite.Email, token, trip.Title) })
+	safeGo("sendInviteEmail", func() { sendInviteEmail(user, invite.Email, token, trip.Title, inviteLocale) })
 	safeGo("recordEvent", func() { recordEvent(user.ID, "invite_sent", &trip.ID, nil) })
 	writeJSON(w, http.StatusCreated, toInviteResponse(invite))
 }
 
-// sendInviteEmail composes and sends the invite link.
-func sendInviteEmail(owner store.User, to, token, tripTitle string) {
-	ownerName := "A traveler"
+// sendInviteEmail composes and sends the invite link, in the recipient's
+// language.
+func sendInviteEmail(owner store.User, to, token, tripTitle, locale string) {
+	ownerName := tr(locale, "email.invite.default_sender")
 	if owner.DisplayName != nil && *owner.DisplayName != "" {
 		ownerName = *owner.DisplayName
 	}
 	link := publicAppURL("invite/", token)
-	body := ownerName + " invited you to co-plan \"" + tripTitle + "\" on Golden Tempo Travel.\n\n" +
-		"Open this link to see the trip and join as a co-planner:\n\n" + link + "\n\n" +
-		"The link works once and expires in 7 days. If you weren't expecting this, you can ignore this email."
-	if err := emailService.Send(to, ownerName+" invited you to co-plan \""+tripTitle+"\"", body); err != nil {
+	body := tr(locale, "email.invite.body", ownerName, tripTitle, link)
+	if err := emailService.Send(to, tr(locale, "email.invite.subject", ownerName, tripTitle), body); err != nil {
 		log.Printf("invite email: send to %s failed: %v", to, err)
 	}
 }

@@ -120,6 +120,10 @@ func (s *EventsService) SearchEvents(ctx context.Context, city, startDate, endDa
 	params.Set("startDateTime", startDT)
 	params.Set("endDateTime", endDT)
 	params.Set("sort", "date,asc")
+	// Ticketmaster returns localized names/descriptions where it has them; it
+	// falls back to the source language on its own, so a thin Spanish catalog
+	// degrades rather than emptying results (specs/i18n-spanish).
+	params.Set("locale", requestLocale(ctx)+",*")
 	// Over-fetch: Ticketmaster's date filter is loose and surfaces ongoing/flex
 	// runs whose start date predates the window, so we fetch a wider page and
 	// post-filter to the trip window below before capping at maxEvents.

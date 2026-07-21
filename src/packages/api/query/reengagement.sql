@@ -13,7 +13,10 @@ SELECT t.id,
        COALESCE(t.chat_id, t.id::text)::text AS lineage_key,
        u.email,
        u.display_name,
-       u.reminders_opt_out
+       u.reminders_opt_out,
+       -- The email is rendered with no request context, so the recipient's
+       -- stored language rides along with the row (NULL => English).
+       u.locale
 FROM trips t
 JOIN users u ON u.id = t.user_id
 WHERE t.status = 'planned'
@@ -57,7 +60,10 @@ ON CONFLICT (user_id, trip_lineage_key, kind) DO NOTHING;
 SELECT u.id,
        u.email,
        u.display_name,
-       u.nudges_opt_out
+       u.nudges_opt_out,
+       -- Same as ListTripsForReminder: request-less job, so the language comes
+       -- from the row (NULL => English).
+       u.locale
 FROM users u
 WHERE (u.last_weekly_nudge_at IS NULL OR u.last_weekly_nudge_at < sqlc.arg('cutoff'))
   AND (

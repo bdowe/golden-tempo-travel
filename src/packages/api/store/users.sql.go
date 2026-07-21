@@ -12,8 +12,8 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, password_hash, display_name)
-VALUES ($1, $2, $3)
+INSERT INTO users (email, password_hash, display_name, locale)
+VALUES ($1, $2, $3, $4)
 RETURNING id, created_at, updated_at, email, password_hash, display_name, is_admin, onboarded_at, email_verified_at, reminders_opt_out, nudges_opt_out, last_weekly_nudge_at, locale
 `
 
@@ -21,10 +21,19 @@ type CreateUserParams struct {
 	Email        string  `json:"email"`
 	PasswordHash *string `json:"password_hash"`
 	DisplayName  *string `json:"display_name"`
+	Locale       *string `json:"locale"`
 }
 
+// locale is the language negotiated on the signup request, so the very first
+// email (verification) is already in the traveler's language rather than
+// waiting for the client's first sync (specs/i18n-spanish).
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash, arg.DisplayName)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Email,
+		arg.PasswordHash,
+		arg.DisplayName,
+		arg.Locale,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,

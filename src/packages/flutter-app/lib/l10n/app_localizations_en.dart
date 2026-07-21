@@ -2763,4 +2763,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String flightStopsSplit(String outbound, String inbound) {
     return '$outbound / $inbound';
   }
+
+  @override
+  String calendarStayTitle(String name) {
+    return 'Stay: $name';
+  }
+
+  @override
+  String calendarSegmentTitle(String mode, String route) {
+    return '$mode: $route';
+  }
+
+  @override
+  String get calendarModeFlight => 'Flight';
+
+  @override
+  String get calendarModeTrain => 'Train';
+
+  @override
+  String get calendarModeBus => 'Bus';
+
+  @override
+  String get calendarModeCar => 'Car';
+
+  @override
+  String get calendarModeFerry => 'Ferry';
+
+  @override
+  String get calendarModeOther => 'Other';
 }

@@ -159,8 +159,10 @@ func findOrCreateGoogleUser(r *http.Request, claims googleClaims) (store.User, e
 		if displayName == "" {
 			displayName = defaultDisplayName(email)
 		}
+		signupLocale := requestLocale(ctx)
 		user, err = q.CreateUser(ctx, store.CreateUserParams{
 			Email: email, PasswordHash: nil, DisplayName: &displayName,
+			Locale: &signupLocale,
 		})
 		if err != nil {
 			return store.User{}, err

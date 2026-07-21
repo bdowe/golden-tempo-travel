@@ -303,7 +303,10 @@ func runReviewTripTool(s *planSession, input json.RawMessage) (string, bool) {
 		br = &resp
 	}
 
-	findings := reviewTrip(s.ctx, data,
+	// The agent narrates these findings back to the traveler, so they are
+	// generated in the traveler's language — the same locale that drives the
+	// response-language instruction (specs/i18n-spanish).
+	findings := reviewTrip(s.ctx, requestLocale(s.ctx), data,
 		reviewOptions{CheckHours: false, Budget: br},
 		reviewDeps{Weather: weatherService})
 	return formatReviewFindings(findings), false

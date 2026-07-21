@@ -109,27 +109,27 @@ Also in PR 5:
 
 ## PR 6 — Server-side Spanish + AI + providers
 
-- [ ] Catalog entries for all server-rendered strings
-- [ ] Email builders take a `locale` param: verification, reset, inline verify
+- [x] Catalog entries for all server-rendered strings
+- [x] Email builders take a `locale` param: verification, reset, inline verify
       pages, invites, trip reminders, weekly nudges, price alerts
-- [ ] Email jobs read `users.locale` (queries join the column)
-- [ ] `trip_review.go` — findings, fix labels, localized dates
-- [ ] `print_view_handler.go` + `share_preview_handler.go` — `<html lang>`,
+- [x] Email jobs read `users.locale` (queries join the column)
+- [x] `trip_review.go` — findings, fix labels, localized dates
+- [x] `print_view_handler.go` + `share_preview_handler.go` — `<html lang>`,
       labels, `?lang=` param; `calendar_handler.go` — time-of-day labels
-- [ ] **Calendar event titles must flip client- and server-side together.**
+- [x] **Calendar event titles must flip client- and server-side together.**
       `bookings_section.dart` builds Google-link titles (`Stay: {name}`, the
       transport `_segmentCalendarTitle`) that deliberately mirror the Go `.ics`
       export. PR 4 left them in English on purpose: translating only the client
       would make the Google link disagree with the downloaded `.ics`. Localize
       both in this PR, in one change.
-- [ ] `notifications_writer.go` — fallback actor string
-- [ ] `plan_handler.go` — Spanish instruction appended only when locale != en
+- [x] `notifications_writer.go` — fallback actor string
+- [x] `plan_handler.go` — Spanish instruction appended only when locale != en
       (`basePrompt` and `plan_tool_registry.go` untouched)
-- [ ] [P] Provider language params: `places_service.go`, `events_service.go`,
+- [x] [P] Provider language params: `places_service.go`, `events_service.go`,
       `weather_service.go` (un-hardcode `language=en`)
-- [ ] Tests: es email builders, Spanish trip-review integration test, and the
+- [x] Tests: es email builders, Spanish trip-review integration test, and the
       **English prompt byte-stability** test via the fake-Anthropic harness
-- [ ] `make smoke`
+- [x] `make smoke`
 
 ## Deliberately not localized
 
@@ -155,6 +155,24 @@ Also in PR 5:
 - [ ] Copy change (deliberately deferred from PR 3): the budget/pace/interest
       chips render lowercase `budget`/`mid`/`luxury`. Capitalizing them is an
       English-visible change, so it does not belong in an extraction PR.
+
+**PR 6 notes:**
+- 131 catalog keys. `TestSystemPromptEnglishUnchanged` is the load-bearing test:
+  English (and no-header, and unsupported-locale) requests must produce a prompt
+  with no language instruction, and Spanish must be exactly the English prompt
+  plus a suffix, so the cached prefix provably never moved.
+- Signup now persists the negotiated locale in `CreateUser` (email + both SSO
+  paths), so the very first verification email is already in the right language
+  instead of waiting for the client's first sync.
+- Calendar titles are a cross-language contract, pinned from BOTH sides:
+  `api/calendar_event_test.go` and `flutter-app/test/calendar_title_parity_test.dart`.
+  Unified the Spanish ferry term ("ferri") across the three mode label sets.
+- Email dates stay ISO (`2026-09-01`). Localizing them would change the ENGLISH
+  body, which the character-identical rule forbids; ISO is unambiguous in both
+  languages. A deliberate copy change, not an extraction change.
+- Still English by design: `FindingFix.PackingItem` values (they are written to
+  the packing list as data — localizing belongs to that write path), and
+  `weather_service.go`'s `summarizeWeather` string, which is agent-facing.
 
 ## PR 7 — Enablement
 

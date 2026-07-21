@@ -280,7 +280,7 @@
   "tripTravelModeTooltip": "Modo de viaje",
   "tripModeTrain": "Tren",
   "tripModeBus": "Autobús",
-  "tripModeFerry": "Ferry",
+  "tripModeFerry": "Ferri",
   "tripUpdateFailed": "Error al actualizar: {error}",
   "tripDeleteFailed": "Error al eliminar: {error}",
   "tripReorderFailed": "No se pudo reordenar: {error}",
@@ -785,5 +785,13 @@
   "appMapCredits": "Créditos del mapa",
   "flightStops": "{count, plural, =0{Sin escalas} =1{1 escala} other{{count} escalas}}",
   "flightStopsEachWay": "{stops} por trayecto",
-  "flightStopsSplit": "{outbound} / {inbound}"
+  "flightStopsSplit": "{outbound} / {inbound}",
+  "calendarStayTitle": "Alojamiento: {name}",
+  "calendarSegmentTitle": "{mode}: {route}",
+  "calendarModeFlight": "Vuelo",
+  "calendarModeTrain": "Tren",
+  "calendarModeBus": "Autobús",
+  "calendarModeCar": "Coche",
+  "calendarModeFerry": "Ferri",
+  "calendarModeOther": "Otro"
 }

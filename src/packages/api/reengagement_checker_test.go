@@ -20,7 +20,7 @@ func TestBuildTripReminderEmail(t *testing.T) {
 	unsub := "https://app.example.com/api/v1/unsubscribe/tok"
 
 	// 3-days-out variant.
-	subject, body := buildTripReminderEmail(reminderKindSoon, "Athens Hop", "2026-09-01", tripURL, unsub)
+	subject, body := buildTripReminderEmail("en", reminderKindSoon, "Athens Hop", "2026-09-01", tripURL, unsub)
 	if !strings.Contains(subject, "Athens Hop") || !strings.Contains(subject, "3 days") {
 		t.Fatalf("soon subject = %q", subject)
 	}
@@ -31,7 +31,7 @@ func TestBuildTripReminderEmail(t *testing.T) {
 	}
 
 	// Day-of variant.
-	subject, body = buildTripReminderEmail(reminderKindToday, "Athens Hop", "2026-09-01", tripURL, unsub)
+	subject, body = buildTripReminderEmail("en", reminderKindToday, "Athens Hop", "2026-09-01", tripURL, unsub)
 	if !strings.Contains(subject, "starts today") {
 		t.Fatalf("today subject = %q", subject)
 	}
@@ -44,7 +44,7 @@ func TestBuildWeeklyNudgeEmail(t *testing.T) {
 	appURL := "https://app.example.com/"
 	unsub := "https://app.example.com/api/v1/unsubscribe/tok"
 
-	subject, body := buildWeeklyNudgeEmail("Brian", appURL, unsub)
+	subject, body := buildWeeklyNudgeEmail("en", "Brian", appURL, unsub)
 	if !strings.Contains(subject, "left off") {
 		t.Fatalf("subject = %q", subject)
 	}
@@ -55,7 +55,7 @@ func TestBuildWeeklyNudgeEmail(t *testing.T) {
 	}
 
 	// Empty name falls back to a generic greeting.
-	_, body = buildWeeklyNudgeEmail("", appURL, unsub)
+	_, body = buildWeeklyNudgeEmail("en", "", appURL, unsub)
 	if !strings.Contains(body, "Hi there") {
 		t.Fatalf("generic greeting missing:\n%s", body)
 	}

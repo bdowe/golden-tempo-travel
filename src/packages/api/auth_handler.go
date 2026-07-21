@@ -264,10 +264,12 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		displayName = &d
 	}
 
+	signupLocale := requestLocale(r.Context())
 	user, err := q.CreateUser(r.Context(), store.CreateUserParams{
 		Email:        req.Email,
 		PasswordHash: &hash,
 		DisplayName:  displayName,
+		Locale:       &signupLocale,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not create account")
@@ -283,7 +285,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Fire-and-forget, like the profile distiller: registration never blocks
 	// or fails on email delivery or analytics.
-	safeGo("sendVerificationEmail", func() { sendVerificationEmail(user) })
+	safeGo("sendVerificationEmail", func() { sendVerificationEmailIn(user, signupLocale) })
 	safeGo("recordEvent", func() { recordEvent(user.ID, "user_registered", nil, nil) })
 	writeJSON(w, http.StatusCreated, AuthResponse{User: toUserResponse(user), Token: session.ID})
 }

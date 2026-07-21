@@ -48,7 +48,19 @@ func notifyInviteAccepted(ownerID uuid.UUID, accepter store.User, trip store.Tri
 	if dbPool == nil {
 		return
 	}
-	name := "A traveler"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// There is no request here, and the row is read by the OWNER — so the
+	// fallback label is written in the owner's stored locale, not the
+	// accepter's. Only this one value is display text; "accepter_name" and
+	// "trip_title" are payload keys the client renders around, and trip.Title
+	// is traveler data.
+	locale := defaultLocale
+	if owner, err := store.New(dbPool).GetUserByID(ctx, ownerID); err == nil {
+		locale = localeOrDefault(owner.Locale)
+	}
+	name := tr(locale, "notif.aTraveler")
 	if accepter.DisplayName != nil && *accepter.DisplayName != "" {
 		name = *accepter.DisplayName
 	}
@@ -59,8 +71,6 @@ func notifyInviteAccepted(ownerID uuid.UUID, accepter store.User, trip store.Tri
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	if _, err := store.New(dbPool).InsertNotification(ctx, store.InsertNotificationParams{
 		UserID:  ownerID,
 		Type:    "invite_accepted",

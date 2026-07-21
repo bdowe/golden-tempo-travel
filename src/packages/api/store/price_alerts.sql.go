@@ -166,7 +166,7 @@ func (q *Queries) GetPriceAlertForUser(ctx context.Context, arg GetPriceAlertFor
 }
 
 const listDuePriceAlerts = `-- name: ListDuePriceAlerts :many
-SELECT price_alerts.id, price_alerts.user_id, price_alerts.trip_id, price_alerts.origin, price_alerts.destination, price_alerts.depart_date, price_alerts.return_date, price_alerts.cabin_class, price_alerts.adults, price_alerts.target_price, price_alerts.currency, price_alerts.last_checked_price, price_alerts.last_checked_at, price_alerts.last_notified_price, price_alerts.last_notified_at, price_alerts.status, price_alerts.created_at, price_alerts.updated_at, price_alerts.baseline_price, price_alerts.flex_days, price_alerts.baggage, users.email AS owner_email
+SELECT price_alerts.id, price_alerts.user_id, price_alerts.trip_id, price_alerts.origin, price_alerts.destination, price_alerts.depart_date, price_alerts.return_date, price_alerts.cabin_class, price_alerts.adults, price_alerts.target_price, price_alerts.currency, price_alerts.last_checked_price, price_alerts.last_checked_at, price_alerts.last_notified_price, price_alerts.last_notified_at, price_alerts.status, price_alerts.created_at, price_alerts.updated_at, price_alerts.baseline_price, price_alerts.flex_days, price_alerts.baggage, users.email AS owner_email, users.locale AS owner_locale
 FROM price_alerts
 JOIN users ON users.id = price_alerts.user_id
 WHERE price_alerts.status = 'active'
@@ -182,12 +182,15 @@ type ListDuePriceAlertsParams struct {
 }
 
 type ListDuePriceAlertsRow struct {
-	PriceAlert PriceAlert `json:"price_alert"`
-	OwnerEmail string     `json:"owner_email"`
+	PriceAlert  PriceAlert `json:"price_alert"`
+	OwnerEmail  string     `json:"owner_email"`
+	OwnerLocale *string    `json:"owner_locale"`
 }
 
 // Active alerts not yet checked in this cycle, oldest-checked first. The
 // caller passes the freshness cutoff (now - check interval) and batch size.
+// owner_locale rides along because the checker emails with no request context
+// to negotiate a language from (NULL => English).
 func (q *Queries) ListDuePriceAlerts(ctx context.Context, arg ListDuePriceAlertsParams) ([]ListDuePriceAlertsRow, error) {
 	rows, err := q.db.Query(ctx, listDuePriceAlerts, arg.LastCheckedAt, arg.Limit)
 	if err != nil {
@@ -220,6 +223,7 @@ func (q *Queries) ListDuePriceAlerts(ctx context.Context, arg ListDuePriceAlerts
 			&i.PriceAlert.FlexDays,
 			&i.PriceAlert.Baggage,
 			&i.OwnerEmail,
+			&i.OwnerLocale,
 		); err != nil {
 			return nil, err
 		}

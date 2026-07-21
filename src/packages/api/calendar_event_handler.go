@@ -34,7 +34,7 @@ func calendarEventHandler(w http.ResponseWriter, r *http.Request) {
 		notFound()
 		return
 	}
-	body, filename, ok := buildSingleEventICS(data, vars["kind"], id)
+	body, filename, ok := buildSingleEventICS(requestLocale(r.Context()), data, vars["kind"], id)
 	if !ok {
 		notFound()
 		return
@@ -47,7 +47,7 @@ func calendarEventHandler(w http.ResponseWriter, r *http.Request) {
 // buildSingleEventICS finds the event by kind+id in the export snapshot and
 // renders a one-VEVENT VCALENDAR. ok=false for an unknown kind, a missing id,
 // or an undated event — callers answer one opaque 404 for all of them.
-func buildSingleEventICS(d exportData, kind string, id uuid.UUID) (body, filename string, ok bool) {
+func buildSingleEventICS(locale string, d exportData, kind string, id uuid.UUID) (body, filename string, ok bool) {
 	var (
 		uid, summary, location, description string
 		start, end                          time.Time
@@ -56,7 +56,7 @@ func buildSingleEventICS(d exportData, kind string, id uuid.UUID) (body, filenam
 	case "stay":
 		for _, a := range d.Accommodations {
 			if a.ID == id {
-				start, end, summary, location, ok = stayEventFields(a)
+				start, end, summary, location, ok = stayEventFieldsIn(locale, a)
 				uid = "acc-" + a.ID.String()
 				break
 			}
@@ -64,7 +64,7 @@ func buildSingleEventICS(d exportData, kind string, id uuid.UUID) (body, filenam
 	case "segment":
 		for _, s := range d.Segments {
 			if s.ID == id {
-				start, end, summary, description, ok = segmentEventFields(s)
+				start, end, summary, description, ok = segmentEventFieldsIn(locale, s)
 				uid = "seg-" + s.ID.String()
 				break
 			}
@@ -72,7 +72,7 @@ func buildSingleEventICS(d exportData, kind string, id uuid.UUID) (body, filenam
 	case "item":
 		for _, it := range d.Items {
 			if it.ID == id {
-				start, end, summary, location, description, ok = itemEventFields(d.Trip, it)
+				start, end, summary, location, description, ok = itemEventFieldsIn(locale, d.Trip, it)
 				uid = "item-" + it.ID.String()
 				break
 			}

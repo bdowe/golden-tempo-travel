@@ -28,7 +28,10 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("export link not available"))
 		return
 	}
-	body := buildICS(data)
+	// localeMiddleware has already resolved ?lang= / Accept-Language. Calendar
+	// apps fetch this URL themselves, so an explicit ?lang= on the share link is
+	// the reliable signal; the header is the fallback.
+	body := buildICS(requestLocale(r.Context()), data)
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+tripSlug(data.Trip.Title)+`.ics"`)
 	w.Write([]byte(body))
@@ -37,7 +40,7 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 // buildICS renders the export data as a VCALENDAR document. Undatable itinerary
 // items are skipped; if nothing at all is datable the calendar still contains a
 // single trip-span all-day event so the download is never empty.
-func buildICS(d exportData) string {
+func buildICS(locale string, d exportData) string {
 	var b icsBuilder
 	b.line("BEGIN:VCALENDAR")
 	b.line("VERSION:2.0")
@@ -49,7 +52,7 @@ func buildICS(d exportData) string {
 	events := 0
 
 	for _, it := range d.Items {
-		start, end, summary, location, description, ok := itemEventFields(d.Trip, it)
+		start, end, summary, location, description, ok := itemEventFieldsIn(locale, d.Trip, it)
 		if !ok {
 			continue // no trip start_date or no day → not datable
 		}
@@ -58,7 +61,7 @@ func buildICS(d exportData) string {
 	}
 
 	for _, a := range d.Accommodations {
-		start, end, summary, location, ok := stayEventFields(a)
+		start, end, summary, location, ok := stayEventFieldsIn(locale, a)
 		if !ok {
 			continue
 		}
@@ -67,7 +70,7 @@ func buildICS(d exportData) string {
 	}
 
 	for _, s := range d.Segments {
-		start, end, summary, description, ok := segmentEventFields(s)
+		start, end, summary, description, ok := segmentEventFieldsIn(locale, s)
 		if !ok {
 			continue
 		}
@@ -94,9 +97,16 @@ func buildICS(d exportData) string {
 // render identical all-day VEVENTs. All ends are exclusive; ok=false means the
 // event is undated and gets no VEVENT.
 
-// stayEventFields resolves an accommodation's VEVENT fields: check-in through
-// check-out (or one night when check-out is missing/not after check-in).
-func stayEventFields(a store.Accommodation) (start, end time.Time, summary, location string, ok bool) {
+// The three unsuffixed forms below are English-locale shims kept so
+// calendar_event_handler.go (the per-event .ics) compiles unchanged; it does
+// not thread a request locale yet. Follow-up: pass requestLocale there and
+// delete these.
+
+// stayEventFieldsIn resolves an accommodation's VEVENT fields: check-in through
+// check-out (or one night when check-out is missing/not after check-in). The
+// SUMMARY is mirrored byte-for-byte by the Flutter client's Google Calendar
+// link (bookings_section.dart) — change both together.
+func stayEventFieldsIn(locale string, a store.Accommodation) (start, end time.Time, summary, location string, ok bool) {
 	if !a.CheckIn.Valid {
 		return time.Time{}, time.Time{}, "", "", false
 	}
@@ -104,12 +114,13 @@ func stayEventFields(a store.Accommodation) (start, end time.Time, summary, loca
 	if a.CheckOut.Valid && a.CheckOut.Time.After(a.CheckIn.Time) {
 		end = a.CheckOut.Time
 	}
-	return a.CheckIn.Time, end, "Stay: " + a.Name, strPtrVal(a.Address), true
+	return a.CheckIn.Time, end, tr(locale, "ics.stayTitle", a.Name), strPtrVal(a.Address), true
 }
 
-// segmentEventFields resolves a transport segment's VEVENT fields: departure
-// day through arrival day inclusive (single day when arrival is missing).
-func segmentEventFields(s store.TripSegment) (start, end time.Time, summary, description string, ok bool) {
+// segmentEventFieldsIn resolves a transport segment's VEVENT fields: departure
+// day through arrival day inclusive (single day when arrival is missing). The
+// SUMMARY is mirrored by the Flutter client — see stayEventFieldsIn.
+func segmentEventFieldsIn(locale string, s store.TripSegment) (start, end time.Time, summary, description string, ok bool) {
 	if !s.DepartDate.Valid {
 		return time.Time{}, time.Time{}, "", "", false
 	}
@@ -117,18 +128,19 @@ func segmentEventFields(s store.TripSegment) (start, end time.Time, summary, des
 	if s.ArriveDate.Valid && s.ArriveDate.Time.After(s.DepartDate.Time) {
 		end = s.ArriveDate.Time.AddDate(0, 0, 1)
 	}
-	summary = capitalize(s.Mode) + ": " + segmentRoute(s)
+	summary = tr(locale, "ics.segmentTitle", localizedMode(locale, s.Mode), segmentRouteIn(locale, s))
 	return s.DepartDate.Time, end, summary, strPtrVal(s.Notes), true
 }
 
-// itemEventFields resolves an itinerary item's VEVENT fields: the single trip
-// day the item is assigned to.
-func itemEventFields(trip store.Trip, it store.ItineraryItem) (start, end time.Time, summary, location, description string, ok bool) {
+// itemEventFieldsIn resolves an itinerary item's VEVENT fields: the single trip
+// day the item is assigned to. The SUMMARY is the item's own name — traveler
+// data, never translated.
+func itemEventFieldsIn(locale string, trip store.Trip, it store.ItineraryItem) (start, end time.Time, summary, location, description string, ok bool) {
 	start, ok = itemStartDate(trip, it)
 	if !ok {
 		return time.Time{}, time.Time{}, "", "", "", false
 	}
-	return start, start.AddDate(0, 0, 1), it.Name, strPtrVal(it.Address), icsItemDescription(it), true
+	return start, start.AddDate(0, 0, 1), it.Name, strPtrVal(it.Address), icsItemDescription(locale, it), true
 }
 
 // itemStartDate resolves an item's all-day start: trip.start_date + (day-1).
@@ -142,13 +154,13 @@ func itemStartDate(trip store.Trip, it store.ItineraryItem) (time.Time, bool) {
 
 // icsItemDescription joins the time-of-day and local attribution into the
 // VEVENT DESCRIPTION (pre-escape; the builder escapes it).
-func icsItemDescription(it store.ItineraryItem) string {
+func icsItemDescription(locale string, it store.ItineraryItem) string {
 	var parts []string
-	if t := capitalize(strPtrVal(it.TimeOfDay)); t != "" {
+	if t := localizedTimeOfDay(locale, strPtrVal(it.TimeOfDay)); t != "" {
 		parts = append(parts, t)
 	}
 	if rec := strings.TrimSpace(strPtrVal(it.LocalSourceName)); rec != "" {
-		parts = append(parts, "Recommended by "+rec)
+		parts = append(parts, tr(locale, "ics.recommendedBy", rec))
 	}
 	return strings.Join(parts, " · ")
 }

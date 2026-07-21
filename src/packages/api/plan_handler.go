@@ -397,6 +397,16 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 			systemPrompt += "\n\nThis trip's travel mode is " + *boundTripTravelMode + "; keep new transport suggestions in that mode."
 		}
 	}
+	// Response language (specs/i18n-spanish). Appended ONLY for non-English
+	// locales, so an English request's prompt is byte-for-byte what it was
+	// before this feature existed — see TestSystemPromptEnglishUnchanged.
+	//
+	// This is deliberately NOT a save_preferences field: plan_tool_registry.go
+	// is part of the prompt-cache prefix and must stay byte-stable, and the
+	// agent must not be able to overwrite the traveler's language. Spanish
+	// conversations simply get their own cache line, which caches normally
+	// across turns because the locale is constant within a conversation.
+	systemPrompt += responseLanguageInstruction(requestLocale(ctx))
 
 	// prevCacheMarker tracks the conversation cache breakpoint set on the
 	// newest tool-results message; it must be cleared before setting the next
@@ -614,6 +624,19 @@ func summarizeEvents(city string, events []Event) string {
 // profileNotesInstruction is the standing profile-keeping rule appended to every
 // authenticated session's system prompt, whether or not notes exist yet.
 const profileNotesInstruction = "\n\nWhen you learn something durable about this traveler — travel companions, dietary needs, accommodation style, accessibility needs, likes or dislikes — call save_preferences with profile_notes set to the COMPLETE updated profile: your current notes merged with the new fact, de-duplicated, as short bullet lines (max ~15). Never send only the new fact. Don't store one-off trip details or sensitive information (health, religion, politics) unless the traveler explicitly asks you to remember it."
+
+// responseLanguageInstruction tells the agent which language to write in.
+// Returns "" for English so the English prompt is unchanged; structured tool
+// arguments are pinned to their canonical formats because the tool schemas and
+// the database expect them regardless of the traveler's language. The trailing
+// clause keeps the agent following a traveler who writes in a third language
+// rather than fighting them.
+func responseLanguageInstruction(locale string) string {
+	if locale == defaultLocale {
+		return ""
+	}
+	return "\n\nRespond in " + languageName(locale) + ": all prose, trip titles, day summaries and place descriptions. Keep structured tool arguments in their required formats — dates as YYYY-MM-DD, IATA airport codes, and enum values (time_of_day, category, budget, pace, mode) exactly as the tool schemas specify. If the traveler writes in another language, follow their language instead."
+}
 
 // personalizedSystemPrompt appends the traveler's saved preferences and
 // AI-maintained profile notes to the base prompt, omitting any fields that are

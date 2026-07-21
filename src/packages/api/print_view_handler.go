@@ -27,6 +27,44 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// segmentModeKeys maps the stored transport-mode enum to its catalog key. The
+// labels live under ics.* because the .ics event titles are their canonical
+// home (the Flutter client mirrors them byte-for-byte); the print packet reuses
+// the same strings so a segment reads identically on paper and in a calendar.
+var segmentModeKeys = map[string]string{
+	"flight": "ics.mode.flight",
+	"train":  "ics.mode.train",
+	"bus":    "ics.mode.bus",
+	"car":    "ics.mode.car",
+	"ferry":  "ics.mode.ferry",
+	"other":  "ics.mode.other",
+}
+
+// localizedMode renders a transport mode for display. Anything outside the
+// enum falls back to capitalize(), which is exactly what the English output
+// did before localization.
+func localizedMode(locale, mode string) string {
+	if key, ok := segmentModeKeys[strings.ToLower(strings.TrimSpace(mode))]; ok {
+		return tr(locale, key)
+	}
+	return capitalize(mode)
+}
+
+var timeOfDayKeys = map[string]string{
+	"morning":   "timeofday.morning",
+	"afternoon": "timeofday.afternoon",
+	"evening":   "timeofday.evening",
+}
+
+// localizedTimeOfDay renders an itinerary item's time_of_day, falling back to
+// capitalize() for unexpected values.
+func localizedTimeOfDay(locale, tod string) string {
+	if key, ok := timeOfDayKeys[strings.ToLower(strings.TrimSpace(tod))]; ok {
+		return tr(locale, key)
+	}
+	return capitalize(tod)
+}
+
 // print_view_handler.go — GET /api/v1/export/{token}/print.html, a printable
 // full-trip page. Token-gated and PUBLIC (no authMiddleware): the signed token
 // is the capability. Rendered with html/template so every field is
@@ -127,7 +165,53 @@ type printChecklistItem struct {
 	Checked bool
 }
 
+// printLabels holds the page's static chrome in the reader's locale. The
+// template can't call Sprintf, so every label is resolved up front and
+// referenced as {{$.T.X}}; anything with an interpolated value stays a
+// catalog template resolved in Go.
+type printLabels struct {
+	Weather          string
+	Booked           string
+	RecommendedBy    string
+	NoPlans          string
+	Tonight          string
+	EmptyExport      string
+	Unscheduled      string
+	Accommodations   string
+	OtherTransport   string
+	Budget           string
+	Target           string
+	TotalSpent       string
+	Remaining        string
+	BookingChecklist string
+	PackingChecklist string
+	Footer           string
+}
+
+func newPrintLabels(locale string) printLabels {
+	return printLabels{
+		Weather:          tr(locale, "print.weather"),
+		Booked:           tr(locale, "print.booked"),
+		RecommendedBy:    tr(locale, "print.recommendedBy"),
+		NoPlans:          tr(locale, "print.noPlans"),
+		Tonight:          tr(locale, "print.tonight"),
+		EmptyExport:      tr(locale, "print.emptyExport"),
+		Unscheduled:      tr(locale, "common.unscheduled"),
+		Accommodations:   tr(locale, "print.accommodations"),
+		OtherTransport:   tr(locale, "print.otherTransport"),
+		Budget:           tr(locale, "print.budget"),
+		Target:           tr(locale, "print.target"),
+		TotalSpent:       tr(locale, "print.totalSpent"),
+		Remaining:        tr(locale, "print.remaining"),
+		BookingChecklist: tr(locale, "print.bookingChecklist"),
+		PackingChecklist: tr(locale, "print.packingChecklist"),
+		Footer:           tr(locale, "print.footer"),
+	}
+}
+
 type printViewData struct {
+	Lang          string
+	T             printLabels
 	Title         string
 	Dates         string
 	Summary       string
@@ -144,7 +228,7 @@ type printViewData struct {
 // printViewTmpl uses html/template — every field is auto-escaped. Brand house
 // style (teal gradient header) cloned from dockerize/static/privacy.html.
 var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
   <meta charset="utf-8">
   <title>{{.Title}} — Golden Tempo Travel</title>
@@ -221,7 +305,7 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     </div>
   </header>
   <main>
-    {{if not .HasContent}}<p class="empty">This trip has nothing to export yet.</p>{{end}}
+    {{if not .HasContent}}<p class="empty">{{$.T.EmptyExport}}</p>{{end}}
 
     {{if .Summary}}<p class="summary">{{.Summary}}</p>{{end}}
 
@@ -229,10 +313,10 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     <section class="day-sec">
       <h2>{{.Label}}{{if .Date}} · {{.Date}}{{end}}{{if .Hub}} — {{.Hub}}{{end}}</h2>
       {{if .DayTrip}}<p class="daytrip">{{.DayTrip}}</p>{{end}}
-      {{if .Weather}}<p class="wx">Weather: {{.Weather}}</p>{{end}}
+      {{if .Weather}}<p class="wx">{{$.T.Weather}}: {{.Weather}}</p>{{end}}
       {{range .Segments}}
       <div class="row">
-        <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+        <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">{{$.T.Booked}}</span>{{end}}</div>
         {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
         {{if .Notes}}<div class="row-meta">{{.Notes}}</div>{{end}}
         {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
@@ -242,13 +326,13 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
       <div class="item">
         <div class="item-name">{{.Name}}</div>
         {{if or .TimeOfDay .City .Address}}<div class="item-meta">{{if .TimeOfDay}}{{.TimeOfDay}}{{end}}{{if and .TimeOfDay .City}} · {{end}}{{.City}}{{if and (or .TimeOfDay .City) .Address}} · {{end}}{{.Address}}</div>{{end}}
-        {{if .RecommendedBy}}<div class="rec">Recommended by {{.RecommendedBy}}</div>{{end}}
+        {{if .RecommendedBy}}<div class="rec">{{$.T.RecommendedBy}} {{.RecommendedBy}}</div>{{end}}
       </div>
       {{end}}
-      {{if not .Items}}<p class="empty">No plans yet for this day.</p>{{end}}
+      {{if not .Items}}<p class="empty">{{$.T.NoPlans}}</p>{{end}}
       {{range .Stays}}
       <div class="stay">
-        <div class="row-title">Tonight: {{.Name}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+        <div class="row-title">{{$.T.Tonight}} {{.Name}}{{if .Booked}} <span class="booked">{{$.T.Booked}}</span>{{end}}</div>
         {{if .Address}}<div class="row-meta">{{.Address}}</div>{{end}}
         {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
         {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
@@ -258,7 +342,7 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
 
     {{if .Unscheduled}}
-    <h2>Unscheduled</h2>
+    <h2>{{$.T.Unscheduled}}</h2>
     {{range .Unscheduled}}
     <div class="hub">
       <p class="hub-name">{{.Hub}}</p>
@@ -269,7 +353,7 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
         <div class="item">
           <div class="item-name">{{.Name}}</div>
           {{if or .TimeOfDay .Address}}<div class="item-meta">{{if .TimeOfDay}}{{.TimeOfDay}}{{end}}{{if and .TimeOfDay .Address}} · {{end}}{{.Address}}</div>{{end}}
-          {{if .RecommendedBy}}<div class="rec">Recommended by {{.RecommendedBy}}</div>{{end}}
+          {{if .RecommendedBy}}<div class="rec">{{$.T.RecommendedBy}} {{.RecommendedBy}}</div>{{end}}
         </div>
         {{end}}
       </div>
@@ -279,10 +363,10 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
 
     {{if .OtherStays}}
-    <h2>Accommodations</h2>
+    <h2>{{$.T.Accommodations}}</h2>
     {{range .OtherStays}}
     <div class="row">
-      <div class="row-title">{{.Name}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+      <div class="row-title">{{.Name}}{{if .Booked}} <span class="booked">{{$.T.Booked}}</span>{{end}}</div>
       {{if .Address}}<div class="row-meta">{{.Address}}</div>{{end}}
       {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
       {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
@@ -291,10 +375,10 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
 
     {{if .OtherSegments}}
-    <h2>Other transport</h2>
+    <h2>{{$.T.OtherTransport}}</h2>
     {{range .OtherSegments}}
     <div class="row">
-      <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+      <div class="row-title">{{.Mode}} · {{.Route}}{{if .Booked}} <span class="booked">{{$.T.Booked}}</span>{{end}}</div>
       {{if .Meta}}<div class="row-meta">{{.Meta}}</div>{{end}}
       {{if .Notes}}<div class="row-meta">{{.Notes}}</div>{{end}}
       {{if .URLText}}<div class="url"><a href="{{.URL}}">{{.URLText}}</a></div>{{end}}
@@ -303,8 +387,8 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
 
     {{with .Budget}}
-    <h2>Budget ({{.Currency}})</h2>
-    {{if .Target}}<p class="budget-line">Target: {{.Target}}</p>{{end}}
+    <h2>{{$.T.Budget}} ({{.Currency}})</h2>
+    {{if .Target}}<p class="budget-line">{{$.T.Target}} {{.Target}}</p>{{end}}
     {{if .Rows}}
     <table class="budget">
       {{range .Rows}}
@@ -312,21 +396,21 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
       {{end}}
     </table>
     {{end}}
-    <p class="budget-line">Total spent: {{.Spent}}{{if .Remaining}} · Remaining: {{.Remaining}}{{end}}</p>
+    <p class="budget-line">{{$.T.TotalSpent}} {{.Spent}}{{if .Remaining}} · {{$.T.Remaining}} {{.Remaining}}{{end}}</p>
     {{end}}
 
     {{if .Todos}}
-    <h2>Booking checklist</h2>
+    <h2>{{$.T.BookingChecklist}}</h2>
     {{range .Todos}}
     <div class="row">
-      <div class="row-title"><span class="box">{{if .Booked}}&#9745;{{else}}&#9744;{{end}}</span> {{.Title}}{{if .Booked}} <span class="booked">(booked)</span>{{end}}</div>
+      <div class="row-title"><span class="box">{{if .Booked}}&#9745;{{else}}&#9744;{{end}}</span> {{.Title}}{{if .Booked}} <span class="booked">{{$.T.Booked}}</span>{{end}}</div>
       {{if .Subtitle}}<div class="row-meta">{{.Subtitle}}</div>{{end}}
     </div>
     {{end}}
     {{end}}
 
     {{if .Checklist}}
-    <h2>Packing checklist</h2>
+    <h2>{{$.T.PackingChecklist}}</h2>
     {{range .Checklist}}
     <p class="cat">{{.Category}}</p>
     <ul class="check">
@@ -335,7 +419,7 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
     {{end}}
     {{end}}
 
-    <footer>Exported from Golden Tempo Travel</footer>
+    <footer>{{$.T.Footer}}</footer>
   </main>
 </body>
 </html>`))
@@ -343,10 +427,15 @@ var printViewTmpl = template.Must(template.New("print-view").Parse(`<!DOCTYPE ht
 // printViewHandler renders the full trip as a printable HTML page.
 func printViewHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// localeMiddleware has already resolved ?lang= / Accept-Language; this route
+	// is token-gated and public, so the request is the only locale signal.
+	locale := requestLocale(r.Context())
 	data, ok := resolveExport(r, mux.Vars(r)["token"])
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("<!DOCTYPE html><html><body><h2>This export link isn't available</h2><p>It may have expired.</p></body></html>"))
+		w.Write([]byte("<!DOCTYPE html><html lang=\"" + locale + "\"><body><h2>" +
+			template.HTMLEscapeString(tr(locale, "print.linkUnavailableTitle")) + "</h2><p>" +
+			template.HTMLEscapeString(tr(locale, "print.linkUnavailableBody")) + "</p></body></html>"))
 		return
 	}
 	budget := loadPrintBudget(r.Context(), data.Trip.ID)
@@ -354,7 +443,7 @@ func printViewHandler(w http.ResponseWriter, r *http.Request) {
 	if n, dated := printDayCount(data); dated {
 		weather = loadPrintWeather(r.Context(), weatherService, data, n)
 	}
-	view := buildPrintView(data, budget, weather)
+	view := buildPrintView(locale, data, budget, weather)
 	if err := printViewTmpl.Execute(w, view); err != nil {
 		// Headers already sent; nothing sensible left to do.
 		return
@@ -388,6 +477,7 @@ func loadPrintWeather(ctx context.Context, ws *WeatherService, d exportData, n i
 	if ws == nil || !d.Trip.StartDate.Valid || n <= 0 {
 		return nil
 	}
+	locale := requestLocale(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 
@@ -438,7 +528,7 @@ func loadPrintWeather(ctx context.Context, ws *WeatherService, d exportData, n i
 				key = start.AddDate(0, 0, i).Format("01-02")
 			}
 			if wd, ok := byKey[key]; ok {
-				out[i] = formatWeatherLine(wd, historical)
+				out[i] = formatWeatherLine(locale, wd, historical)
 			}
 		}
 	}
@@ -447,15 +537,15 @@ func loadPrintWeather(ctx context.Context, ws *WeatherService, d exportData, n i
 
 // formatWeatherLine mirrors summarizeWeather's per-day rendering; "Typical:"
 // flags archive data (last year's observations, not a forecast).
-func formatWeatherLine(wd WeatherDay, historical bool) string {
+func formatWeatherLine(locale string, wd WeatherDay, historical bool) string {
 	line := fmt.Sprintf("%.0f–%.0f°C", wd.TempMinC, wd.TempMaxC)
 	if wd.PrecipPct != nil {
-		line += fmt.Sprintf(", %d%% chance of rain", *wd.PrecipPct)
+		line += tr(locale, "print.weatherRainChance", *wd.PrecipPct)
 	} else if wd.PrecipMM >= 1 {
-		line += fmt.Sprintf(", %.0fmm rain", wd.PrecipMM)
+		line += tr(locale, "print.weatherRainMm", wd.PrecipMM)
 	}
 	if historical {
-		return "Typical: " + line
+		return tr(locale, "print.weatherTypical", line)
 	}
 	return line
 }
@@ -463,15 +553,15 @@ func formatWeatherLine(wd WeatherDay, historical bool) string {
 // buildPrintView reshapes the raw export data into the template view model:
 // day-by-day packet sections plus unscheduled/reference/budget/checklist
 // sections. budget and weatherByDay are optional (nil ⇒ section/lines omitted).
-func buildPrintView(d exportData, budget *printBudget, weatherByDay []string) printViewData {
-	view := printViewData{Title: strings.TrimSpace(d.Trip.Title)}
+func buildPrintView(locale string, d exportData, budget *printBudget, weatherByDay []string) printViewData {
+	view := printViewData{Lang: locale, T: newPrintLabels(locale), Title: strings.TrimSpace(d.Trip.Title)}
 	if view.Title == "" {
-		view.Title = "Untitled trip"
+		view.Title = tr(locale, "print.untitledTrip")
 	}
 	if d.Trip.StartDate.Valid && d.Trip.EndDate.Valid {
-		view.Dates = d.Trip.StartDate.Time.Format("Jan 2") + " – " + d.Trip.EndDate.Time.Format("Jan 2, 2006")
+		view.Dates = localizedDate(locale, d.Trip.StartDate.Time, dateStyleMonthDay) + " – " + printDateWithYear(locale, d.Trip.EndDate.Time)
 	} else if d.Trip.StartDate.Valid {
-		view.Dates = d.Trip.StartDate.Time.Format("Jan 2, 2006")
+		view.Dates = printDateWithYear(locale, d.Trip.StartDate.Time)
 	}
 	view.Summary = strings.TrimSpace(strPtrVal(d.Trip.Summary))
 
@@ -482,9 +572,9 @@ func buildPrintView(d exportData, budget *printBudget, weatherByDay []string) pr
 		return view
 	}
 
-	days, unscheduled, otherStays, otherSegs := buildPrintDays(d, weatherByDay)
+	days, unscheduled, otherStays, otherSegs := buildPrintDays(locale, d, weatherByDay)
 	view.Days = days
-	view.Unscheduled = groupExportItems(d.Trip, unscheduled)
+	view.Unscheduled = groupExportItemsIn(locale, d.Trip, unscheduled)
 	view.OtherStays = otherStays
 	view.OtherSegments = otherSegs
 	view.Budget = budget
@@ -570,7 +660,7 @@ func resolveDayCities(d exportData, n int) []string {
 // segments attached by depart (falling back to arrive) date, stays matched to
 // the nights they cover (check_in ≤ night < check_out). Whatever can't be
 // placed on a day is returned for the trailing reference sections.
-func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []store.ItineraryItem, []printStay, []printSegment) {
+func buildPrintDays(locale string, d exportData, weatherByDay []string) ([]printDaySection, []store.ItineraryItem, []printStay, []printSegment) {
 	n, dated := printDayCount(d)
 	var unscheduled []store.ItineraryItem
 	var otherStays []printStay
@@ -578,10 +668,10 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 
 	if n == 0 {
 		for _, a := range d.Accommodations {
-			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(a)))
+			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(locale, a)))
 		}
 		for _, s := range d.Segments {
-			otherSegs = append(otherSegs, toPrintSegment(s))
+			otherSegs = append(otherSegs, toPrintSegment(locale, s))
 		}
 		return nil, d.Items, otherStays, otherSegs
 	}
@@ -590,10 +680,10 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 	cities := resolveDayCities(d, n)
 	days := make([]printDaySection, n)
 	for i := range days {
-		days[i].Label = "Day " + strconv.Itoa(i+1)
+		days[i].Label = tr(locale, "common.day", i+1)
 		days[i].Hub = cities[i]
 		if dated {
-			days[i].Date = start.AddDate(0, 0, i).Format("Mon, Jan 2")
+			days[i].Date = localizedDate(locale, start.AddDate(0, 0, i), dateStyleWeekdayMonthDay)
 		}
 		if i < len(weatherByDay) {
 			days[i].Weather = weatherByDay[i]
@@ -616,7 +706,7 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 		}
 		item := printItem{
 			Name:          it.Name,
-			TimeOfDay:     capitalize(strPtrVal(it.TimeOfDay)),
+			TimeOfDay:     localizedTimeOfDay(locale, strPtrVal(it.TimeOfDay)),
 			Address:       strPtrVal(it.Address),
 			RecommendedBy: strPtrVal(it.LocalSourceName),
 		}
@@ -637,7 +727,7 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 	}
 	for i, hub := range dayTripHub {
 		if hub != "" && hub != mixedDayTrip {
-			days[i].DayTrip = "Day trip from " + hub
+			days[i].DayTrip = tr(locale, "print.dayTripFrom", hub)
 		}
 	}
 
@@ -661,10 +751,10 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 			di = dayIndexOf(s.ArriveDate.Time)
 		}
 		if di < 0 {
-			otherSegs = append(otherSegs, toPrintSegment(s))
+			otherSegs = append(otherSegs, toPrintSegment(locale, s))
 			continue
 		}
-		days[di].Segments = append(days[di].Segments, toPrintSegment(s))
+		days[di].Segments = append(days[di].Segments, toPrintSegment(locale, s))
 	}
 
 	for _, a := range d.Accommodations {
@@ -682,17 +772,18 @@ func buildPrintDays(d exportData, weatherByDay []string) ([]printDaySection, []s
 				}
 				var notes []string
 				if night.Equal(checkIn) {
-					notes = append(notes, "Check in today")
+					notes = append(notes, tr(locale, "print.checkInToday"))
 				}
 				if a.CheckOut.Valid && night.Equal(checkOut.AddDate(0, 0, -1)) {
-					notes = append(notes, "Check out "+checkOut.Format("Mon, Jan 2"))
+					notes = append(notes, tr(locale, "print.checkOutOn",
+						localizedDate(locale, checkOut, dateStyleWeekdayMonthDay)))
 				}
 				days[i].Stays = append(days[i].Stays, toPrintStay(a, strings.Join(notes, " · ")))
 				attached = true
 			}
 		}
 		if !attached {
-			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(a)))
+			otherStays = append(otherStays, toPrintStay(a, stayDatesNote(locale, a)))
 		}
 	}
 
@@ -765,13 +856,13 @@ func formatMoneyAmount(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
-func toPrintSegment(s store.TripSegment) printSegment {
+func toPrintSegment(locale string, s store.TripSegment) printSegment {
 	var meta []string
-	if dep := formatExportDate(dateToPtr(s.DepartDate)); dep != "" {
-		meta = append(meta, "Departs "+dep)
+	if dep := formatExportDate(locale, dateToPtr(s.DepartDate)); dep != "" {
+		meta = append(meta, tr(locale, "print.departs", dep))
 	}
-	if arr := formatExportDate(dateToPtr(s.ArriveDate)); arr != "" {
-		meta = append(meta, "Arrives "+arr)
+	if arr := formatExportDate(locale, dateToPtr(s.ArriveDate)); arr != "" {
+		meta = append(meta, tr(locale, "print.arrives", arr))
 	}
 	if p := strings.TrimSpace(strPtrVal(s.Provider)); p != "" {
 		meta = append(meta, p)
@@ -781,8 +872,8 @@ func toPrintSegment(s store.TripSegment) printSegment {
 	}
 	rawURL := strings.TrimSpace(strPtrVal(s.Url))
 	return printSegment{
-		Route:   segmentRoute(s),
-		Mode:    capitalize(s.Mode),
+		Route:   segmentRouteIn(locale, s),
+		Mode:    localizedMode(locale, s.Mode),
 		Meta:    strings.Join(meta, " · "),
 		Notes:   strings.TrimSpace(strPtrVal(s.Notes)),
 		URL:     rawURL,
@@ -816,13 +907,13 @@ func toPrintStay(a store.Accommodation, note string) printStay {
 }
 
 // stayDatesNote renders the reference-list date range for a stay.
-func stayDatesNote(a store.Accommodation) string {
+func stayDatesNote(locale string, a store.Accommodation) string {
 	var parts []string
-	if ci := formatExportDate(dateToPtr(a.CheckIn)); ci != "" {
-		parts = append(parts, "Check-in "+ci)
+	if ci := formatExportDate(locale, dateToPtr(a.CheckIn)); ci != "" {
+		parts = append(parts, tr(locale, "print.checkIn", ci))
 	}
-	if co := formatExportDate(dateToPtr(a.CheckOut)); co != "" {
-		parts = append(parts, "Check-out "+co)
+	if co := formatExportDate(locale, dateToPtr(a.CheckOut)); co != "" {
+		parts = append(parts, tr(locale, "print.checkOut", co))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -847,12 +938,18 @@ func displayURL(raw string) string {
 	return display
 }
 
-// groupExportItems walks items in position order and groups them by hub
+// groupExportItems is the English-locale entry point, kept for trip_review.go,
+// which reads only the hub grouping and has no locale to thread through.
+func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup {
+	return groupExportItemsIn(defaultLocale, trip, items)
+}
+
+// groupExportItemsIn walks items in position order and groups them by hub
 // (day_trip_from, falling back to city, then "Itinerary"), sub-grouping by day.
 // First-appearance order is preserved for both hubs and days. Per-item date is
 // trip.start_date + (day-1) when both are present. Used for the Unscheduled
 // section (and exercised by the .ics fixture tests).
-func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup {
+func groupExportItemsIn(locale string, trip store.Trip, items []store.ItineraryItem) []printGroup {
 	var groups []printGroup
 	groupIdx := map[string]int{}
 	dayIdx := map[string]int{} // key: hub + "\x00" + day
@@ -863,7 +960,7 @@ func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup
 			hub = strings.TrimSpace(strPtrVal(it.City))
 		}
 		if hub == "" {
-			hub = "Itinerary"
+			hub = tr(locale, "print.itinerary")
 		}
 		gi, ok := groupIdx[hub]
 		if !ok {
@@ -881,12 +978,12 @@ func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup
 		if !ok {
 			di = len(groups[gi].Days)
 			dayIdx[dayKey] = di
-			label := "Unscheduled"
+			label := tr(locale, "common.unscheduled")
 			date := ""
 			if dayNum > 0 {
-				label = "Day " + strconv.Itoa(dayNum)
+				label = tr(locale, "common.day", dayNum)
 				if trip.StartDate.Valid {
-					date = trip.StartDate.Time.AddDate(0, 0, dayNum-1).Format("Mon, Jan 2")
+					date = localizedDate(locale, trip.StartDate.Time.AddDate(0, 0, dayNum-1), dateStyleWeekdayMonthDay)
 				}
 			}
 			groups[gi].Days = append(groups[gi].Days, printDay{Label: label, Date: date})
@@ -894,7 +991,7 @@ func groupExportItems(trip store.Trip, items []store.ItineraryItem) []printGroup
 
 		groups[gi].Days[di].Items = append(groups[gi].Days[di].Items, printItem{
 			Name:          it.Name,
-			TimeOfDay:     capitalize(strPtrVal(it.TimeOfDay)),
+			TimeOfDay:     localizedTimeOfDay(locale, strPtrVal(it.TimeOfDay)),
 			Address:       strPtrVal(it.Address),
 			RecommendedBy: strPtrVal(it.LocalSourceName),
 		})
@@ -919,8 +1016,15 @@ func groupChecklist(items []store.TripChecklistItem) []printChecklistGroup {
 	return groups
 }
 
-// segmentRoute renders "Origin → Destination", tolerating missing endpoints.
+// segmentRoute is the English-locale entry point, kept for trip_review.go.
 func segmentRoute(s store.TripSegment) string {
+	return segmentRouteIn(defaultLocale, s)
+}
+
+// segmentRouteIn renders "Origin → Destination", tolerating missing endpoints.
+// Only the both-endpoints-missing fallback (the mode name) is localizable; the
+// endpoints themselves are traveler-supplied place names.
+func segmentRouteIn(locale string, s store.TripSegment) string {
 	o := strings.TrimSpace(strPtrVal(s.Origin))
 	dst := strings.TrimSpace(strPtrVal(s.Destination))
 	switch {
@@ -931,12 +1035,13 @@ func segmentRoute(s store.TripSegment) string {
 	case o != "":
 		return o
 	default:
-		return capitalize(s.Mode)
+		return localizedMode(locale, s.Mode)
 	}
 }
 
-// formatExportDate turns a *string "YYYY-MM-DD" into a friendly "Mon, Jan 2".
-func formatExportDate(s *string) string {
+// formatExportDate turns a *string "YYYY-MM-DD" into a friendly "Mon, Jan 2"
+// ("lun, 2 ene" in Spanish), leaving an unparseable value untouched.
+func formatExportDate(locale string, s *string) string {
 	if s == nil || *s == "" {
 		return ""
 	}
@@ -944,5 +1049,12 @@ func formatExportDate(s *string) string {
 	if err != nil {
 		return *s
 	}
-	return t.Format("Mon, Jan 2")
+	return localizedDate(locale, t, dateStyleWeekdayMonthDay)
+}
+
+// printDateWithYear renders a year-qualified short date: "Aug 5, 2026" /
+// "5 ago de 2026". localizedDate has no year-bearing short style, so the year
+// is joined through the catalog to keep Spanish's "de" in the right place.
+func printDateWithYear(locale string, t time.Time) string {
+	return tr(locale, "print.dateWithYear", localizedDate(locale, t, dateStyleMonthDay), t.Year())
 }

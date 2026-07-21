@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -85,18 +84,21 @@ type reviewDeps struct {
 // category) so the output is reproducible for a given trip snapshot. The
 // weather/place-hours checks are best-effort live lookups threaded through
 // deps; any provider error skips silently so the review never fails.
-func reviewTrip(ctx context.Context, data exportData, opts reviewOptions, deps reviewDeps) []Finding {
+// The locale is threaded in explicitly rather than read off ctx: reviewTrip is
+// also driven by the agent tool and by tests that have no request context, and
+// an explicit parameter keeps the finding copy a pure function of its inputs.
+func reviewTrip(ctx context.Context, locale string, data exportData, opts reviewOptions, deps reviewDeps) []Finding {
 	findings := make([]Finding, 0)
-	findings = append(findings, checkDates(data)...)
-	findings = append(findings, checkUnscheduled(data)...)
-	findings = append(findings, checkDensity(data)...)
-	findings = append(findings, checkLodging(data)...)
-	findings = append(findings, checkTransit(data)...)
-	findings = append(findings, checkBudget(data, opts.Budget)...)
-	findings = append(findings, checkBookings(data)...)
-	findings = append(findings, checkWeather(ctx, data, deps.Weather)...)
+	findings = append(findings, checkDates(locale, data)...)
+	findings = append(findings, checkUnscheduled(locale, data)...)
+	findings = append(findings, checkDensity(locale, data)...)
+	findings = append(findings, checkLodging(locale, data)...)
+	findings = append(findings, checkTransit(locale, data)...)
+	findings = append(findings, checkBudget(locale, data, opts.Budget)...)
+	findings = append(findings, checkBookings(locale, data)...)
+	findings = append(findings, checkWeather(ctx, locale, data, deps.Weather)...)
 	if opts.CheckHours {
-		findings = append(findings, checkHours(ctx, data, deps.Places)...)
+		findings = append(findings, checkHours(ctx, locale, data, deps.Places)...)
 	}
 
 	severityRank := map[string]int{"critical": 0, "warn": 1, "info": 2}
@@ -142,14 +144,14 @@ func nightsBetween(start, end time.Time) int {
 
 // checkDates flags a trip with no dates (blocks every day-bound check) and any
 // item tagged to a day past the trip's span.
-func checkDates(d exportData) []Finding {
+func checkDates(locale string, d exportData) []Finding {
 	tripID := d.Trip.ID.String()
 	var out []Finding
 	if !d.Trip.StartDate.Valid || !d.Trip.EndDate.Valid {
 		out = append(out, Finding{
 			Severity: "info", Category: "dates", TripID: tripID,
-			Message: "Add trip dates to unlock day-by-day checks.",
-			Fix:     &FindingFix{Action: "set_dates", Label: "Set dates"},
+			Message: tr(locale, "review.noDates"),
+			Fix:     &FindingFix{Action: "set_dates", Label: tr(locale, "review.fix.setDates")},
 		})
 		return out // no span → the beyond-span check below is meaningless
 	}
@@ -161,9 +163,9 @@ func checkDates(d exportData) []Finding {
 			lastValidDay := dc
 			out = append(out, Finding{
 				Severity: "warn", Category: "dates", TripID: tripID, Day: &day, ItemID: &id,
-				Message: fmt.Sprintf("%q is on day %d, past the trip's %d-day span.", it.Name, day, dc),
+				Message: tr(locale, "review.itemBeyondSpan", it.Name, day, dc),
 				Fix: &FindingFix{
-					Action: "move_item", Label: fmt.Sprintf("Move to Day %d", lastValidDay),
+					Action: "move_item", Label: tr(locale, "review.fix.moveToDay", lastValidDay),
 					ItemID: &id, TargetDay: &lastValidDay,
 				},
 			})
@@ -174,7 +176,7 @@ func checkDates(d exportData) []Finding {
 
 // checkUnscheduled emits one grouped finding for all items with no day (cleaner
 // than one-per-item when many are unscheduled).
-func checkUnscheduled(d exportData) []Finding {
+func checkUnscheduled(locale string, d exportData) []Finding {
 	var count int
 	for _, it := range d.Items {
 		if it.Day == nil {
@@ -184,9 +186,9 @@ func checkUnscheduled(d exportData) []Finding {
 	if count == 0 {
 		return nil
 	}
-	msg := "1 item has no day assigned — schedule it to see it on the day plan."
+	msg := tr(locale, "review.unscheduledOne")
 	if count > 1 {
-		msg = fmt.Sprintf("%d items have no day assigned — schedule them to see them on the day plan.", count)
+		msg = tr(locale, "review.unscheduledMany", count)
 	}
 	return []Finding{{
 		Severity: "info", Category: "unscheduled", TripID: d.Trip.ID.String(), Message: msg,
@@ -196,7 +198,7 @@ func checkUnscheduled(d exportData) []Finding {
 // checkDensity flags empty days between the first and last scheduled day, and
 // over-packed days (more than 6 items, or two+ items sharing a time_of_day).
 // Buckets by absolute day so a day split across hubs still counts once.
-func checkDensity(d exportData) []Finding {
+func checkDensity(locale string, d exportData) []Finding {
 	tripID := d.Trip.ID.String()
 	buckets := map[int][]store.ItineraryItem{}
 	minDay, maxDay := 0, 0
@@ -222,7 +224,7 @@ func checkDensity(d exportData) []Finding {
 			dd := day
 			out = append(out, Finding{
 				Severity: "info", Category: "packing", TripID: tripID, Day: &dd,
-				Message: fmt.Sprintf("Day %d has nothing planned.", day),
+				Message: tr(locale, "review.emptyDay", day),
 			})
 		}
 	}
@@ -235,7 +237,7 @@ func checkDensity(d exportData) []Finding {
 		if len(items) > 6 {
 			f := Finding{
 				Severity: "warn", Category: "packing", TripID: tripID, Day: &dd,
-				Message: fmt.Sprintf("Day %d has %d items planned — that may be too packed.", day, len(items)),
+				Message: tr(locale, "review.packedDay", day, len(items)),
 			}
 			// Offer a one-tap move of the last item in the crowded day to the
 			// nearest meaningfully-lighter day — only when both a movable item
@@ -243,7 +245,7 @@ func checkDensity(d exportData) []Finding {
 			if target := lighterDay(d, day); target != nil {
 				id := items[len(items)-1].ID.String()
 				f.Fix = &FindingFix{
-					Action: "move_item", Label: fmt.Sprintf("Move to Day %d", *target),
+					Action: "move_item", Label: tr(locale, "review.fix.moveToDay", *target),
 					ItemID: &id, TargetDay: target,
 				}
 			}
@@ -260,13 +262,13 @@ func checkDensity(d exportData) []Finding {
 			if todCount[tod] > 1 {
 				f := Finding{
 					Severity: "warn", Category: "packing", TripID: tripID, Day: &dd,
-					Message: fmt.Sprintf("Day %d has %d things scheduled for the %s.", day, todCount[tod], tod),
+					Message: tr(locale, "review.timeOfDayCollision", day, todCount[tod], tr(locale, "review.tod."+tod)),
 				}
 				if target := lighterDay(d, day); target != nil {
 					// The last item in that colliding slot is the one to move.
 					if id, ok := lastItemInSlot(items, tod); ok {
 						f.Fix = &FindingFix{
-							Action: "move_item", Label: fmt.Sprintf("Move to Day %d", *target),
+							Action: "move_item", Label: tr(locale, "review.fix.moveToDay", *target),
 							ItemID: &id, TargetDay: target,
 						}
 					}
@@ -329,7 +331,7 @@ func lastItemInSlot(items []store.ItineraryItem, tod string) (string, bool) {
 // exclusive) and flags any night no accommodation covers. Gated so an empty
 // draft isn't nagged: only runs when the trip is `planned` OR already has at
 // least one accommodation.
-func checkLodging(d exportData) []Finding {
+func checkLodging(locale string, d exportData) []Finding {
 	if !d.Trip.StartDate.Valid || !d.Trip.EndDate.Valid {
 		return nil
 	}
@@ -355,9 +357,9 @@ func checkLodging(d exportData) []Finding {
 			checkOut := night.AddDate(0, 0, 1).Format(dateLayout)
 			out = append(out, Finding{
 				Severity: "warn", Category: "lodging", TripID: tripID, Day: &day,
-				Message: fmt.Sprintf("No lodging booked for the night of %s.", night.Format("Mon, Jan 2")),
+				Message: tr(locale, "review.noLodging", localizedDate(locale, night, dateStyleWeekdayMonthDay)),
 				Fix: &FindingFix{
-					Action: "add_lodging", Label: "Add a stay",
+					Action: "add_lodging", Label: tr(locale, "review.fix.addStay"),
 					City:     cityForDay(d.Items, day),
 					CheckIn:  &checkIn,
 					CheckOut: &checkOut,
@@ -428,7 +430,7 @@ func hubFirstDate(trip store.Trip, items []store.ItineraryItem, hub string) (tim
 // segment plausibly connects the two, it flags a missing leg. Conservative on
 // purpose — a same-city move or a fuzzy origin/destination match suppresses the
 // warning to avoid false positives.
-func checkTransit(d exportData) []Finding {
+func checkTransit(locale string, d exportData) []Finding {
 	groups := groupExportItems(d.Trip, d.Items)
 	if len(groups) < 2 {
 		return nil
@@ -448,24 +450,24 @@ func checkTransit(d exportData) []Finding {
 		}
 		origin, dest := from, to
 		greek := isGreekLocation(origin) || isGreekLocation(dest)
-		label, mode := "Add transport", "flight"
+		label, mode := tr(locale, "review.fix.addTransport"), "flight"
 		if greek {
 			// Island legs stay ferry regardless of the trip's travel mode —
 			// you can't drive between islands.
-			label, mode = "Add ferry", "ferry"
+			label, mode = tr(locale, "review.fix.addFerry"), "ferry"
 		} else if tm := d.Trip.TravelMode; tm != nil && allowedSegmentModes[*tm] {
 			// 'mixed' fails the allowedSegmentModes check and keeps the
 			// flight default — intended.
 			mode = *tm
 			switch *tm {
 			case "car":
-				label = "Add drive"
+				label = tr(locale, "review.fix.addDrive")
 			case "train":
-				label = "Add train"
+				label = tr(locale, "review.fix.addTrain")
 			case "bus":
-				label = "Add bus"
+				label = tr(locale, "review.fix.addBus")
 			case "ferry":
-				label = "Add ferry"
+				label = tr(locale, "review.fix.addFerry")
 			}
 		}
 		fix := &FindingFix{
@@ -478,7 +480,7 @@ func checkTransit(d exportData) []Finding {
 		}
 		out = append(out, Finding{
 			Severity: "warn", Category: "transit", TripID: tripID,
-			Message: fmt.Sprintf("No transport booked from %s to %s.", from, to),
+			Message: tr(locale, "review.noTransport", from, to),
 			Fix:     fix,
 		})
 	}
@@ -512,15 +514,15 @@ func fuzzyMatch(a, b string) bool {
 }
 
 // checkBudget flags a trip whose spending exceeds its target.
-func checkBudget(d exportData, budget *BudgetResponse) []Finding {
+func checkBudget(locale string, d exportData, budget *BudgetResponse) []Finding {
 	if budget == nil || budget.Remaining == nil || *budget.Remaining >= 0 {
 		return nil
 	}
 	over := -*budget.Remaining
 	return []Finding{{
 		Severity: "warn", Category: "budget", TripID: d.Trip.ID.String(),
-		Message: fmt.Sprintf("Over budget by %.2f %s.", over, budget.Currency),
-		Fix:     &FindingFix{Action: "raise_budget", Label: "Adjust budget"},
+		Message: tr(locale, "review.overBudget", over, budget.Currency),
+		Fix:     &FindingFix{Action: "raise_budget", Label: tr(locale, "review.fix.adjustBudget")},
 	}}
 }
 
@@ -529,7 +531,7 @@ func checkBudget(d exportData, budget *BudgetResponse) []Finding {
 // generated "Suggested" drafts that track the itinerary, not commitments the
 // traveler made, so they're skipped: nagging "confirm your booking" for a
 // suggestion the traveler never chose is noise.
-func checkBookings(d exportData) []Finding {
+func checkBookings(locale string, d exportData) []Finding {
 	tripID := d.Trip.ID.String()
 	var out []Finding
 	for _, a := range d.Accommodations {
@@ -540,9 +542,9 @@ func checkBookings(d exportData) []Finding {
 		et := "accommodation"
 		out = append(out, Finding{
 			Severity: "info", Category: "bookings", TripID: tripID, ItemID: &id,
-			Message: fmt.Sprintf("Confirm your booking for %s.", a.Name),
+			Message: tr(locale, "review.confirmBooking", a.Name),
 			Fix: &FindingFix{
-				Action: "mark_booked", Label: "Mark booked", ItemID: &id, EntityType: &et,
+				Action: "mark_booked", Label: tr(locale, "review.fix.markBooked"), ItemID: &id, EntityType: &et,
 			},
 		})
 	}
@@ -554,9 +556,9 @@ func checkBookings(d exportData) []Finding {
 		et := "segment"
 		out = append(out, Finding{
 			Severity: "info", Category: "bookings", TripID: tripID, ItemID: &id,
-			Message: fmt.Sprintf("Confirm your booking for %s.", segmentRoute(s)),
+			Message: tr(locale, "review.confirmBooking", segmentRoute(s)),
 			Fix: &FindingFix{
-				Action: "mark_booked", Label: "Mark booked", ItemID: &id, EntityType: &et,
+				Action: "mark_booked", Label: tr(locale, "review.fix.markBooked"), ItemID: &id, EntityType: &et,
 			},
 		})
 	}
@@ -581,7 +583,7 @@ const (
 // days, one GetTripWeather lookup per distinct city (keyless, TTL-cached).
 // Best-effort: a nil service, an undated trip, or any provider error/empty
 // result skips silently — weather never fails or blocks a review.
-func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []Finding {
+func checkWeather(ctx context.Context, locale string, d exportData, weather *WeatherService) []Finding {
 	if weather == nil || !d.Trip.StartDate.Valid {
 		return nil
 	}
@@ -660,9 +662,9 @@ func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []
 			if di.outdoor && weatherDayRainy(wd) {
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
-					Message: fmt.Sprintf("Rain likely on Day %d (%s) — pack an umbrella.", day, city),
+					Message: tr(locale, "review.rainLikely", day, city),
 					Fix: &FindingFix{
-						Action: "add_packing", Label: "+ umbrella",
+						Action: "add_packing", Label: tr(locale, "review.fix.addUmbrella"),
 						PackingItem: ptrTo("Umbrella"), PackingCategory: ptrTo("general"),
 					},
 				})
@@ -671,18 +673,18 @@ func checkWeather(ctx context.Context, d exportData, weather *WeatherService) []
 			case wd.TempMaxC >= hotThresholdC:
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
-					Message: fmt.Sprintf("Day %d (%s) could be very hot (%.0f°C) — plan for the heat.", day, city, wd.TempMaxC),
+					Message: tr(locale, "review.veryHot", day, city, wd.TempMaxC),
 					Fix: &FindingFix{
-						Action: "add_packing", Label: "+ sun protection",
+						Action: "add_packing", Label: tr(locale, "review.fix.addSunProtection"),
 						PackingItem: ptrTo("Sunscreen"), PackingCategory: ptrTo("health"),
 					},
 				})
 			case wd.TempMinC <= coldThresholdC:
 				out = append(out, Finding{
 					Severity: "info", Category: "weather", TripID: tripID, Day: &dd,
-					Message: fmt.Sprintf("Day %d (%s) could be very cold (%.0f°C) — pack warm layers.", day, city, wd.TempMinC),
+					Message: tr(locale, "review.veryCold", day, city, wd.TempMinC),
 					Fix: &FindingFix{
-						Action: "add_packing", Label: "+ warm layers",
+						Action: "add_packing", Label: tr(locale, "review.fix.addWarmLayers"),
 						PackingItem: ptrTo("Warm layers"), PackingCategory: ptrTo("clothing"),
 					},
 				})
@@ -734,7 +736,7 @@ func isOutdoorItem(it store.ItineraryItem) bool {
 // details, converts the opening hours, and warns when the place is closed that
 // weekday. Bounded to maxHoursLookups upstream fetches per review. Best-effort:
 // a nil service, a Places error, or unresolvable hours skips that item.
-func checkHours(ctx context.Context, d exportData, places *GooglePlacesService) []Finding {
+func checkHours(ctx context.Context, locale string, d exportData, places *GooglePlacesService) []Finding {
 	if places == nil {
 		return nil
 	}
@@ -781,10 +783,10 @@ func checkHours(ctx context.Context, d exportData, places *GooglePlacesService) 
 		id := it.ID.String()
 		out = append(out, Finding{
 			Severity: "warn", Category: "hours", TripID: tripID, Day: &day, ItemID: &id,
-			Message: fmt.Sprintf("%s may be closed on %s (Day %d).", it.Name, weekday.String(), day),
+			Message: tr(locale, "review.mayBeClosed", it.Name, localizedWeekday(locale, weekday), day),
 			// No cheap "open on day N" signal here (we only fetched this item's
 			// hours), so the client opens an editor — TargetDay stays nil.
-			Fix: &FindingFix{Action: "move_item", Label: "Reschedule", ItemID: &id},
+			Fix: &FindingFix{Action: "move_item", Label: tr(locale, "review.fix.reschedule"), ItemID: &id},
 		})
 	}
 	return out

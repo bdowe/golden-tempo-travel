@@ -1,6 +1,9 @@
 -- name: CreateUser :one
-INSERT INTO users (email, password_hash, display_name)
-VALUES ($1, $2, $3)
+-- locale is the language negotiated on the signup request, so the very first
+-- email (verification) is already in the traveler's language rather than
+-- waiting for the client's first sync (specs/i18n-spanish).
+INSERT INTO users (email, password_hash, display_name, locale)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetUserByEmail :one
