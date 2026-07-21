@@ -40,6 +40,16 @@ RUN flutter build web --release \
     --dart-define=API_BASE_URL=/api/v1 \
     --dart-define=APP_BASE_PATH=/app/
 
+# Release identifier for the web build, mirroring the api image's
+# SENTRY_RELEASE: CI passes the git SHA so /app/version.json answers
+# "which commit is this frontend?" (the deploy job verifies it). Flutter
+# already emits version.json (app_name/version/build_number) and nginx
+# already serves it no-cache — inject a release field into it rather than
+# clobbering, and fail the build if the injection missed.
+ARG GIT_SHA=
+RUN sed -i 's/}[[:space:]]*$/,"release":"'"${GIT_SHA}"'"}/' build/web/version.json \
+    && grep -q '"release"' build/web/version.json
+
 # Serve static files and proxy API via nginx
 FROM nginx:alpine
 

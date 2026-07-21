@@ -210,6 +210,8 @@ jobs:
           tags: |
             ghcr.io/bdowe/goldentempo-gateway:latest
             ghcr.io/bdowe/goldentempo-gateway:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=gateway
           cache-to: type=gha,mode=max,scope=gateway
 
@@ -322,3 +324,31 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
             docker image prune -f"
+
+      # A green deploy should mean "this SHA is live and serving", not just
+      # "the restart script ran": poll the public site until both the api
+      # (health.release, baked from SENTRY_RELEASE) and the web build
+      # (/app/version.json, baked from GIT_SHA) report the deployed tag.
+      # No curl -f: a degraded-DB health still answers 503 WITH the release
+      # in the body, and that still proves which build is serving. The query
+      # string busts Cloudflare's edge cache for version.json. Note:
+      # rollbacks (workflow_dispatch) to images built before these markers
+      # existed will fail this step — deploy them with the pre-marker
+      # workflow revision if ever needed.
+      - name: Verify deployed release
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          for i in $(seq 1 30); do
+            api=$(curl -sS -m 10 "https://goldentempotravel.com/api/v1/health" \
+              | jq -r '.release // empty' 2>/dev/null || true)
+            web=$(curl -sS -m 10 "https://goldentempotravel.com/app/version.json?deploy=${IMAGE_TAG}" \
+              | jq -r '.release // empty' 2>/dev/null || true)
+            if [ "$api" = "$IMAGE_TAG" ] && [ "$web" = "$IMAGE_TAG" ]; then
+              echo "live: api and web both serving ${IMAGE_TAG}"
+              exit 0
+            fi
+            echo "waiting: api='${api:-?}' web='${web:-?}' want='${IMAGE_TAG}' (attempt $i/30)"
+            sleep 10
+          done
+          echo "::error::deployed release never became ${IMAGE_TAG}"
+          exit 1
