@@ -104,20 +104,9 @@ class FlightOffer {
   /// "5h 30m" style duration label for the return slice.
   String get returnDurationLabel => _fmtDuration(returnDurationMinutes);
 
-  String get stopsLabel => _fmtStops(stops);
-
-  String get returnStopsLabel => _fmtStops(returnStops);
-
-  /// One stops label covering both directions of a round trip — "Nonstop",
-  /// "1 stop each way", or "Nonstop / 1 stop" when they differ. Falls back to
-  /// [stopsLabel] for one-way offers.
-  String get combinedStopsLabel {
-    if (!isRoundTrip) return stopsLabel;
-    if (stops == returnStops) {
-      return stops == 0 ? 'Nonstop' : '$stopsLabel each way';
-    }
-    return '$stopsLabel / $returnStopsLabel';
-  }
+  // Stop-count labels are prose and live in utils/flight_labels.dart, which
+  // can pluralize per locale (specs/i18n-spanish). Duration labels stay here:
+  // "7h 30m" is a unit abbreviation, not copy.
 
   static String _fmtDuration(int minutes) {
     final h = minutes ~/ 60;
@@ -127,11 +116,6 @@ class FlightOffer {
     return '${h}h ${m}m';
   }
 
-  static String _fmtStops(int stops) => switch (stops) {
-        0 => 'Nonstop',
-        1 => '1 stop',
-        _ => '$stops stops',
-      };
 
   /// Departure clock time, e.g. "10:50". Empty if unparseable.
   String get departClock => _clock(departTime);

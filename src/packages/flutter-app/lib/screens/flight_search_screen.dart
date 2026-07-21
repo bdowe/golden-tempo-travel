@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/airport.dart';
 import '../models/flight_search_request.dart';
 import '../providers/auth_provider.dart';
@@ -9,6 +10,34 @@ import '../widgets/airport_field.dart';
 import '../widgets/create_alert_sheet.dart';
 import '../widgets/flight_offer_card.dart';
 import '../widgets/gradient_app_bar.dart';
+
+// Canonical API values. These are sent to the Duffel-backed API, so they are
+// NEVER translated — only their display labels are (specs/i18n-spanish).
+const _cabinClasses = ['economy', 'premium_economy', 'business', 'first'];
+const _presets = ['cost', 'time', 'balanced'];
+const _baggageValues = ['personal_item', 'carry_on', 'checked'];
+
+String _cabinLabel(AppLocalizations l10n, String value) => switch (value) {
+      'economy' => l10n.flightSearchCabinEconomy,
+      'premium_economy' => l10n.flightSearchCabinPremiumEconomy,
+      'business' => l10n.flightSearchCabinBusiness,
+      'first' => l10n.flightSearchCabinFirst,
+      _ => value,
+    };
+
+String _presetLabel(AppLocalizations l10n, String value) => switch (value) {
+      'cost' => l10n.flightSearchPresetCheapest,
+      'time' => l10n.flightSearchPresetFastest,
+      'balanced' => l10n.flightSearchPresetBalanced,
+      _ => value,
+    };
+
+String _baggageLabel(AppLocalizations l10n, String value) => switch (value) {
+      'personal_item' => l10n.flightSearchBaggagePersonalItem,
+      'carry_on' => l10n.flightSearchBaggageCarryOn,
+      'checked' => l10n.flightSearchBaggageChecked,
+      _ => value,
+    };
 
 /// Standalone flight search: pick origin/destination/date/passengers and a
 /// ranking preset, then browse offers ranked by the Duffel-backed API.
@@ -73,28 +102,9 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   static const _defaultChildAge = 8;
   String _optimizeFor = 'balanced';
 
-  static const _cabinLabels = {
-    'economy': 'Economy',
-    'premium_economy': 'Premium economy',
-    'business': 'Business',
-    'first': 'First',
-  };
-
-  static const _presets = {
-    'cost': 'Cheapest',
-    'time': 'Fastest',
-    'balanced': 'Balanced',
-  };
-
   /// Biggest bag needed. Beyond personal_item, results are ranked by the
   /// effective total (fare + bag fee when the bag isn't included).
   String _baggage = 'personal_item';
-
-  static const _baggageLabels = {
-    'personal_item': 'Personal item',
-    'carry_on': 'Carry-on',
-    'checked': 'Checked bag',
-  };
 
   @override
   void initState() {
@@ -312,9 +322,10 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(flightsProvider);
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     return Scaffold(
-      appBar: const GradientAppBar(title: Text('Find Flights')),
+      appBar: GradientAppBar(title: Text(l10n.flightSearchTitle)),
       body: Column(
         children: [
           // Search form
@@ -324,14 +335,14 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
             child: Column(
               children: [
                 AirportField(
-                  label: 'From',
+                  label: l10n.flightSearchFrom,
                   icon: Icons.flight_takeoff,
                   selected: _origin,
                   onSelected: (a) => setState(() => _origin = a),
                 ),
                 const SizedBox(height: 12),
                 AirportField(
-                  label: 'To',
+                  label: l10n.flightSearchTo,
                   icon: Icons.flight_land,
                   selected: _destination,
                   onSelected: (a) => setState(() => _destination = a),
@@ -344,7 +355,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                         onPressed: _pickDate,
                         icon: const Icon(Icons.calendar_today, size: 18),
                         label: Text(_departDate == null
-                            ? 'Departure date'
+                            ? l10n.flightSearchDepartDate
                             : _fmtDate(_departDate!)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -357,7 +368,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                         onPressed: _pickReturnDate,
                         icon: const Icon(Icons.calendar_today, size: 18),
                         label: Text(_returnDate == null
-                            ? 'Return (optional)'
+                            ? l10n.flightSearchReturnOptional
                             : _fmtDate(_returnDate!)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -366,7 +377,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                     ),
                     if (_returnDate != null)
                       IconButton(
-                        tooltip: 'Clear return date',
+                        tooltip: l10n.flightSearchClearReturnTooltip,
                         visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.close, size: 18),
                         onPressed: () => setState(() => _returnDate = null),
@@ -407,7 +418,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                       runSpacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text('Child ages',
+                        Text(l10n.flightSearchChildAges,
                             style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant)),
                         for (var i = 0; i < _childAges.length; i++)
@@ -437,22 +448,22 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                   child: Wrap(
                     spacing: 8,
                     children: [
-                      for (final e in _cabinLabels.entries)
+                      for (final value in _cabinClasses)
                         ChoiceChip(
-                          label: Text(e.value),
-                          selected: _cabinClass == e.key,
+                          label: Text(_cabinLabel(l10n, value)),
+                          selected: _cabinClass == value,
                           onSelected: (_) =>
-                              setState(() => _cabinClass = e.key),
+                              setState(() => _cabinClass = value),
                         ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
                 SegmentedButton<String>(
-                  segments: _baggageLabels.entries
-                      .map((e) => ButtonSegment(
-                            value: e.key,
-                            label: Text(e.value),
+                  segments: _baggageValues
+                      .map((value) => ButtonSegment(
+                            value: value,
+                            label: Text(_baggageLabel(l10n, value)),
                           ))
                       .toList(),
                   selected: {_baggage},
@@ -460,10 +471,10 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                 ),
                 const SizedBox(height: 12),
                 SegmentedButton<String>(
-                  segments: _presets.entries
-                      .map((e) => ButtonSegment(
-                            value: e.key,
-                            label: Text(e.value),
+                  segments: _presets
+                      .map((value) => ButtonSegment(
+                            value: value,
+                            label: Text(_presetLabel(l10n, value)),
                           ))
                       .toList(),
                   selected: {_optimizeFor},
@@ -484,7 +495,9 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                                 strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.search),
-                    label: Text(state.loading ? 'Searching…' : 'Search Flights'),
+                    label: Text(state.loading
+                        ? l10n.flightSearchSearching
+                        : l10n.flightSearchSubmit),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -510,7 +523,7 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: TextButton.icon(
                   icon: const Icon(Icons.notifications_none, size: 18),
-                  label: const Text('Watch this route — email me on a drop'),
+                  label: Text(l10n.flightSearchWatchRoute),
                   onPressed: () {
                     final w = _watched!;
                     // Seed the baseline from the cheapest EFFECTIVE price —
@@ -558,6 +571,7 @@ class _Results extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     if (state.error != null) {
       return Center(
@@ -569,7 +583,7 @@ class _Results extends StatelessWidget {
               Icon(Icons.error_outline,
                   size: 48, color: theme.colorScheme.error),
               const SizedBox(height: 12),
-              Text('Could not load flights',
+              Text(l10n.flightSearchErrorTitle,
                   style: theme.textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
@@ -587,7 +601,7 @@ class _Results extends StatelessWidget {
     if (!state.hasSearched) {
       return _Hint(
         icon: Icons.flight,
-        text: 'Choose an origin, destination, and date to find flights.',
+        text: l10n.flightSearchHintInitial,
       );
     }
 
@@ -596,13 +610,14 @@ class _Results extends StatelessWidget {
     }
 
     if (state.offers.isEmpty) {
-      return const _Hint(
+      return _Hint(
         icon: Icons.search_off,
-        text: 'No flights found for this route and date.',
+        text: l10n.flightSearchHintEmpty,
       );
     }
 
-    final savingsLabel = savingsLabelFor(state.offers, state.bestOfferId);
+    final savingsLabel =
+        savingsLabelFor(l10n, state.offers, state.bestOfferId);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: state.offers.length,

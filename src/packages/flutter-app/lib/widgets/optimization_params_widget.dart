@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 class OptimizationParamsWidget extends StatelessWidget {
   final String? startTime;
   final String? startDate;
@@ -20,6 +22,7 @@ class OptimizationParamsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
@@ -35,7 +38,7 @@ class OptimizationParamsWidget extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Optimization Parameters',
+                  l10n.optParamsTitle,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -51,13 +54,13 @@ class OptimizationParamsWidget extends StatelessWidget {
                   child: InkWell(
                     onTap: () => _selectDate(context),
                     child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Start Date',
-                        prefixIcon: Icon(Icons.calendar_today),
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n.optParamsStartDate,
+                        prefixIcon: const Icon(Icons.calendar_today),
+                        border: const OutlineInputBorder(),
                       ),
                       child: Text(
-                        startDate ?? 'Select date',
+                        startDate ?? l10n.optParamsSelectDate,
                         style: TextStyle(
                           color: startDate != null 
                               ? Theme.of(context).textTheme.bodyLarge?.color
@@ -72,13 +75,15 @@ class OptimizationParamsWidget extends StatelessWidget {
                   child: InkWell(
                     onTap: () => _selectTime(context),
                     child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Start Time',
-                        prefixIcon: Icon(Icons.access_time),
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n.optParamsStartTime,
+                        prefixIcon: const Icon(Icons.access_time),
+                        border: const OutlineInputBorder(),
                       ),
                       child: Text(
-                        startTime != null ? _formatTime(startTime!, context) : 'Select time',
+                        startTime != null
+                            ? _formatTime(startTime!, context)
+                            : l10n.optParamsSelectTime,
                         style: TextStyle(
                           color: startTime != null 
                               ? Theme.of(context).textTheme.bodyLarge?.color
@@ -99,7 +104,7 @@ class OptimizationParamsWidget extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Return to Starting Point',
+                    l10n.optParamsReturnToStart,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
@@ -119,7 +124,7 @@ class OptimizationParamsWidget extends StatelessWidget {
                     TextButton.icon(
                       onPressed: () => onStartDateChanged(null),
                       icon: const Icon(Icons.clear, size: 16),
-                      label: const Text('Clear Date'),
+                      label: Text(l10n.optParamsClearDate),
                       style: TextButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.error,
                       ),
@@ -130,7 +135,7 @@ class OptimizationParamsWidget extends StatelessWidget {
                     TextButton.icon(
                       onPressed: () => onStartTimeChanged(null),
                       icon: const Icon(Icons.clear, size: 16),
-                      label: const Text('Clear Time'),
+                      label: Text(l10n.optParamsClearTime),
                       style: TextButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.error,
                       ),

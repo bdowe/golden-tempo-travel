@@ -15,6 +15,15 @@ enum DictationStatus { idle, listening, transcribing }
 /// snapshots the field as `_base`, partials render as an overlay on top of
 /// it, and each final result is committed into it. A genuine user edit while
 /// listening cancels the session and keeps the edit.
+/// Why dictation stopped, as a code the UI turns into localized copy
+/// (specs/i18n-spanish). The controller has no BuildContext of its own.
+enum DictationError {
+  permissionBlocked,
+  unsupportedBrowser,
+  unavailable,
+  transcriptionFailed,
+}
+
 class DictationController extends ChangeNotifier {
   final TextEditingController textController;
   final DictationEngine? primary;
@@ -47,7 +56,10 @@ class DictationController extends ChangeNotifier {
 
   /// One-shot user-facing error message; the widget shows it (SnackBar) and
   /// clears it via [consumeError].
-  String? _errorMessage;
+  ///
+  /// A code, not a sentence: this is a service with no BuildContext, so it
+  /// cannot look up localized copy. The chat panel maps it (specs/i18n-spanish).
+  DictationError? _errorMessage;
 
   DictationStatus get status => _status;
 
@@ -55,7 +67,7 @@ class DictationController extends ChangeNotifier {
   /// mic button isn't rendered in either case.
   bool get available => _initDone && _available;
 
-  String? consumeError() {
+  DictationError? consumeError() {
     final message = _errorMessage;
     _errorMessage = null;
     return message;
@@ -145,8 +157,7 @@ class DictationController extends ChangeNotifier {
   void _onError(String code) {
     switch (code) {
       case 'permission':
-        _errorMessage =
-            'Microphone access was blocked. Check your browser settings.';
+        _errorMessage = DictationError.permissionBlocked;
       case 'engine-failed':
         // The live engine exists but doesn't work here (Brave-style forks).
         // Degrade to the recorder path for the rest of the app session and
@@ -155,14 +166,14 @@ class DictationController extends ChangeNotifier {
           _switchToFallbackAndRetry();
           return;
         }
-        _errorMessage = "Voice input isn't available in this browser.";
+        _errorMessage = DictationError.unsupportedBrowser;
       case 'unavailable':
         // Server says the fallback is not configured — hide the mic.
         _fallbackDead = true;
         if (_engine == fallback) _available = false;
-        _errorMessage = "Voice input isn't available right now.";
+        _errorMessage = DictationError.unavailable;
       default:
-        _errorMessage = "Couldn't transcribe audio. You can type instead.";
+        _errorMessage = DictationError.transcriptionFailed;
     }
     notifyListeners();
   }
@@ -180,7 +191,7 @@ class DictationController extends ChangeNotifier {
       }
     } else {
       _available = false;
-      _errorMessage = "Voice input isn't available in this browser.";
+      _errorMessage = DictationError.unsupportedBrowser;
     }
     notifyListeners();
   }

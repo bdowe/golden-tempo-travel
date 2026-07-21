@@ -16,6 +16,8 @@ import 'package:travel_route_planner/services/image_attachment_pipeline.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
 import 'package:travel_route_planner/widgets/chat_panel.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Composer image attachments (specs/chat-image-attachments): chips appear
 /// and are removable, sends carry/clear them, image-only sends work, the
 /// 4-image cap and unreadable files surface as SnackBars. Files enter through
@@ -98,6 +100,7 @@ class _Harness {
           ),
         ],
         child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
           home: Scaffold(
             body: ChatPanel(
               state: provider,

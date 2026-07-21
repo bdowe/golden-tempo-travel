@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import '../l10n/l10n.dart';
 import '../models/local_guide.dart';
 import '../models/local_recommendation.dart';
 import '../providers/auth_provider.dart';
@@ -27,6 +28,7 @@ class LocalGuideDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final detail = ref.watch(localGuideDetailProvider(guide.id));
 
     return Scaffold(
@@ -37,7 +39,8 @@ class LocalGuideDetailScreen extends ConsumerWidget {
             const Icon(Icons.menu_book, size: 20),
             const SizedBox(width: AppSpacing.sm),
             Flexible(
-              child: Text('Local guide', overflow: TextOverflow.ellipsis),
+              child:
+                  Text(l10n.guideDetailTitle, overflow: TextOverflow.ellipsis),
             ),
           ],
         ),
@@ -46,13 +49,13 @@ class LocalGuideDetailScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => EmptyState(
           icon: Icons.menu_book,
-          title: 'Could not load this guide',
-          message: 'Check your connection and try again.',
+          title: l10n.guideDetailErrorTitle,
+          message: l10n.guideDetailErrorMessage,
           actions: [
             FilledButton.icon(
               onPressed: () => ref.invalidate(localGuideDetailProvider(guide.id)),
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(l10n.commonRetry),
             ),
           ],
         ),
@@ -94,6 +97,7 @@ class _GuideBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final accent = AppColors.toolLocal;
     final title = _pick(guide.title, fallback.title);
     final body = _pick(guide.body, fallback.body);
@@ -149,7 +153,7 @@ class _GuideBody extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  'By $sourceName',
+                  l10n.guideDetailByline(sourceName),
                   style: theme.textTheme.labelLarge?.copyWith(
                       color: accent, fontWeight: FontWeight.w600),
                   maxLines: 1,
@@ -174,7 +178,7 @@ class _GuideBody extends StatelessWidget {
               Icon(Icons.place, size: 18, color: accent),
               const SizedBox(width: 6),
               Text(
-                'Places in this guide',
+                l10n.guideDetailPlacesTitle,
                 style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700, color: accent),
               ),
@@ -201,8 +205,8 @@ class _GuideBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
           EmptyState(
             icon: Icons.place,
-            title: 'No places pinned yet',
-            message: 'This guide is all narrative for now.',
+            title: l10n.guideDetailNoPinsTitle,
+            message: l10n.guideDetailNoPinsMessage,
             iconColor: accent.withValues(alpha: 0.5),
           ),
         ],
@@ -324,13 +328,13 @@ class _GuideMapState extends State<_GuideMap> {
                 children: [
                   MapControlButton(
                     icon: Icons.add,
-                    tooltip: 'Zoom in',
+                    tooltip: context.l10n.mapZoomIn,
                     onTap: () => _zoomBy(1),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   MapControlButton(
                     icon: Icons.remove,
-                    tooltip: 'Zoom out',
+                    tooltip: context.l10n.mapZoomOut,
                     onTap: () => _zoomBy(-1),
                   ),
                 ],

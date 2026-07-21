@@ -11,6 +11,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/add_to_trip_sheet.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Serves a fixed trip list/detail and captures the add-item POST body, so the
 /// test can assert exactly what the picker sends (specs/add-to-itinerary).
 class _FakeTripsApiService extends TripsApiService {
@@ -64,6 +66,7 @@ Widget _harness(_FakeTripsApiService service, AddToTripPayload payload) {
   return ProviderScope(
     overrides: [tripsApiServiceProvider.overrideWithValue(service)],
     child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
       home: Scaffold(
         body: Builder(
           builder: (context) => ElevatedButton(

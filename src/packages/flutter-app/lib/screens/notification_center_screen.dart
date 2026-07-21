@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/notification.dart';
 import '../providers/notifications_provider.dart';
 import '../theme/spacing.dart';
@@ -46,29 +47,29 @@ class _NotificationCenterScreenState
   @override
   Widget build(BuildContext context) {
     final notifs = ref.watch(notificationsProvider);
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(title: Text(l10n.notifTitle)),
       body: PageContainer(
         child: notifs.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => EmptyState(
             icon: Icons.cloud_off,
-            title: 'Could not load notifications',
+            title: l10n.notifLoadErrorTitle,
             message: '$e'.replaceFirst('Exception: ', ''),
             actions: [
               FilledButton(
                 onPressed: () => ref.invalidate(notificationsProvider),
-                child: const Text('Retry'),
+                child: Text(l10n.commonRetry),
               ),
             ],
           ),
           data: (list) {
             if (list.isEmpty) {
-              return const EmptyState(
+              return EmptyState(
                 icon: Icons.notifications_none,
-                title: 'No notifications yet',
-                message:
-                    'Price drops on routes you watch will show up here.',
+                title: l10n.notifEmptyTitle,
+                message: l10n.notifEmptyMessage,
               );
             }
             return RefreshIndicator(
@@ -101,8 +102,8 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unread = notification.isUnread;
-    final when =
-        relativeTime(DateTime.parse(notification.createdAt).toLocal());
+    final when = relativeTime(
+        context.l10n, DateTime.parse(notification.createdAt).toLocal());
 
     final content = switch (notification.type) {
       'price_drop' =>
@@ -178,30 +179,33 @@ class _PriceDropBody extends StatelessWidget {
     return v is num ? v.toDouble() : null;
   }
 
-  String _dropLine() {
+  String _dropLine(AppLocalizations l10n) {
     final price = _num('price') ?? 0;
     final currency = _str('currency') ?? '';
     final now = formatMoney(price, currency);
     final prev = _num('previous_price');
     if (prev != null) {
-      return '$now, down from ${formatMoney(prev, currency)}';
+      return l10n.notifDownFrom(now, formatMoney(prev, currency));
     }
     return now;
   }
 
-  String _datesLine() {
+  String _datesLine(AppLocalizations l10n) {
     final depart = _str('depart_date') ?? '';
     final matched = _str('matched_date');
     var s = matched ?? depart;
     final ret = _str('return_date');
     if (ret != null) s += ' → $ret';
-    if (matched != null && matched != depart) s += ' (best in window)';
+    if (matched != null && matched != depart) {
+      s += ' ${l10n.notifBestInWindow}';
+    }
     return s;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final origin = _str('origin') ?? '';
     final destination = _str('destination') ?? '';
     return Column(
@@ -219,7 +223,7 @@ class _PriceDropBody extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          _dropLine(),
+          _dropLine(l10n),
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
             color: unread
@@ -229,7 +233,7 @@ class _PriceDropBody extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          _datesLine(),
+          _datesLine(l10n),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -253,8 +257,8 @@ class _GenericBody extends StatelessWidget {
     required this.unread,
   });
 
-  static String _humanize(String type) {
-    if (type.isEmpty) return 'Notification';
+  static String _humanize(String type, AppLocalizations l10n) {
+    if (type.isEmpty) return l10n.notifGenericFallback;
     return type
         .split(RegExp(r'[_\s]+'))
         .where((w) => w.isNotEmpty)
@@ -268,7 +272,7 @@ class _GenericBody extends StatelessWidget {
     final title =
         (payload['title'] is String && (payload['title'] as String).isNotEmpty)
             ? payload['title'] as String
-            : _humanize(type);
+            : _humanize(type, context.l10n);
     final subtitle = payload['message'] is String
         ? payload['message'] as String
         : payload['body'] is String
@@ -318,23 +322,24 @@ class _TripSignalBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final tripTitle = payload['trip_title'] is String
         ? payload['trip_title'] as String
-        : 'a trip';
+        : l10n.notifSomeTrip;
     final IconData icon;
     final String headline;
     if (type == 'invite_accepted') {
       final who = payload['accepter_name'] is String
           ? payload['accepter_name'] as String
-          : 'Someone';
+          : l10n.notifSomeone;
       icon = Icons.group_add_outlined;
-      headline = '$who joined "$tripTitle"';
+      headline = l10n.notifJoinedTrip(who, tripTitle);
     } else {
       final who = payload['actor_name'] is String
           ? payload['actor_name'] as String
-          : 'A collaborator';
+          : l10n.notifACollaborator;
       icon = Icons.edit_outlined;
-      headline = '$who edited "$tripTitle"';
+      headline = l10n.notifEditedTrip(who, tripTitle);
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,

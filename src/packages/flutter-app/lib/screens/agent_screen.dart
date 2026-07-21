@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
@@ -67,16 +68,17 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     // Narrow select so streaming-text flushes don't rebuild the Scaffold.
     final showReset = ref.watch(planProvider.select(
         (s) => s.messages.isNotEmpty || s.completedLocations != null));
+    final l10n = context.l10n;
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('Plan your trip'),
+        title: Text(l10n.agentScreenTitle),
         actions: [
           if (showReset)
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => ref.read(planProvider.notifier).reset(),
-              tooltip: 'Start over',
+              tooltip: l10n.agentScreenStartOver,
             ),
           const AccountMenu(),
         ],
@@ -104,29 +106,34 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
+    final l10n = context.l10n;
+    return EmptyState(
       icon: Icons.chat_bubble_outline,
-      title: 'Tell me about your dream trip',
-      message:
-          "I'll search for places and build an itinerary you can load into the route planner.",
+      title: l10n.agentScreenEmptyTitle,
+      message: l10n.agentScreenEmptyMessage,
       actions: [
-        _SuggestionChip('2 days in Paris'),
-        _SuggestionChip('Museums in Rome'),
-        _SuggestionChip('Weekend in Tokyo'),
+        _SuggestionChip(l10n.agentScreenSuggestionParis),
+        _SuggestionChip(l10n.agentScreenSuggestionRome),
+        _SuggestionChip(l10n.agentScreenSuggestionTokyo),
       ],
     );
   }
 }
 
+/// A one-tap conversation starter. The localized text is BOTH what the user
+/// reads and what gets sent: it becomes a message in the traveler's own
+/// transcript, so an English message they never wrote would read as a bug. The
+/// agent answers in the traveler's language anyway (specs/i18n-spanish). This
+/// matches the home screen's suggestion chips.
 class _SuggestionChip extends ConsumerWidget {
-  final String text;
-  const _SuggestionChip(this.text);
+  final String prompt;
+  const _SuggestionChip(this.prompt);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ActionChip(
-      label: Text(text),
-      onPressed: () => ref.read(planProvider.notifier).sendMessage(text),
+      label: Text(prompt),
+      onPressed: () => ref.read(planProvider.notifier).sendMessage(prompt),
     );
   }
 }
@@ -165,7 +172,7 @@ class _ItineraryBanner extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  'Itinerary ready — $locationCount locations',
+                  context.l10n.agentScreenItineraryReady(locationCount),
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: AppColors.brandDark,
                     fontWeight: FontWeight.bold,
@@ -194,7 +201,7 @@ class _ItineraryBanner extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onViewTrip,
                 icon: const Icon(Icons.luggage),
-                label: const Text('View trip'),
+                label: Text(context.l10n.agentScreenViewTrip),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.brandLight,
                 ),
@@ -206,7 +213,7 @@ class _ItineraryBanner extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onLoad,
                 icon: const Icon(Icons.map),
-                label: const Text('Load into route planner'),
+                label: Text(context.l10n.agentScreenLoadIntoRoutePlanner),
               ),
             ),
           ] else
@@ -215,7 +222,7 @@ class _ItineraryBanner extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onLoad,
                 icon: const Icon(Icons.map),
-                label: const Text('Load into Planner'),
+                label: Text(context.l10n.agentScreenLoadIntoPlanner),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.brandLight,
                 ),

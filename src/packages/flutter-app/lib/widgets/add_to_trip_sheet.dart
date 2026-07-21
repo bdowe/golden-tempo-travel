@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/event.dart';
 import '../models/itinerary_item.dart';
 import '../models/local_recommendation.dart';
@@ -111,6 +112,7 @@ Future<Trip?> showAddToTripSheet(
   AddToTripPayload payload, {
   String? currentTripId,
 }) async {
+  final l10n = context.l10n;
   final trip = await showModalBottomSheet<Trip>(
     context: context,
     isScrollControlled: true,
@@ -125,11 +127,11 @@ Future<Trip?> showAddToTripSheet(
     // deactivated context. NavigatorState outlives the launching route.
     final navigator = Navigator.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Added to ${trip.title}'),
+      content: Text(l10n.addToTripAddedTo(trip.title)),
       action: trip.id == currentTripId
           ? null
           : SnackBarAction(
-              label: 'View trip',
+              label: l10n.addToTripViewTrip,
               onPressed: () => navigator.push(MaterialPageRoute(
                 builder: (_) => TripDetailScreen(tripId: trip.id),
               )),
@@ -138,6 +140,11 @@ Future<Trip?> showAddToTripSheet(
   }
   return trip;
 }
+
+/// Which failure the sheet is showing. Stored instead of formatted copy so the
+/// message is resolved in `build` — `_selectTrip` runs from `initState`, where
+/// `context.l10n` is not available (specs/i18n-spanish).
+enum _SheetError { loadTrip, addPlace }
 
 class _AddToTripSheet extends ConsumerStatefulWidget {
   final AddToTripPayload payload;
@@ -155,7 +162,8 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
   bool _detailLoading = false;
   int? _day;
   bool _submitting = false;
-  String? _error;
+  _SheetError? _errorKind;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -177,7 +185,8 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
       _detail = null;
       _detailLoading = true;
       _day = null;
-      _error = null;
+      _errorKind = null;
+      _errorDetail = null;
     });
     try {
       final detail = await ref.read(tripsApiServiceProvider).getTrip(tripId);
@@ -191,7 +200,8 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
       if (!mounted || _selectedTripId != tripId) return;
       setState(() {
         _detailLoading = false;
-        _error = 'Could not load that trip: $e';
+        _errorKind = _SheetError.loadTrip;
+        _errorDetail = '$e';
       });
     }
   }
@@ -229,7 +239,8 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
     if (tripId == null) return;
     setState(() {
       _submitting = true;
-      _error = null;
+      _errorKind = null;
+      _errorDetail = null;
     });
     final p = widget.payload;
     final timeOfDay = p.timeOfDay;
@@ -260,7 +271,8 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _error = 'Could not add the place: $e';
+          _errorKind = _SheetError.addPlace;
+          _errorDetail = '$e';
         });
       }
     }
@@ -269,9 +281,16 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final trips = ref.watch(tripsProvider);
     final detail = _detail;
     final duplicate = detail != null && _isDuplicate(detail);
+    final detailText = _errorDetail ?? '';
+    final errorText = switch (_errorKind) {
+      _SheetError.loadTrip => l10n.addToTripLoadTripError(detailText),
+      _SheetError.addPlace => l10n.addToTripAddPlaceError(detailText),
+      null => null,
+    };
 
     return SafeArea(
       child: Padding(
@@ -289,7 +308,7 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Add to trip',
+              Text(l10n.addToTripTitle,
                   style: theme.textTheme.titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
@@ -316,7 +335,7 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
                     const SizedBox(width: AppSpacing.xs),
                     Expanded(
                       child: Text(
-                        'Already on this trip.',
+                        l10n.addToTripDuplicate,
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: theme.colorScheme.tertiary),
                       ),
@@ -324,9 +343,9 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
                   ],
                 ),
               ],
-              if (_error != null) ...[
+              if (errorText != null) ...[
                 const SizedBox(height: AppSpacing.sm),
-                Text(_error!,
+                Text(errorText,
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: theme.colorScheme.error)),
               ],
@@ -340,7 +359,9 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(duplicate ? 'Add anyway' : 'Add to trip'),
+                    : Text(duplicate
+                        ? l10n.addToTripAddAnyway
+                        : l10n.addToTripTitle),
               ),
             ],
           ),
@@ -350,6 +371,7 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
   }
 
   Widget _tripList(TripsState trips, ThemeData theme) {
+    final l10n = context.l10n;
     if (trips.loading && trips.trips.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(AppSpacing.lg),
@@ -360,12 +382,12 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Could not load your trips.',
+          Text(l10n.addToTripLoadTripsError,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.error)),
           TextButton(
             onPressed: () => ref.read(tripsProvider.notifier).loadTrips(),
-            child: const Text('Retry'),
+            child: Text(l10n.commonRetry),
           ),
         ],
       );
@@ -374,7 +396,7 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Text(
-          'No trips yet — plan a trip first, then add places to it.',
+          l10n.addToTripNoTrips,
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
@@ -408,6 +430,7 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
   }
 
   Widget _daySection(Trip trip, ThemeData theme) {
+    final l10n = context.l10n;
     final count = _dayCount(trip);
     if (count == 0) return const SizedBox.shrink();
     return Padding(
@@ -417,13 +440,13 @@ class _AddToTripSheetState extends ConsumerState<_AddToTripSheet> {
         runSpacing: AppSpacing.xs,
         children: [
           ChoiceChip(
-            label: const Text('Unscheduled'),
+            label: Text(l10n.addToTripUnscheduled),
             selected: _day == null,
             onSelected: (_) => setState(() => _day = null),
           ),
           for (var d = 1; d <= count; d++)
             ChoiceChip(
-              label: Text('Day $d'),
+              label: Text(l10n.addToTripDay(d)),
               selected: _day == d,
               onSelected: (_) => setState(() => _day = d),
             ),
@@ -449,7 +472,7 @@ class AddToTripButton extends StatelessWidget {
     return IconButton(
       icon: Icon(Icons.add_location_alt_outlined,
           size: 20, color: color ?? AppColors.toolLocal),
-      tooltip: 'Add to trip',
+      tooltip: context.l10n.addToTripTitle,
       visualDensity: VisualDensity.compact,
       onPressed: onPressed,
     );

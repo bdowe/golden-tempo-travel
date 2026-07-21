@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/accommodation.dart';
 import '../models/itinerary_item.dart';
 import '../models/shared_trip.dart';
@@ -37,21 +38,22 @@ class SharedTripScreen extends ConsumerWidget {
     final shared = ref.watch(linkKind == SharedLinkKind.invite
         ? invitedTripProvider(token)
         : sharedTripProvider(token));
+    final l10n = context.l10n;
     return Scaffold(
       appBar: GradientAppBar(
         title: shared.maybeWhen(
           data: (s) => Text(s.trip.title),
-          orElse: () => const Text('Shared trip'),
+          orElse: () => Text(l10n.sharedTitle),
         ),
       ),
       body: shared.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(
           icon: Icons.link_off,
-          title: 'This link isn\'t available',
+          title: l10n.sharedUnavailableTitle,
           message: linkKind == SharedLinkKind.invite
-              ? 'The invite may have expired, been revoked, or already used.'
-              : 'The trip may have been unshared, or the link is incorrect.',
+              ? l10n.sharedInviteUnavailableMessage
+              : l10n.sharedLinkUnavailableMessage,
         ),
         data: (s) =>
             _SharedTripBody(shared: s, token: token, linkKind: linkKind),
@@ -82,7 +84,8 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
 
   /// Groups items by hub city (day_trip_from ?? city) in itinerary order —
   /// the same locality rule the owner's trip detail uses.
-  List<({String label, List<ItineraryItem> items})> _groups() {
+  List<({String label, List<ItineraryItem> items})> _groups(
+      AppLocalizations l10n) {
     final items = _trip.items ?? const <ItineraryItem>[];
     final groups = <({String label, List<ItineraryItem> items})>[];
     for (final it in items) {
@@ -90,7 +93,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
           ? it.dayTripFrom!.trim()
           : (it.city?.trim().isNotEmpty ?? false)
               ? it.city!.trim()
-              : 'Places';
+              : l10n.sharedPlacesGroup;
       if (groups.isEmpty || groups.last.label != hub) {
         groups.add((label: hub, items: <ItineraryItem>[]));
       }
@@ -109,6 +112,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
   }
 
   Future<void> _saveCopy() async {
+    final l10n = context.l10n;
     if (!await _ensureSignedIn()) return;
     setState(() => _saving = true);
     try {
@@ -121,7 +125,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
       Navigator.of(context)
           .pushNamedAndRemoveUntil('/', (route) => false);
     } catch (e) {
-      if (mounted) showSnack(context, 'Could not save a copy: $e');
+      if (mounted) showSnack(context, l10n.sharedSaveCopyError('$e'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -131,6 +135,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
   /// read-only follow — then lands in the shared trip itself (Trips tab
   /// underneath so back lands somewhere sensible).
   Future<void> _joinAsCoPlanner() async {
+    final l10n = context.l10n;
     if (!await _ensureSignedIn()) return;
     setState(() => _saving = true);
     try {
@@ -148,7 +153,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             builder: (_) => TripDetailScreen(tripId: tripId)));
       });
     } catch (e) {
-      if (mounted) showSnack(context, 'Could not join trip: $e');
+      if (mounted) showSnack(context, l10n.sharedJoinError('$e'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -157,6 +162,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final trip = _trip;
     final items = trip.items ?? const <ItineraryItem>[];
     final dates = tripDateRange(trip.startDate, trip.endDate);
@@ -214,7 +220,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             Text(trip.title, style: theme.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Shared by ${widget.shared.ownerName}'
+              '${l10n.sharedBy(widget.shared.ownerName)}'
               '${dates != null ? ' · $dates' : ''}',
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -243,8 +249,8 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                               ? MapDayChips.mapTopInset
                               : 0,
                           emptyLabel: _selectedDay == null
-                              ? 'No mapped places'
-                              : 'No places pinned on Day $_selectedDay',
+                              ? l10n.sharedNoMappedPlaces
+                              : l10n.sharedNoPlacesOnDay(_selectedDay!),
                           onPinTap: (pos) =>
                               setState(() => _selectedPosition = pos),
                         ),
@@ -270,13 +276,13 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
             ],
             const SizedBox(height: AppSpacing.lg),
             if (items.isEmpty)
-              const EmptyState(
+              EmptyState(
                 icon: Icons.place_outlined,
-                title: 'No places yet',
-                message: 'This trip doesn\'t have an itinerary yet.',
+                title: l10n.sharedEmptyTitle,
+                message: l10n.sharedEmptyMessage,
               )
             else
-              for (final group in _groups()) ...[
+              for (final group in _groups(l10n)) ...[
                 Padding(
                   padding: const EdgeInsets.only(
                       top: AppSpacing.md, bottom: AppSpacing.xs),
@@ -303,7 +309,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                     subtitle: it.address != null ? Text(it.address!) : null,
                     trailing: it.day != null
                         ? Chip(
-                            label: Text('Day ${it.day}'),
+                            label: Text(l10n.sharedDayN(it.day!)),
                             visualDensity: VisualDensity.compact,
                           )
                         : null,
@@ -314,7 +320,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
               ],
             if ((trip.accommodations ?? const []).isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
-              Text('Stays', style: theme.textTheme.titleMedium),
+              Text(l10n.sharedStays, style: theme.textTheme.titleMedium),
               for (final a in trip.accommodations!)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -348,14 +354,14 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.group_add_outlined),
-                          label: const Text('Join as co-planner'),
+                          label: Text(l10n.sharedJoinCoPlanner),
                         ),
                         // Invite tokens have no duplicate endpoint — they're
                         // single-use join capabilities, not browse links.
                         if (widget.linkKind == SharedLinkKind.share)
                           TextButton(
                             onPressed: _saving ? null : _saveCopy,
-                            child: const Text('Or save a separate copy'),
+                            child: Text(l10n.sharedSaveSeparateCopy),
                           ),
                       ],
                     )
@@ -376,11 +382,11 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.bookmark_add_outlined),
-                          label: const Text('Keep in my trips'),
+                          label: Text(l10n.sharedKeepInTrips),
                         ),
                         TextButton(
                           onPressed: _saving ? null : _saveCopy,
-                          child: const Text('Or save a separate copy'),
+                          child: Text(l10n.sharedSaveSeparateCopy),
                         ),
                       ],
                     ),

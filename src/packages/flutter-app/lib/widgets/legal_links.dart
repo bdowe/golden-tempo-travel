@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../l10n/l10n.dart';
+
 /// Same-origin legal pages served by the nginx gateway at the site root
 /// (`/privacy`, `/terms`) — outside the Flutter app's own base path, so they
 /// are opened as absolute URLs off the current origin rather than routed
@@ -31,20 +33,23 @@ class LegalAgreementText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final base = theme.textTheme.bodySmall
         ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text('By signing up you agree to the ', style: base),
+        Text(l10n.legalAgreementPrefix, style: base),
         _InlineLink(
-            label: 'Terms of Service',
+            label: l10n.legalTermsOfService,
             style: base,
             onTap: openTermsOfService),
-        Text(' and ', style: base),
+        Text(l10n.legalAgreementConjunction, style: base),
         _InlineLink(
-            label: 'Privacy Policy', style: base, onTap: openPrivacyPolicy),
+            label: l10n.legalPrivacyPolicy,
+            style: base,
+            onTap: openPrivacyPolicy),
         Text('.', style: base),
       ],
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import '../l10n/l10n.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../models/location.dart';
 import '../providers/route_provider.dart';
@@ -13,12 +14,13 @@ class RouteOptimizerScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final routeState = ref.watch(routeProvider);
     final routeNotifier = ref.read(routeProvider.notifier);
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('Route Optimizer'),
+        title: Text(l10n.routeOptTitle),
         actions: [
           if (routeState.locations.isNotEmpty)
             IconButton(
@@ -26,7 +28,7 @@ class RouteOptimizerScreen extends ConsumerWidget {
               onPressed: () {
                 _showClearConfirmation(context, routeNotifier);
               },
-              tooltip: 'Clear all locations',
+              tooltip: l10n.routeOptClearAllTooltip,
             ),
         ],
       ),
@@ -58,7 +60,7 @@ class RouteOptimizerScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Locations (${routeState.locations.length})',
+                        l10n.routeOptLocationsCount(routeState.locations.length),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -67,7 +69,7 @@ class RouteOptimizerScreen extends ConsumerWidget {
                       ElevatedButton.icon(
                         onPressed: () => _showAddLocationDialog(context, routeNotifier),
                         icon: const Icon(Icons.add),
-                        label: const Text('Add Location'),
+                        label: Text(l10n.routeOptAddLocation),
                       ),
                     ],
                   ),
@@ -90,14 +92,14 @@ class RouteOptimizerScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'No locations added yet',
+                      l10n.routeOptEmptyTitle,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Add locations to optimize your route',
+                      l10n.routeOptEmptyMessage,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -106,7 +108,7 @@ class RouteOptimizerScreen extends ConsumerWidget {
                     ElevatedButton.icon(
                       onPressed: () => _showAddLocationDialog(context, routeNotifier),
                       icon: const Icon(Icons.add),
-                      label: const Text('Add Your First Location'),
+                      label: Text(l10n.routeOptAddFirstLocation),
                     ),
                   ],
                 ),
@@ -183,7 +185,9 @@ class RouteOptimizerScreen extends ConsumerWidget {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : Icon(MdiIcons.routes),
-                            label: Text(routeState.isLoading ? 'Optimizing...' : 'Optimize Route'),
+                            label: Text(routeState.isLoading
+                                ? l10n.routeOptOptimizing
+                                : l10n.routeOptOptimize),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                             ),
@@ -232,15 +236,16 @@ class RouteOptimizerScreen extends ConsumerWidget {
   }
 
   void _showClearConfirmation(BuildContext context, RouteNotifier notifier) {
+    final l10n = context.l10n;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Locations'),
-        content: const Text('Are you sure you want to clear all locations? This action cannot be undone.'),
+        title: Text(l10n.routeOptClearAllTitle),
+        content: Text(l10n.routeOptClearAllBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           ElevatedButton(
             onPressed: () {
@@ -251,7 +256,7 @@ class RouteOptimizerScreen extends ConsumerWidget {
               backgroundColor: Theme.of(context).colorScheme.error,
               foregroundColor: Theme.of(context).colorScheme.onError,
             ),
-            child: const Text('Clear All'),
+            child: Text(l10n.routeOptClearAllConfirm),
           ),
         ],
       ),
@@ -330,13 +335,13 @@ class _LocationCard extends StatelessWidget {
             IconButton(
               onPressed: onEdit,
               icon: const Icon(Icons.edit),
-              tooltip: 'Edit location',
+              tooltip: context.l10n.routeOptEditLocationTooltip,
             ),
             IconButton(
               onPressed: onDelete,
               icon: const Icon(Icons.delete),
               color: Theme.of(context).colorScheme.error,
-              tooltip: 'Delete location',
+              tooltip: context.l10n.routeOptDeleteLocationTooltip,
             ),
           ],
         ),

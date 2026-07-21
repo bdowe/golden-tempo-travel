@@ -1834,4 +1834,933 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountMenuSignOut => 'Sign out';
+
+  @override
+  String get alertsTitle => 'Price alerts';
+
+  @override
+  String get alertsSignInTitle => 'Sign in to watch fares';
+
+  @override
+  String get alertsSignInMessage =>
+      'Price alerts email you when a flight you care about drops.';
+
+  @override
+  String get alertsSignIn => 'Sign in';
+
+  @override
+  String get alertsLoadErrorTitle => 'Could not load alerts';
+
+  @override
+  String get alertsEmptyTitle => 'No alerts yet';
+
+  @override
+  String get alertsEmptyMessage =>
+      'Search a flight and tap \"Watch this route\" — we\'ll email you when the price drops.';
+
+  @override
+  String alertsLastSeen(String price) {
+    return 'Last seen $price';
+  }
+
+  @override
+  String alertsTargetPrice(String price) {
+    return 'target $price';
+  }
+
+  @override
+  String get alertsWatchingAnyDrop => 'watching for any drop';
+
+  @override
+  String alertsAdults(int count) {
+    return '$count adults';
+  }
+
+  @override
+  String alertsBaselineDelta(String amount) {
+    return 'Down $amount from when you started watching';
+  }
+
+  @override
+  String alertsChecked(String when) {
+    return 'Checked $when';
+  }
+
+  @override
+  String get alertsSetTargetTitle => 'Set target price';
+
+  @override
+  String get alertsSetTargetBody =>
+      'Get notified when the fare hits or drops below this price.';
+
+  @override
+  String get alertsNotifyAtOrBelow => 'Notify me at or below';
+
+  @override
+  String get alertsWatchAnyDropInstead => 'Watch for any drop instead';
+
+  @override
+  String get alertsInvalidTarget => 'Enter a valid target price';
+
+  @override
+  String get alertsActionsTooltip => 'Alert actions';
+
+  @override
+  String get alertsEditTarget => 'Edit target price';
+
+  @override
+  String get alertsPause => 'Pause';
+
+  @override
+  String get alertsResume => 'Resume';
+
+  @override
+  String get alertsStatusExpired => 'Expired';
+
+  @override
+  String get alertsStatusPaused => 'Paused';
+
+  @override
+  String get alertsStatusDropped => 'Price dropped';
+
+  @override
+  String get alertsStatusWatching => 'Watching';
+
+  @override
+  String get alertSheetTitle => 'Watch this route';
+
+  @override
+  String alertSheetBestPriceNow(String price) {
+    return 'Best price now: $price';
+  }
+
+  @override
+  String get alertSheetAnyDropTitle => 'Notify me on any real price drop';
+
+  @override
+  String get alertSheetAnyDropSubtitle =>
+      'At least 5% and \$5 below the last price';
+
+  @override
+  String get alertSheetFlexTitle => 'Date flexibility';
+
+  @override
+  String get alertSheetFlexHelp =>
+      'Watch a few days around your departure and we\'ll flag the cheapest one.';
+
+  @override
+  String get alertSheetFlexExact => 'Exact';
+
+  @override
+  String get alertSheetCreating => 'Creating…';
+
+  @override
+  String get alertSheetCreate => 'Create alert';
+
+  @override
+  String alertSheetWatchingSnack(String origin, String destination) {
+    return 'Watching $origin → $destination — we\'ll email you on a drop';
+  }
+
+  @override
+  String get notifTitle => 'Notifications';
+
+  @override
+  String get notifLoadErrorTitle => 'Could not load notifications';
+
+  @override
+  String get notifEmptyTitle => 'No notifications yet';
+
+  @override
+  String get notifEmptyMessage =>
+      'Price drops on routes you watch will show up here.';
+
+  @override
+  String notifDownFrom(String price, String previous) {
+    return '$price, down from $previous';
+  }
+
+  @override
+  String get notifBestInWindow => '(best in window)';
+
+  @override
+  String get notifGenericFallback => 'Notification';
+
+  @override
+  String get notifSomeTrip => 'a trip';
+
+  @override
+  String get notifSomeone => 'Someone';
+
+  @override
+  String get notifACollaborator => 'A collaborator';
+
+  @override
+  String notifJoinedTrip(String who, String trip) {
+    return '$who joined \"$trip\"';
+  }
+
+  @override
+  String notifEditedTrip(String who, String trip) {
+    return '$who edited \"$trip\"';
+  }
+
+  @override
+  String get sharedTitle => 'Shared trip';
+
+  @override
+  String get sharedUnavailableTitle => 'This link isn\'t available';
+
+  @override
+  String get sharedInviteUnavailableMessage =>
+      'The invite may have expired, been revoked, or already used.';
+
+  @override
+  String get sharedLinkUnavailableMessage =>
+      'The trip may have been unshared, or the link is incorrect.';
+
+  @override
+  String get sharedPlacesGroup => 'Places';
+
+  @override
+  String sharedSaveCopyError(String error) {
+    return 'Could not save a copy: $error';
+  }
+
+  @override
+  String sharedJoinError(String error) {
+    return 'Could not join trip: $error';
+  }
+
+  @override
+  String sharedBy(String name) {
+    return 'Shared by $name';
+  }
+
+  @override
+  String get sharedNoMappedPlaces => 'No mapped places';
+
+  @override
+  String sharedNoPlacesOnDay(int day) {
+    return 'No places pinned on Day $day';
+  }
+
+  @override
+  String get sharedEmptyTitle => 'No places yet';
+
+  @override
+  String get sharedEmptyMessage => 'This trip doesn\'t have an itinerary yet.';
+
+  @override
+  String sharedDayN(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String get sharedStays => 'Stays';
+
+  @override
+  String get sharedJoinCoPlanner => 'Join as co-planner';
+
+  @override
+  String get sharedSaveSeparateCopy => 'Or save a separate copy';
+
+  @override
+  String get sharedKeepInTrips => 'Keep in my trips';
+
+  @override
+  String get legalAgreementPrefix => 'By signing up you agree to the ';
+
+  @override
+  String get legalTermsOfService => 'Terms of Service';
+
+  @override
+  String get legalAgreementConjunction => ' and ';
+
+  @override
+  String get legalPrivacyPolicy => 'Privacy Policy';
+
+  @override
+  String get offlineJustNow => 'just now';
+
+  @override
+  String offlineMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes ago',
+      one: '1 minute ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours ago',
+      one: '1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineBannerMessage(String when) {
+    return 'Offline — showing saved copy from $when';
+  }
+
+  @override
+  String get chatInputHint => 'Describe your trip...';
+
+  @override
+  String get chatFollowUpHint => 'Ask a follow-up…';
+
+  @override
+  String get chatAttachImages => 'Attach images';
+
+  @override
+  String get chatStopDictating => 'Stop dictating';
+
+  @override
+  String get chatDictate => 'Dictate';
+
+  @override
+  String get chatDropImages => 'Drop images to attach';
+
+  @override
+  String get chatRemoveImage => 'Remove image';
+
+  @override
+  String get chatImagePlaceholder => 'Image';
+
+  @override
+  String get chatStillPreparingImage =>
+      'Still preparing an image — one moment.';
+
+  @override
+  String chatAttachLimit(int count) {
+    return 'You can attach up to $count images.';
+  }
+
+  @override
+  String get chatImageUnreadable =>
+      'Couldn\'t read that image — try a JPEG, PNG, GIF, or WebP under 10 MB.';
+
+  @override
+  String get chatOnlyImages => 'Only image files can be attached.';
+
+  @override
+  String get chatToolSearchPlaces => 'Searching places...';
+
+  @override
+  String get chatToolCreateItinerary => 'Building itinerary...';
+
+  @override
+  String get chatToolUpdateItinerary => 'Updating itinerary...';
+
+  @override
+  String get chatToolSearchFlights => 'Searching flights...';
+
+  @override
+  String get chatToolCheckConnectivity => 'Checking route connectivity...';
+
+  @override
+  String get chatToolSearchEvents => 'Finding events...';
+
+  @override
+  String get chatToolSuggestFerries => 'Finding ferries...';
+
+  @override
+  String get chatSummarizing => 'Summarizing earlier conversation…';
+
+  @override
+  String get chatProfileUpdatedTooltip => 'Travel profile updated';
+
+  @override
+  String get chatProfileUpdated => 'Noted — travel profile updated';
+
+  @override
+  String get chatTripUpdated => 'Trip updated';
+
+  @override
+  String chatChipFlightOptions(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count flight options',
+      one: '$count flight option',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipLocalPicks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count local picks',
+      one: '$count local pick',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipEvents(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count events',
+      one: '$count event',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipFerryOptions(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ferry options',
+      one: '$count ferry option',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipEventSources(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count event sources',
+      one: '$count event source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatTryAgain => 'Try again';
+
+  @override
+  String get chatQueued => 'Queued';
+
+  @override
+  String get chatRemoveQueued => 'Remove queued message';
+
+  @override
+  String get agentScreenTitle => 'Plan your trip';
+
+  @override
+  String get agentScreenStartOver => 'Start over';
+
+  @override
+  String get agentScreenEmptyTitle => 'Tell me about your dream trip';
+
+  @override
+  String get agentScreenEmptyMessage =>
+      'I\'ll search for places and build an itinerary you can load into the route planner.';
+
+  @override
+  String get agentScreenSuggestionParis => '2 days in Paris';
+
+  @override
+  String get agentScreenSuggestionRome => 'Museums in Rome';
+
+  @override
+  String get agentScreenSuggestionTokyo => 'Weekend in Tokyo';
+
+  @override
+  String agentScreenItineraryReady(int count) {
+    return 'Itinerary ready — $count locations';
+  }
+
+  @override
+  String get agentScreenViewTrip => 'View trip';
+
+  @override
+  String get agentScreenLoadIntoRoutePlanner => 'Load into route planner';
+
+  @override
+  String get agentScreenLoadIntoPlanner => 'Load into Planner';
+
+  @override
+  String refineTargetDay(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String refineTargetDayCity(int day, String city) {
+    return 'Day $day — $city';
+  }
+
+  @override
+  String get refineTargetWholeTrip => 'Whole trip';
+
+  @override
+  String get refineAssistantTitle => 'Trip assistant';
+
+  @override
+  String refineHeader(String target) {
+    return 'Refining · $target';
+  }
+
+  @override
+  String get refineAssistantHint => 'Ask anything about this trip…';
+
+  @override
+  String get refineHint => 'Ask for changes...';
+
+  @override
+  String get chatDictationPermission =>
+      'Microphone access was blocked. Check your browser settings.';
+
+  @override
+  String get chatDictationUnsupported =>
+      'Voice input isn\'t available in this browser.';
+
+  @override
+  String get chatDictationUnavailable =>
+      'Voice input isn\'t available right now.';
+
+  @override
+  String get chatDictationFailed =>
+      'Couldn\'t transcribe audio. You can type instead.';
+
+  @override
+  String get placeSearchAddTitle => 'Add Location';
+
+  @override
+  String get placeSearchEditTitle => 'Edit Location';
+
+  @override
+  String get placeSearchManualCoords => 'Use Manual Coordinates';
+
+  @override
+  String get placeSearchManualCoordsSubtitle =>
+      'Enter latitude/longitude manually instead of searching places';
+
+  @override
+  String get placeSearchNameLabel => 'Location Name *';
+
+  @override
+  String get placeSearchNameRequired => 'Location name is required';
+
+  @override
+  String get placeSearchCategoryLabel => 'Category (optional)';
+
+  @override
+  String get placeSearchCategoryHint => 'e.g., restaurant, museum, coffee_shop';
+
+  @override
+  String get placeSearchVisitDurationLabel =>
+      'Visit Duration (minutes, optional)';
+
+  @override
+  String get placeSearchDurationInvalid =>
+      'Please enter a valid duration in minutes';
+
+  @override
+  String get placeSearchSearchLabel => 'Search for a place';
+
+  @override
+  String get placeSearchSearchHint =>
+      'Type to search for restaurants, attractions, etc.';
+
+  @override
+  String get placeSearchLatitude => 'Latitude';
+
+  @override
+  String get placeSearchLongitude => 'Longitude';
+
+  @override
+  String get placeSearchLatitudeRequired => 'Latitude *';
+
+  @override
+  String get placeSearchLongitudeRequired => 'Longitude *';
+
+  @override
+  String get placeSearchLatitudeRequiredError => 'Latitude is required';
+
+  @override
+  String get placeSearchLongitudeRequiredError => 'Longitude is required';
+
+  @override
+  String get placeSearchLatitudeInvalid => 'Enter valid latitude (-90 to 90)';
+
+  @override
+  String get placeSearchLongitudeInvalid =>
+      'Enter valid longitude (-180 to 180)';
+
+  @override
+  String get placeSearchNoResults =>
+      'No places found. Try a different search term.';
+
+  @override
+  String placeSearchError(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String addToTripAddedTo(String title) {
+    return 'Added to $title';
+  }
+
+  @override
+  String get addToTripViewTrip => 'View trip';
+
+  @override
+  String get addToTripTitle => 'Add to trip';
+
+  @override
+  String get addToTripDuplicate => 'Already on this trip.';
+
+  @override
+  String get addToTripAddAnyway => 'Add anyway';
+
+  @override
+  String addToTripLoadTripError(String error) {
+    return 'Could not load that trip: $error';
+  }
+
+  @override
+  String addToTripAddPlaceError(String error) {
+    return 'Could not add the place: $error';
+  }
+
+  @override
+  String get addToTripLoadTripsError => 'Could not load your trips.';
+
+  @override
+  String get addToTripNoTrips =>
+      'No trips yet — plan a trip first, then add places to it.';
+
+  @override
+  String get addToTripUnscheduled => 'Unscheduled';
+
+  @override
+  String addToTripDay(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String get routeOptTitle => 'Route Optimizer';
+
+  @override
+  String get routeOptClearAllTooltip => 'Clear all locations';
+
+  @override
+  String routeOptLocationsCount(int count) {
+    return 'Locations ($count)';
+  }
+
+  @override
+  String get routeOptAddLocation => 'Add Location';
+
+  @override
+  String get routeOptEmptyTitle => 'No locations added yet';
+
+  @override
+  String get routeOptEmptyMessage => 'Add locations to optimize your route';
+
+  @override
+  String get routeOptAddFirstLocation => 'Add Your First Location';
+
+  @override
+  String get routeOptOptimizing => 'Optimizing...';
+
+  @override
+  String get routeOptOptimize => 'Optimize Route';
+
+  @override
+  String get routeOptClearAllTitle => 'Clear All Locations';
+
+  @override
+  String get routeOptClearAllBody =>
+      'Are you sure you want to clear all locations? This action cannot be undone.';
+
+  @override
+  String get routeOptClearAllConfirm => 'Clear All';
+
+  @override
+  String get routeOptEditLocationTooltip => 'Edit location';
+
+  @override
+  String get routeOptDeleteLocationTooltip => 'Delete location';
+
+  @override
+  String get optParamsTitle => 'Optimization Parameters';
+
+  @override
+  String get optParamsStartDate => 'Start Date';
+
+  @override
+  String get optParamsSelectDate => 'Select date';
+
+  @override
+  String get optParamsStartTime => 'Start Time';
+
+  @override
+  String get optParamsSelectTime => 'Select time';
+
+  @override
+  String get optParamsReturnToStart => 'Return to Starting Point';
+
+  @override
+  String get optParamsClearDate => 'Clear Date';
+
+  @override
+  String get optParamsClearTime => 'Clear Time';
+
+  @override
+  String get flightSearchTitle => 'Find Flights';
+
+  @override
+  String get flightSearchFrom => 'From';
+
+  @override
+  String get flightSearchTo => 'To';
+
+  @override
+  String get flightSearchDepartDate => 'Departure date';
+
+  @override
+  String get flightSearchReturnOptional => 'Return (optional)';
+
+  @override
+  String get flightSearchClearReturnTooltip => 'Clear return date';
+
+  @override
+  String get flightSearchChildAges => 'Child ages';
+
+  @override
+  String get flightSearchCabinEconomy => 'Economy';
+
+  @override
+  String get flightSearchCabinPremiumEconomy => 'Premium economy';
+
+  @override
+  String get flightSearchCabinBusiness => 'Business';
+
+  @override
+  String get flightSearchCabinFirst => 'First';
+
+  @override
+  String get flightSearchBaggagePersonalItem => 'Personal item';
+
+  @override
+  String get flightSearchBaggageCarryOn => 'Carry-on';
+
+  @override
+  String get flightSearchBaggageChecked => 'Checked bag';
+
+  @override
+  String get flightSearchPresetCheapest => 'Cheapest';
+
+  @override
+  String get flightSearchPresetFastest => 'Fastest';
+
+  @override
+  String get flightSearchPresetBalanced => 'Balanced';
+
+  @override
+  String get flightSearchSearching => 'Searching…';
+
+  @override
+  String get flightSearchSubmit => 'Search Flights';
+
+  @override
+  String get flightSearchWatchRoute => 'Watch this route — email me on a drop';
+
+  @override
+  String get flightSearchErrorTitle => 'Could not load flights';
+
+  @override
+  String get flightSearchHintInitial =>
+      'Choose an origin, destination, and date to find flights.';
+
+  @override
+  String get flightSearchHintEmpty =>
+      'No flights found for this route and date.';
+
+  @override
+  String flightCardSavings(String amount) {
+    return 'Saves $amount vs next option';
+  }
+
+  @override
+  String get flightCardBagIncluded => 'Bag included';
+
+  @override
+  String flightCardBagPaid(String fee) {
+    return 'incl. bag +$fee';
+  }
+
+  @override
+  String get flightCardBagUnknown => 'Bag fee unknown';
+
+  @override
+  String get flightCardOpenLinkError => 'Could not open link';
+
+  @override
+  String get flightCardBestMatch => 'BEST MATCH';
+
+  @override
+  String get flightCardFlight => 'Flight';
+
+  @override
+  String flightCardScore(String score) {
+    return 'score $score';
+  }
+
+  @override
+  String get flightCardBook => 'Book';
+
+  @override
+  String get flightSheetOutbound => 'Outbound';
+
+  @override
+  String get flightSheetReturn => 'Return';
+
+  @override
+  String get flightSheetRoundTrip => 'Round trip';
+
+  @override
+  String get flightSheetBookThisFlight => 'Book this flight';
+
+  @override
+  String flightSheetBookWith(String airline) {
+    return 'Book with $airline';
+  }
+
+  @override
+  String get flightSheetBagPersonalItem => 'Personal item';
+
+  @override
+  String flightSheetBagCarryOnCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count carry-ons',
+      one: 'carry-on',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightSheetBagCheckedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count checked bags',
+      one: 'checked bag',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightSheetIncluded(String list) {
+    return 'Included: $list';
+  }
+
+  @override
+  String flightSheetBagFeeNote(String fee) {
+    return '+$fee bag fee included in price';
+  }
+
+  @override
+  String get flightSheetBagUnknownNote =>
+      'Your bag is not included — check the fee with the airline';
+
+  @override
+  String flightSheetLayover(String airport) {
+    return 'Layover $airport';
+  }
+
+  @override
+  String flightSheetLayoverWithDuration(String airport, String duration) {
+    return 'Layover $airport · $duration';
+  }
+
+  @override
+  String get airportFieldHint => 'City or airport';
+
+  @override
+  String get guidesTitle => 'Local guides';
+
+  @override
+  String get guidesErrorTitle => 'Could not load guides';
+
+  @override
+  String get guidesEmptyTitle => 'No guides yet';
+
+  @override
+  String get guidesEmptyMessage =>
+      'Guides from real locals appear here as they publish.';
+
+  @override
+  String get guidesElsewhere => 'Elsewhere';
+
+  @override
+  String guidesByline(String name) {
+    return 'by $name';
+  }
+
+  @override
+  String get guideDetailTitle => 'Local guide';
+
+  @override
+  String get guideDetailErrorTitle => 'Could not load this guide';
+
+  @override
+  String get guideDetailErrorMessage => 'Check your connection and try again.';
+
+  @override
+  String guideDetailByline(String name) {
+    return 'By $name';
+  }
+
+  @override
+  String get guideDetailPlacesTitle => 'Places in this guide';
+
+  @override
+  String get guideDetailNoPinsTitle => 'No places pinned yet';
+
+  @override
+  String get guideDetailNoPinsMessage => 'This guide is all narrative for now.';
+
+  @override
+  String get appMapCredits => 'Map credits';
+
+  @override
+  String flightStops(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count stops',
+      one: '1 stop',
+      zero: 'Nonstop',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightStopsEachWay(String stops) {
+    return '$stops each way';
+  }
+
+  @override
+  String flightStopsSplit(String outbound, String inbound) {
+    return '$outbound / $inbound';
+  }
 }

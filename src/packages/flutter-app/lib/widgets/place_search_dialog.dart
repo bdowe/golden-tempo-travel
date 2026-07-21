@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/location.dart';
 import '../models/place_search_result.dart';
 import '../providers/places_api_provider.dart';
@@ -98,6 +99,7 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Dialog(
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
@@ -109,7 +111,9 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.initialLocation == null ? 'Add Location' : 'Edit Location',
+                  widget.initialLocation == null
+                      ? l10n.placeSearchAddTitle
+                      : l10n.placeSearchEditTitle,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 IconButton(
@@ -122,8 +126,8 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
             
             // Toggle between place search and manual coordinates
             SwitchListTile(
-              title: const Text('Use Manual Coordinates'),
-              subtitle: const Text('Enter latitude/longitude manually instead of searching places'),
+              title: Text(l10n.placeSearchManualCoords),
+              subtitle: Text(l10n.placeSearchManualCoordsSubtitle),
               value: _useManualCoordinates,
               onChanged: (value) {
                 setState(() {
@@ -147,13 +151,13 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
                       // Location Name
                       TextFormField(
                         controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Location Name *',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.placeSearchNameLabel,
+                          border: const OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Location name is required';
+                            return l10n.placeSearchNameRequired;
                           }
                           return null;
                         },
@@ -173,10 +177,10 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
                       // Optional fields
                       TextFormField(
                         controller: _categoryController,
-                        decoration: const InputDecoration(
-                          labelText: 'Category (optional)',
-                          hintText: 'e.g., restaurant, museum, coffee_shop',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.placeSearchCategoryLabel,
+                          hintText: l10n.placeSearchCategoryHint,
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                       
@@ -184,16 +188,16 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
                       
                       TextFormField(
                         controller: _visitDurationController,
-                        decoration: const InputDecoration(
-                          labelText: 'Visit Duration (minutes, optional)',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.placeSearchVisitDurationLabel,
+                          border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
                         validator: (value) {
                           if (value != null && value.isNotEmpty) {
                             final duration = int.tryParse(value);
                             if (duration == null || duration <= 0) {
-                              return 'Please enter a valid duration in minutes';
+                              return l10n.placeSearchDurationInvalid;
                             }
                           }
                           return null;
@@ -208,7 +212,7 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
                         children: [
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Cancel'),
+                            child: Text(l10n.commonCancel),
                           ),
                           const SizedBox(width: 16),
                           ElevatedButton(
@@ -217,7 +221,7 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
                                 Navigator.of(context).pop(_buildLocation());
                               }
                             },
-                            child: const Text('Save'),
+                            child: Text(l10n.commonSave),
                           ),
                         ],
                       ),
@@ -233,15 +237,16 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
   }
 
   Widget _buildPlaceSearchSection() {
+    final l10n = context.l10n;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
-          decoration: const InputDecoration(
-            labelText: 'Search for a place',
-            hintText: 'Type to search for restaurants, attractions, etc.',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.search),
+          decoration: InputDecoration(
+            labelText: l10n.placeSearchSearchLabel,
+            hintText: l10n.placeSearchSearchHint,
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.search),
           ),
           onChanged: (value) {
             setState(() {
@@ -286,9 +291,9 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
               Expanded(
                 child: TextFormField(
                   controller: _latitudeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Latitude',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.placeSearchLatitude,
+                    border: const OutlineInputBorder(),
                   ),
                   readOnly: true,
                 ),
@@ -297,9 +302,9 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
               Expanded(
                 child: TextFormField(
                   controller: _longitudeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Longitude',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.placeSearchLongitude,
+                    border: const OutlineInputBorder(),
                   ),
                   readOnly: true,
                 ),
@@ -312,6 +317,7 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
   }
 
   Widget _buildManualCoordinatesSection() {
+    final l10n = context.l10n;
     return Column(
       children: [
         Row(
@@ -319,18 +325,18 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
             Expanded(
               child: TextFormField(
                 controller: _latitudeController,
-                decoration: const InputDecoration(
-                  labelText: 'Latitude *',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.placeSearchLatitudeRequired,
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Latitude is required';
+                    return l10n.placeSearchLatitudeRequiredError;
                   }
                   final lat = double.tryParse(value);
                   if (lat == null || lat < -90 || lat > 90) {
-                    return 'Enter valid latitude (-90 to 90)';
+                    return l10n.placeSearchLatitudeInvalid;
                   }
                   return null;
                 },
@@ -340,18 +346,18 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
             Expanded(
               child: TextFormField(
                 controller: _longitudeController,
-                decoration: const InputDecoration(
-                  labelText: 'Longitude *',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.placeSearchLongitudeRequired,
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Longitude is required';
+                    return l10n.placeSearchLongitudeRequiredError;
                   }
                   final lng = double.tryParse(value);
                   if (lng == null || lng < -180 || lng > 180) {
-                    return 'Enter valid longitude (-180 to 180)';
+                    return l10n.placeSearchLongitudeInvalid;
                   }
                   return null;
                 },
@@ -371,9 +377,9 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
         return searchResults.when(
           data: (results) {
             if (results.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('No places found. Try a different search term.'),
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(context.l10n.placeSearchNoResults),
               );
             }
             
@@ -414,7 +420,7 @@ class _PlaceSearchDialogState extends ConsumerState<PlaceSearchDialog> {
           ),
           error: (error, stack) => Padding(
             padding: const EdgeInsets.all(16),
-            child: Text('Error: $error'),
+            child: Text(context.l10n.placeSearchError('$error')),
           ),
         );
       },

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../providers/alerts_provider.dart';
 import '../theme/spacing.dart';
 import '../utils/money_format.dart';
@@ -73,11 +74,14 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
   }
 
   Future<void> _create() async {
+    // Captured before the await so the post-await snack never reads a
+    // context that may have been unmounted.
+    final l10n = context.l10n;
     double? target;
     if (!_anyDrop) {
       target = double.tryParse(_targetController.text.trim());
       if (target == null || target <= 0) {
-        setState(() => _error = 'Enter a valid target price');
+        setState(() => _error = l10n.alertsInvalidTarget);
         return;
       }
     }
@@ -101,10 +105,8 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
       });
       if (mounted) {
         Navigator.of(context).pop();
-        showSnack(
-            context,
-            'Watching ${widget.origin} → ${widget.destination} — we\'ll '
-            'email you on a drop');
+        showSnack(context,
+            l10n.alertSheetWatchingSnack(widget.origin, widget.destination));
       }
     } catch (e) {
       setState(() {
@@ -117,6 +119,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final cur = widget.currency ?? '';
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -124,12 +127,12 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Watch this route', style: theme.textTheme.titleLarge),
+          Text(l10n.alertSheetTitle, style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '${widget.origin} → ${widget.destination} · ${widget.departDate}'
             '${widget.returnDate != null ? ' → ${widget.returnDate}' : ''}'
-            '${widget.adults > 1 ? ' · ${widget.adults} adults' : ''}'
+            '${widget.adults > 1 ? ' · ${l10n.alertsAdults(widget.adults)}' : ''}'
             '${widget.cabinClass != 'economy' ? ' · ${widget.cabinClass.replaceAll('_', ' ')}' : ''}',
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -138,15 +141,16 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
-                'Best price now: ${formatMoney(widget.currentPrice!, cur)}',
+                l10n.alertSheetBestPriceNow(
+                    formatMoney(widget.currentPrice!, cur)),
                 style: theme.textTheme.bodyMedium,
               ),
             ),
           const SizedBox(height: AppSpacing.lg),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Notify me on any real price drop'),
-            subtitle: const Text('At least 5% and \$5 below the last price'),
+            title: Text(l10n.alertSheetAnyDropTitle),
+            subtitle: Text(l10n.alertSheetAnyDropSubtitle),
             value: _anyDrop,
             onChanged: (v) => setState(() => _anyDrop = v),
           ),
@@ -157,18 +161,17 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: 'Notify me at or below',
+                labelText: l10n.alertsNotifyAtOrBelow,
                 prefixText: cur.isEmpty ? null : '$cur ',
                 border: const OutlineInputBorder(),
               ),
             ),
           ],
           const SizedBox(height: AppSpacing.lg),
-          Text('Date flexibility', style: theme.textTheme.titleSmall),
+          Text(l10n.alertSheetFlexTitle, style: theme.textTheme.titleSmall),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Watch a few days around your departure and we\'ll flag the '
-            'cheapest one.',
+            l10n.alertSheetFlexHelp,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -178,7 +181,7 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
             children: [
               for (final d in const [0, 1, 2, 3])
                 ChoiceChip(
-                  label: Text(d == 0 ? 'Exact' : '±$d'),
+                  label: Text(d == 0 ? l10n.alertSheetFlexExact : '±$d'),
                   selected: _flexDays == d,
                   onSelected:
                       _saving ? null : (_) => setState(() => _flexDays = d),
@@ -206,7 +209,8 @@ class _CreateAlertSheetState extends ConsumerState<CreateAlertSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.notifications_active_outlined),
-              label: Text(_saving ? 'Creating…' : 'Create alert'),
+              label: Text(
+                  _saving ? l10n.alertSheetCreating : l10n.alertSheetCreate),
             ),
           ),
         ],

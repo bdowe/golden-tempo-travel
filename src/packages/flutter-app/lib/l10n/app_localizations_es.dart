@@ -1845,4 +1845,941 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get accountMenuSignOut => 'Cerrar sesión';
+
+  @override
+  String get alertsTitle => 'Alertas de precio';
+
+  @override
+  String get alertsSignInTitle => 'Inicia sesión para seguir tarifas';
+
+  @override
+  String get alertsSignInMessage =>
+      'Las alertas de precio te avisan por correo cuando baja un vuelo que te interesa.';
+
+  @override
+  String get alertsSignIn => 'Iniciar sesión';
+
+  @override
+  String get alertsLoadErrorTitle => 'No se pudieron cargar las alertas';
+
+  @override
+  String get alertsEmptyTitle => 'Aún no tienes alertas';
+
+  @override
+  String get alertsEmptyMessage =>
+      'Busca un vuelo y toca «Seguir esta ruta»: te avisaremos por correo cuando baje el precio.';
+
+  @override
+  String alertsLastSeen(String price) {
+    return 'Visto por última vez $price';
+  }
+
+  @override
+  String alertsTargetPrice(String price) {
+    return 'objetivo $price';
+  }
+
+  @override
+  String get alertsWatchingAnyDrop => 'atento a cualquier bajada';
+
+  @override
+  String alertsAdults(int count) {
+    return '$count adultos';
+  }
+
+  @override
+  String alertsBaselineDelta(String amount) {
+    return 'Bajó $amount desde que empezaste a seguirla';
+  }
+
+  @override
+  String alertsChecked(String when) {
+    return 'Comprobado $when';
+  }
+
+  @override
+  String get alertsSetTargetTitle => 'Fijar precio objetivo';
+
+  @override
+  String get alertsSetTargetBody =>
+      'Te avisamos cuando la tarifa llegue a este precio o baje de él.';
+
+  @override
+  String get alertsNotifyAtOrBelow => 'Avísame a este precio o menos';
+
+  @override
+  String get alertsWatchAnyDropInstead => 'Mejor seguir cualquier bajada';
+
+  @override
+  String get alertsInvalidTarget => 'Introduce un precio objetivo válido';
+
+  @override
+  String get alertsActionsTooltip => 'Acciones de la alerta';
+
+  @override
+  String get alertsEditTarget => 'Editar precio objetivo';
+
+  @override
+  String get alertsPause => 'Pausar';
+
+  @override
+  String get alertsResume => 'Reanudar';
+
+  @override
+  String get alertsStatusExpired => 'Caducada';
+
+  @override
+  String get alertsStatusPaused => 'Pausada';
+
+  @override
+  String get alertsStatusDropped => 'Bajó el precio';
+
+  @override
+  String get alertsStatusWatching => 'Siguiendo';
+
+  @override
+  String get alertSheetTitle => 'Seguir esta ruta';
+
+  @override
+  String alertSheetBestPriceNow(String price) {
+    return 'Mejor precio ahora: $price';
+  }
+
+  @override
+  String get alertSheetAnyDropTitle => 'Avísame ante cualquier bajada real';
+
+  @override
+  String get alertSheetAnyDropSubtitle =>
+      'Al menos un 5 % y \$5 por debajo del último precio';
+
+  @override
+  String get alertSheetFlexTitle => 'Flexibilidad de fechas';
+
+  @override
+  String get alertSheetFlexHelp =>
+      'Vigilamos unos días alrededor de tu salida y te señalamos el más barato.';
+
+  @override
+  String get alertSheetFlexExact => 'Exacta';
+
+  @override
+  String get alertSheetCreating => 'Creando…';
+
+  @override
+  String get alertSheetCreate => 'Crear alerta';
+
+  @override
+  String alertSheetWatchingSnack(String origin, String destination) {
+    return 'Siguiendo $origin → $destination: te avisaremos por correo cuando baje';
+  }
+
+  @override
+  String get notifTitle => 'Notificaciones';
+
+  @override
+  String get notifLoadErrorTitle => 'No se pudieron cargar las notificaciones';
+
+  @override
+  String get notifEmptyTitle => 'Aún no tienes notificaciones';
+
+  @override
+  String get notifEmptyMessage =>
+      'Aquí aparecerán las bajadas de precio de las rutas que sigas.';
+
+  @override
+  String notifDownFrom(String price, String previous) {
+    return '$price, bajó desde $previous';
+  }
+
+  @override
+  String get notifBestInWindow => '(el mejor del periodo)';
+
+  @override
+  String get notifGenericFallback => 'Notificación';
+
+  @override
+  String get notifSomeTrip => 'un viaje';
+
+  @override
+  String get notifSomeone => 'Alguien';
+
+  @override
+  String get notifACollaborator => 'Un colaborador';
+
+  @override
+  String notifJoinedTrip(String who, String trip) {
+    return '$who se unió a «$trip»';
+  }
+
+  @override
+  String notifEditedTrip(String who, String trip) {
+    return '$who editó «$trip»';
+  }
+
+  @override
+  String get sharedTitle => 'Viaje compartido';
+
+  @override
+  String get sharedUnavailableTitle => 'Este enlace no está disponible';
+
+  @override
+  String get sharedInviteUnavailableMessage =>
+      'Puede que la invitación haya caducado, se haya revocado o ya se haya usado.';
+
+  @override
+  String get sharedLinkUnavailableMessage =>
+      'Puede que el viaje ya no esté compartido o que el enlace sea incorrecto.';
+
+  @override
+  String get sharedPlacesGroup => 'Lugares';
+
+  @override
+  String sharedSaveCopyError(String error) {
+    return 'No se pudo guardar una copia: $error';
+  }
+
+  @override
+  String sharedJoinError(String error) {
+    return 'No se pudo unir al viaje: $error';
+  }
+
+  @override
+  String sharedBy(String name) {
+    return 'Compartido por $name';
+  }
+
+  @override
+  String get sharedNoMappedPlaces => 'No hay lugares en el mapa';
+
+  @override
+  String sharedNoPlacesOnDay(int day) {
+    return 'No hay lugares fijados el día $day';
+  }
+
+  @override
+  String get sharedEmptyTitle => 'Aún no hay lugares';
+
+  @override
+  String get sharedEmptyMessage => 'Este viaje todavía no tiene itinerario.';
+
+  @override
+  String sharedDayN(int day) {
+    return 'Día $day';
+  }
+
+  @override
+  String get sharedStays => 'Alojamientos';
+
+  @override
+  String get sharedJoinCoPlanner => 'Unirme como coplanificador';
+
+  @override
+  String get sharedSaveSeparateCopy => 'O guardar una copia aparte';
+
+  @override
+  String get sharedKeepInTrips => 'Guardar en mis viajes';
+
+  @override
+  String get legalAgreementPrefix => 'Al registrarte aceptas los ';
+
+  @override
+  String get legalTermsOfService => 'Términos del servicio';
+
+  @override
+  String get legalAgreementConjunction => ' y la ';
+
+  @override
+  String get legalPrivacyPolicy => 'Política de privacidad';
+
+  @override
+  String get offlineJustNow => 'ahora mismo';
+
+  @override
+  String offlineMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'hace $count minutos',
+      one: 'hace 1 minuto',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'hace $count horas',
+      one: 'hace 1 hora',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'hace $count días',
+      one: 'hace 1 día',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String offlineBannerMessage(String when) {
+    return 'Sin conexión: mostrando la copia guardada $when';
+  }
+
+  @override
+  String get chatInputHint => 'Describe tu viaje...';
+
+  @override
+  String get chatFollowUpHint => 'Haz una pregunta de seguimiento…';
+
+  @override
+  String get chatAttachImages => 'Adjuntar imágenes';
+
+  @override
+  String get chatStopDictating => 'Dejar de dictar';
+
+  @override
+  String get chatDictate => 'Dictar';
+
+  @override
+  String get chatDropImages => 'Suelta imágenes para adjuntarlas';
+
+  @override
+  String get chatRemoveImage => 'Quitar imagen';
+
+  @override
+  String get chatImagePlaceholder => 'Imagen';
+
+  @override
+  String get chatStillPreparingImage =>
+      'Todavía se está preparando una imagen — un momento.';
+
+  @override
+  String chatAttachLimit(int count) {
+    return 'Puedes adjuntar hasta $count imágenes.';
+  }
+
+  @override
+  String get chatImageUnreadable =>
+      'No se pudo leer esa imagen — prueba con un JPEG, PNG, GIF o WebP de menos de 10 MB.';
+
+  @override
+  String get chatOnlyImages => 'Solo se pueden adjuntar archivos de imagen.';
+
+  @override
+  String get chatToolSearchPlaces => 'Buscando lugares...';
+
+  @override
+  String get chatToolCreateItinerary => 'Creando itinerario...';
+
+  @override
+  String get chatToolUpdateItinerary => 'Actualizando itinerario...';
+
+  @override
+  String get chatToolSearchFlights => 'Buscando vuelos...';
+
+  @override
+  String get chatToolCheckConnectivity =>
+      'Comprobando la conectividad de la ruta...';
+
+  @override
+  String get chatToolSearchEvents => 'Buscando eventos...';
+
+  @override
+  String get chatToolSuggestFerries => 'Buscando ferris...';
+
+  @override
+  String get chatSummarizing => 'Resumiendo la conversación anterior…';
+
+  @override
+  String get chatProfileUpdatedTooltip => 'Perfil de viaje actualizado';
+
+  @override
+  String get chatProfileUpdated => 'Anotado — perfil de viaje actualizado';
+
+  @override
+  String get chatTripUpdated => 'Viaje actualizado';
+
+  @override
+  String chatChipFlightOptions(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count opciones de vuelo',
+      one: '$count opción de vuelo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipLocalPicks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count recomendaciones locales',
+      one: '$count recomendación local',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipEvents(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count eventos',
+      one: '$count evento',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipFerryOptions(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count opciones de ferri',
+      one: '$count opción de ferri',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatChipEventSources(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count fuentes de eventos',
+      one: '$count fuente de eventos',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatTryAgain => 'Intentar de nuevo';
+
+  @override
+  String get chatQueued => 'En cola';
+
+  @override
+  String get chatRemoveQueued => 'Quitar mensaje en cola';
+
+  @override
+  String get agentScreenTitle => 'Planea tu viaje';
+
+  @override
+  String get agentScreenStartOver => 'Empezar de nuevo';
+
+  @override
+  String get agentScreenEmptyTitle => 'Cuéntame sobre el viaje de tus sueños';
+
+  @override
+  String get agentScreenEmptyMessage =>
+      'Buscaré lugares y crearé un itinerario que puedes cargar en el planificador de rutas.';
+
+  @override
+  String get agentScreenSuggestionParis => '2 días en París';
+
+  @override
+  String get agentScreenSuggestionRome => 'Museos en Roma';
+
+  @override
+  String get agentScreenSuggestionTokyo => 'Un fin de semana en Tokio';
+
+  @override
+  String agentScreenItineraryReady(int count) {
+    return 'Itinerario listo — $count lugares';
+  }
+
+  @override
+  String get agentScreenViewTrip => 'Ver viaje';
+
+  @override
+  String get agentScreenLoadIntoRoutePlanner =>
+      'Cargar en el planificador de rutas';
+
+  @override
+  String get agentScreenLoadIntoPlanner => 'Cargar en el planificador';
+
+  @override
+  String refineTargetDay(int day) {
+    return 'Día $day';
+  }
+
+  @override
+  String refineTargetDayCity(int day, String city) {
+    return 'Día $day — $city';
+  }
+
+  @override
+  String get refineTargetWholeTrip => 'Todo el viaje';
+
+  @override
+  String get refineAssistantTitle => 'Asistente de viaje';
+
+  @override
+  String refineHeader(String target) {
+    return 'Ajustando · $target';
+  }
+
+  @override
+  String get refineAssistantHint => 'Pregunta lo que quieras sobre este viaje…';
+
+  @override
+  String get refineHint => 'Pide cambios...';
+
+  @override
+  String get chatDictationPermission =>
+      'Se bloqueó el acceso al micrófono. Revisa la configuración de tu navegador.';
+
+  @override
+  String get chatDictationUnsupported =>
+      'La entrada por voz no está disponible en este navegador.';
+
+  @override
+  String get chatDictationUnavailable =>
+      'La entrada por voz no está disponible en este momento.';
+
+  @override
+  String get chatDictationFailed =>
+      'No se pudo transcribir el audio. Puedes escribir en su lugar.';
+
+  @override
+  String get placeSearchAddTitle => 'Añadir ubicación';
+
+  @override
+  String get placeSearchEditTitle => 'Editar ubicación';
+
+  @override
+  String get placeSearchManualCoords => 'Usar coordenadas manuales';
+
+  @override
+  String get placeSearchManualCoordsSubtitle =>
+      'Introduce la latitud y la longitud manualmente en lugar de buscar lugares';
+
+  @override
+  String get placeSearchNameLabel => 'Nombre de la ubicación *';
+
+  @override
+  String get placeSearchNameRequired =>
+      'El nombre de la ubicación es obligatorio';
+
+  @override
+  String get placeSearchCategoryLabel => 'Categoría (opcional)';
+
+  @override
+  String get placeSearchCategoryHint =>
+      'p. ej., restaurant, museum, coffee_shop';
+
+  @override
+  String get placeSearchVisitDurationLabel =>
+      'Duración de la visita (minutos, opcional)';
+
+  @override
+  String get placeSearchDurationInvalid =>
+      'Introduce una duración válida en minutos';
+
+  @override
+  String get placeSearchSearchLabel => 'Buscar un lugar';
+
+  @override
+  String get placeSearchSearchHint =>
+      'Escribe para buscar restaurantes, atracciones, etc.';
+
+  @override
+  String get placeSearchLatitude => 'Latitud';
+
+  @override
+  String get placeSearchLongitude => 'Longitud';
+
+  @override
+  String get placeSearchLatitudeRequired => 'Latitud *';
+
+  @override
+  String get placeSearchLongitudeRequired => 'Longitud *';
+
+  @override
+  String get placeSearchLatitudeRequiredError => 'La latitud es obligatoria';
+
+  @override
+  String get placeSearchLongitudeRequiredError => 'La longitud es obligatoria';
+
+  @override
+  String get placeSearchLatitudeInvalid =>
+      'Introduce una latitud válida (-90 a 90)';
+
+  @override
+  String get placeSearchLongitudeInvalid =>
+      'Introduce una longitud válida (-180 a 180)';
+
+  @override
+  String get placeSearchNoResults =>
+      'No se encontraron lugares. Prueba con otro término de búsqueda.';
+
+  @override
+  String placeSearchError(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String addToTripAddedTo(String title) {
+    return 'Añadido a $title';
+  }
+
+  @override
+  String get addToTripViewTrip => 'Ver viaje';
+
+  @override
+  String get addToTripTitle => 'Añadir al viaje';
+
+  @override
+  String get addToTripDuplicate => 'Ya está en este viaje.';
+
+  @override
+  String get addToTripAddAnyway => 'Añadir de todos modos';
+
+  @override
+  String addToTripLoadTripError(String error) {
+    return 'No se pudo cargar ese viaje: $error';
+  }
+
+  @override
+  String addToTripAddPlaceError(String error) {
+    return 'No se pudo añadir el lugar: $error';
+  }
+
+  @override
+  String get addToTripLoadTripsError => 'No se pudieron cargar tus viajes.';
+
+  @override
+  String get addToTripNoTrips =>
+      'Aún no tienes viajes — planifica un viaje primero y luego añade lugares.';
+
+  @override
+  String get addToTripUnscheduled => 'Sin programar';
+
+  @override
+  String addToTripDay(int day) {
+    return 'Día $day';
+  }
+
+  @override
+  String get routeOptTitle => 'Optimizador de rutas';
+
+  @override
+  String get routeOptClearAllTooltip => 'Borrar todas las ubicaciones';
+
+  @override
+  String routeOptLocationsCount(int count) {
+    return 'Ubicaciones ($count)';
+  }
+
+  @override
+  String get routeOptAddLocation => 'Añadir ubicación';
+
+  @override
+  String get routeOptEmptyTitle => 'Aún no has añadido ubicaciones';
+
+  @override
+  String get routeOptEmptyMessage => 'Añade ubicaciones para optimizar tu ruta';
+
+  @override
+  String get routeOptAddFirstLocation => 'Añade tu primera ubicación';
+
+  @override
+  String get routeOptOptimizing => 'Optimizando...';
+
+  @override
+  String get routeOptOptimize => 'Optimizar ruta';
+
+  @override
+  String get routeOptClearAllTitle => 'Borrar todas las ubicaciones';
+
+  @override
+  String get routeOptClearAllBody =>
+      '¿Seguro que quieres borrar todas las ubicaciones? Esta acción no se puede deshacer.';
+
+  @override
+  String get routeOptClearAllConfirm => 'Borrar todo';
+
+  @override
+  String get routeOptEditLocationTooltip => 'Editar ubicación';
+
+  @override
+  String get routeOptDeleteLocationTooltip => 'Eliminar ubicación';
+
+  @override
+  String get optParamsTitle => 'Parámetros de optimización';
+
+  @override
+  String get optParamsStartDate => 'Fecha de inicio';
+
+  @override
+  String get optParamsSelectDate => 'Selecciona una fecha';
+
+  @override
+  String get optParamsStartTime => 'Hora de inicio';
+
+  @override
+  String get optParamsSelectTime => 'Selecciona una hora';
+
+  @override
+  String get optParamsReturnToStart => 'Volver al punto de partida';
+
+  @override
+  String get optParamsClearDate => 'Borrar fecha';
+
+  @override
+  String get optParamsClearTime => 'Borrar hora';
+
+  @override
+  String get flightSearchTitle => 'Buscar vuelos';
+
+  @override
+  String get flightSearchFrom => 'Desde';
+
+  @override
+  String get flightSearchTo => 'Hasta';
+
+  @override
+  String get flightSearchDepartDate => 'Fecha de ida';
+
+  @override
+  String get flightSearchReturnOptional => 'Vuelta (opcional)';
+
+  @override
+  String get flightSearchClearReturnTooltip => 'Borrar fecha de vuelta';
+
+  @override
+  String get flightSearchChildAges => 'Edades de los niños';
+
+  @override
+  String get flightSearchCabinEconomy => 'Económica';
+
+  @override
+  String get flightSearchCabinPremiumEconomy => 'Económica premium';
+
+  @override
+  String get flightSearchCabinBusiness => 'Business';
+
+  @override
+  String get flightSearchCabinFirst => 'Primera';
+
+  @override
+  String get flightSearchBaggagePersonalItem => 'Artículo personal';
+
+  @override
+  String get flightSearchBaggageCarryOn => 'Equipaje de mano';
+
+  @override
+  String get flightSearchBaggageChecked => 'Maleta facturada';
+
+  @override
+  String get flightSearchPresetCheapest => 'Más barato';
+
+  @override
+  String get flightSearchPresetFastest => 'Más rápido';
+
+  @override
+  String get flightSearchPresetBalanced => 'Equilibrado';
+
+  @override
+  String get flightSearchSearching => 'Buscando…';
+
+  @override
+  String get flightSearchSubmit => 'Buscar vuelos';
+
+  @override
+  String get flightSearchWatchRoute =>
+      'Sigue esta ruta — te aviso por correo si baja el precio';
+
+  @override
+  String get flightSearchErrorTitle => 'No se pudieron cargar los vuelos';
+
+  @override
+  String get flightSearchHintInitial =>
+      'Elige un origen, un destino y una fecha para buscar vuelos.';
+
+  @override
+  String get flightSearchHintEmpty =>
+      'No se encontraron vuelos para esta ruta y fecha.';
+
+  @override
+  String flightCardSavings(String amount) {
+    return 'Ahorras $amount frente a la siguiente opción';
+  }
+
+  @override
+  String get flightCardBagIncluded => 'Maleta incluida';
+
+  @override
+  String flightCardBagPaid(String fee) {
+    return 'maleta incl. +$fee';
+  }
+
+  @override
+  String get flightCardBagUnknown => 'Tarifa de maleta desconocida';
+
+  @override
+  String get flightCardOpenLinkError => 'No se pudo abrir el enlace';
+
+  @override
+  String get flightCardBestMatch => 'MEJOR OPCIÓN';
+
+  @override
+  String get flightCardFlight => 'Vuelo';
+
+  @override
+  String flightCardScore(String score) {
+    return 'puntuación $score';
+  }
+
+  @override
+  String get flightCardBook => 'Reservar';
+
+  @override
+  String get flightSheetOutbound => 'Ida';
+
+  @override
+  String get flightSheetReturn => 'Vuelta';
+
+  @override
+  String get flightSheetRoundTrip => 'Ida y vuelta';
+
+  @override
+  String get flightSheetBookThisFlight => 'Reservar este vuelo';
+
+  @override
+  String flightSheetBookWith(String airline) {
+    return 'Reservar con $airline';
+  }
+
+  @override
+  String get flightSheetBagPersonalItem => 'Artículo personal';
+
+  @override
+  String flightSheetBagCarryOnCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count equipajes de mano',
+      one: 'equipaje de mano',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightSheetBagCheckedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count maletas facturadas',
+      one: 'maleta facturada',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightSheetIncluded(String list) {
+    return 'Incluye: $list';
+  }
+
+  @override
+  String flightSheetBagFeeNote(String fee) {
+    return '+$fee de tarifa de maleta incluida en el precio';
+  }
+
+  @override
+  String get flightSheetBagUnknownNote =>
+      'Tu maleta no está incluida — consulta la tarifa con la aerolínea';
+
+  @override
+  String flightSheetLayover(String airport) {
+    return 'Escala en $airport';
+  }
+
+  @override
+  String flightSheetLayoverWithDuration(String airport, String duration) {
+    return 'Escala en $airport · $duration';
+  }
+
+  @override
+  String get airportFieldHint => 'Ciudad o aeropuerto';
+
+  @override
+  String get guidesTitle => 'Guías locales';
+
+  @override
+  String get guidesErrorTitle => 'No se pudieron cargar las guías';
+
+  @override
+  String get guidesEmptyTitle => 'Aún no hay guías';
+
+  @override
+  String get guidesEmptyMessage =>
+      'Las guías de locales de verdad aparecerán aquí a medida que se publiquen.';
+
+  @override
+  String get guidesElsewhere => 'En otros lugares';
+
+  @override
+  String guidesByline(String name) {
+    return 'por $name';
+  }
+
+  @override
+  String get guideDetailTitle => 'Guía local';
+
+  @override
+  String get guideDetailErrorTitle => 'No se pudo cargar esta guía';
+
+  @override
+  String get guideDetailErrorMessage =>
+      'Comprueba tu conexión e inténtalo de nuevo.';
+
+  @override
+  String guideDetailByline(String name) {
+    return 'Por $name';
+  }
+
+  @override
+  String get guideDetailPlacesTitle => 'Lugares de esta guía';
+
+  @override
+  String get guideDetailNoPinsTitle => 'Aún no hay lugares marcados';
+
+  @override
+  String get guideDetailNoPinsMessage =>
+      'Por ahora esta guía es solo narrativa.';
+
+  @override
+  String get appMapCredits => 'Créditos del mapa';
+
+  @override
+  String flightStops(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count escalas',
+      one: '1 escala',
+      zero: 'Sin escalas',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String flightStopsEachWay(String stops) {
+    return '$stops por trayecto';
+  }
+
+  @override
+  String flightStopsSplit(String outbound, String inbound) {
+    return '$outbound / $inbound';
+  }
 }

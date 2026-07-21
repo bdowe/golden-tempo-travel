@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/gradient_app_bar.dart';
@@ -1291,9 +1292,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     ref
         .read(tripRefineProvider(widget.tripId).notifier)
         .beginSectionRefinement(_buildSectionSeed(trip, target),
+            // displayLabel is what the traveler reads in the panel header, so
+            // it uses the localized form; the seed prompt above keeps the
+            // canonical English label the agent expects (specs/i18n-spanish).
             displayLabel: target.assistant
                 ? l10n.tripAssistantLabel
-                : l10n.tripRefiningSection(target.label));
+                : l10n.tripRefiningSection(target.displayLabel(l10n)));
     setState(() {
       _panelOpen = true;
       _refineTarget = target;
@@ -3621,7 +3625,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     return sameDay ? _fmtShortDt(a) : '${_fmtShortDt(a)} – ${_fmtShortDt(b)}';
   }
 
-  String _fmtShortDt(DateTime d) => '${_months[d.month - 1]} ${d.day}';
+  /// "Jul 15" in English, "15 jul" in Spanish — DateFormat reads
+  /// Intl.defaultLocale, which the locale provider sets (specs/i18n-spanish).
+  String _fmtShortDt(DateTime d) => DateFormat.MMMd().format(d);
 
   /// Coarse relative timestamp for the "Updated by X" line.
   String _relativeTime(String iso) {
@@ -3635,34 +3641,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     return l10n.tripTimeDaysAgo(d.inDays);
   }
 
-  /// Day-header date, e.g. "Tue, Jul 15" (weekday + month + day).
-  String _fmtDayHeader(DateTime d) =>
-      '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+  /// Day-header date, e.g. "Wed, Jul 15" (weekday + month + day); Spanish
+  /// reorders to "mié, 15 jul" on its own.
+  String _fmtDayHeader(DateTime d) => DateFormat.MMMEd().format(d);
 
-  static const _months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
 
-  static const _weekdays = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
 
   /// The trip's hero header: title (+ rename), date/status chips, a Refine
   /// button, and a collapsible overview.
@@ -4535,6 +4518,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
     if (todo.searchUrl != null) {
       return () async {
+        // Captured before the await: the widget can unmount while the launch
+        // is in flight, and an inherited-widget lookup would then throw.
+        final failedMessage = context.l10n.tripOpenLinkFailed;
         final ok = await trackedLaunchUrl(
           context,
           todo.searchUrl!,
@@ -4544,7 +4530,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           todoKey: todo.todoKey,
           kind: todo.kind,
         );
-        if (!ok) _showSnack(context.l10n.tripOpenLinkFailed);
+        if (!ok) _showSnack(failedMessage);
       };
     }
     return null;

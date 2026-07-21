@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 /// Coarse relative-time label for cache staleness: "just now",
 /// "5 minutes ago", "2 hours ago", "3 days ago". [now] is injectable for
 /// tests; precision is deliberately low — travelers need "how stale", not a
-/// timestamp.
-String relativeTime(DateTime savedAt, {DateTime? now}) {
+/// timestamp. Takes [l10n] because it is a plain function (no BuildContext of
+/// its own) shared by several screens (specs/i18n-spanish).
+String relativeTime(AppLocalizations l10n, DateTime savedAt, {DateTime? now}) {
   final d = (now ?? DateTime.now()).difference(savedAt);
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inHours < 1) {
-    return d.inMinutes == 1 ? '1 minute ago' : '${d.inMinutes} minutes ago';
-  }
-  if (d.inDays < 1) {
-    return d.inHours == 1 ? '1 hour ago' : '${d.inHours} hours ago';
-  }
-  return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
+  if (d.inMinutes < 1) return l10n.offlineJustNow;
+  if (d.inHours < 1) return l10n.offlineMinutesAgo(d.inMinutes);
+  if (d.inDays < 1) return l10n.offlineHoursAgo(d.inHours);
+  return l10n.offlineDaysAgo(d.inDays);
 }
 
 /// Pinned notice shown while a screen serves a cached (read-only) copy of
@@ -29,6 +28,7 @@ class OfflineBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final l10n = context.l10n;
     return Material(
       color: scheme.tertiaryContainer,
       child: Padding(
@@ -39,7 +39,7 @@ class OfflineBanner extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Offline — showing saved copy from ${relativeTime(savedAt)}',
+                l10n.offlineBannerMessage(relativeTime(l10n, savedAt)),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onTertiaryContainer,
                   fontWeight: FontWeight.w600,
@@ -52,7 +52,7 @@ class OfflineBanner extends StatelessWidget {
                 foregroundColor: scheme.onTertiaryContainer,
                 visualDensity: VisualDensity.compact,
               ),
-              child: const Text('Retry'),
+              child: Text(l10n.commonRetry),
             ),
           ],
         ),

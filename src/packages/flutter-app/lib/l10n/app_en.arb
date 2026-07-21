@@ -1187,5 +1187,621 @@
   "accountMenuAccountSettings": "Account settings",
   "accountMenuLocalIntelAdmin": "Local intel admin",
   "accountMenuMetrics": "Metrics",
-  "accountMenuSignOut": "Sign out"
+  "accountMenuSignOut": "Sign out",
+  "alertsTitle": "Price alerts",
+  "alertsSignInTitle": "Sign in to watch fares",
+  "alertsSignInMessage": "Price alerts email you when a flight you care about drops.",
+  "alertsSignIn": "Sign in",
+  "alertsLoadErrorTitle": "Could not load alerts",
+  "alertsEmptyTitle": "No alerts yet",
+  "alertsEmptyMessage": "Search a flight and tap \"Watch this route\" — we'll email you when the price drops.",
+  "alertsLastSeen": "Last seen {price}",
+  "@alertsLastSeen": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsTargetPrice": "target {price}",
+  "@alertsTargetPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsWatchingAnyDrop": "watching for any drop",
+  "alertsAdults": "{count} adults",
+  "@alertsAdults": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alertsBaselineDelta": "Down {amount} from when you started watching",
+  "@alertsBaselineDelta": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsChecked": "Checked {when}",
+  "@alertsChecked": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsSetTargetTitle": "Set target price",
+  "alertsSetTargetBody": "Get notified when the fare hits or drops below this price.",
+  "alertsNotifyAtOrBelow": "Notify me at or below",
+  "alertsWatchAnyDropInstead": "Watch for any drop instead",
+  "alertsInvalidTarget": "Enter a valid target price",
+  "alertsActionsTooltip": "Alert actions",
+  "alertsEditTarget": "Edit target price",
+  "alertsPause": "Pause",
+  "alertsResume": "Resume",
+  "alertsStatusExpired": "Expired",
+  "alertsStatusPaused": "Paused",
+  "alertsStatusDropped": "Price dropped",
+  "alertsStatusWatching": "Watching",
+  "alertSheetTitle": "Watch this route",
+  "alertSheetBestPriceNow": "Best price now: {price}",
+  "@alertSheetBestPriceNow": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "alertSheetAnyDropTitle": "Notify me on any real price drop",
+  "alertSheetAnyDropSubtitle": "At least 5% and $5 below the last price",
+  "alertSheetFlexTitle": "Date flexibility",
+  "alertSheetFlexHelp": "Watch a few days around your departure and we'll flag the cheapest one.",
+  "alertSheetFlexExact": "Exact",
+  "alertSheetCreating": "Creating…",
+  "alertSheetCreate": "Create alert",
+  "alertSheetWatchingSnack": "Watching {origin} → {destination} — we'll email you on a drop",
+  "@alertSheetWatchingSnack": {
+    "placeholders": {
+      "origin": {
+        "type": "String"
+      },
+      "destination": {
+        "type": "String"
+      }
+    }
+  },
+  "notifTitle": "Notifications",
+  "notifLoadErrorTitle": "Could not load notifications",
+  "notifEmptyTitle": "No notifications yet",
+  "notifEmptyMessage": "Price drops on routes you watch will show up here.",
+  "notifDownFrom": "{price}, down from {previous}",
+  "@notifDownFrom": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "previous": {
+        "type": "String"
+      }
+    }
+  },
+  "notifBestInWindow": "(best in window)",
+  "notifGenericFallback": "Notification",
+  "notifSomeTrip": "a trip",
+  "notifSomeone": "Someone",
+  "notifACollaborator": "A collaborator",
+  "notifJoinedTrip": "{who} joined \"{trip}\"",
+  "@notifJoinedTrip": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      },
+      "trip": {
+        "type": "String"
+      }
+    }
+  },
+  "notifEditedTrip": "{who} edited \"{trip}\"",
+  "@notifEditedTrip": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      },
+      "trip": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedTitle": "Shared trip",
+  "sharedUnavailableTitle": "This link isn't available",
+  "sharedInviteUnavailableMessage": "The invite may have expired, been revoked, or already used.",
+  "sharedLinkUnavailableMessage": "The trip may have been unshared, or the link is incorrect.",
+  "sharedPlacesGroup": "Places",
+  "sharedSaveCopyError": "Could not save a copy: {error}",
+  "@sharedSaveCopyError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedJoinError": "Could not join trip: {error}",
+  "@sharedJoinError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedBy": "Shared by {name}",
+  "@sharedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedNoMappedPlaces": "No mapped places",
+  "sharedNoPlacesOnDay": "No places pinned on Day {day}",
+  "@sharedNoPlacesOnDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "sharedEmptyTitle": "No places yet",
+  "sharedEmptyMessage": "This trip doesn't have an itinerary yet.",
+  "sharedDayN": "Day {day}",
+  "@sharedDayN": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "sharedStays": "Stays",
+  "sharedJoinCoPlanner": "Join as co-planner",
+  "sharedSaveSeparateCopy": "Or save a separate copy",
+  "sharedKeepInTrips": "Keep in my trips",
+  "legalAgreementPrefix": "By signing up you agree to the ",
+  "legalTermsOfService": "Terms of Service",
+  "legalAgreementConjunction": " and ",
+  "legalPrivacyPolicy": "Privacy Policy",
+  "offlineJustNow": "just now",
+  "offlineMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "@offlineMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "offlineHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@offlineHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "offlineDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@offlineDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "offlineBannerMessage": "Offline — showing saved copy from {when}",
+  "@offlineBannerMessage": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "chatInputHint": "Describe your trip...",
+  "chatFollowUpHint": "Ask a follow-up…",
+  "chatAttachImages": "Attach images",
+  "chatStopDictating": "Stop dictating",
+  "chatDictate": "Dictate",
+  "chatDropImages": "Drop images to attach",
+  "chatRemoveImage": "Remove image",
+  "chatImagePlaceholder": "Image",
+  "chatStillPreparingImage": "Still preparing an image — one moment.",
+  "chatAttachLimit": "You can attach up to {count} images.",
+  "@chatAttachLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatImageUnreadable": "Couldn't read that image — try a JPEG, PNG, GIF, or WebP under 10 MB.",
+  "chatOnlyImages": "Only image files can be attached.",
+  "chatToolSearchPlaces": "Searching places...",
+  "chatToolCreateItinerary": "Building itinerary...",
+  "chatToolUpdateItinerary": "Updating itinerary...",
+  "chatToolSearchFlights": "Searching flights...",
+  "chatToolCheckConnectivity": "Checking route connectivity...",
+  "chatToolSearchEvents": "Finding events...",
+  "chatToolSuggestFerries": "Finding ferries...",
+  "chatSummarizing": "Summarizing earlier conversation…",
+  "chatProfileUpdatedTooltip": "Travel profile updated",
+  "chatProfileUpdated": "Noted — travel profile updated",
+  "chatTripUpdated": "Trip updated",
+  "chatChipFlightOptions": "{count, plural, =1{{count} flight option} other{{count} flight options}}",
+  "@chatChipFlightOptions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatChipLocalPicks": "{count, plural, =1{{count} local pick} other{{count} local picks}}",
+  "@chatChipLocalPicks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatChipEvents": "{count, plural, =1{{count} event} other{{count} events}}",
+  "@chatChipEvents": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatChipFerryOptions": "{count, plural, =1{{count} ferry option} other{{count} ferry options}}",
+  "@chatChipFerryOptions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatChipEventSources": "{count, plural, =1{{count} event source} other{{count} event sources}}",
+  "@chatChipEventSources": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatTryAgain": "Try again",
+  "chatQueued": "Queued",
+  "chatRemoveQueued": "Remove queued message",
+  "agentScreenTitle": "Plan your trip",
+  "agentScreenStartOver": "Start over",
+  "agentScreenEmptyTitle": "Tell me about your dream trip",
+  "agentScreenEmptyMessage": "I'll search for places and build an itinerary you can load into the route planner.",
+  "agentScreenSuggestionParis": "2 days in Paris",
+  "agentScreenSuggestionRome": "Museums in Rome",
+  "agentScreenSuggestionTokyo": "Weekend in Tokyo",
+  "agentScreenItineraryReady": "Itinerary ready — {count} locations",
+  "@agentScreenItineraryReady": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "agentScreenViewTrip": "View trip",
+  "agentScreenLoadIntoRoutePlanner": "Load into route planner",
+  "agentScreenLoadIntoPlanner": "Load into Planner",
+  "refineTargetDay": "Day {day}",
+  "@refineTargetDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "refineTargetDayCity": "Day {day} — {city}",
+  "@refineTargetDayCity": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      },
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "refineTargetWholeTrip": "Whole trip",
+  "refineAssistantTitle": "Trip assistant",
+  "refineHeader": "Refining · {target}",
+  "@refineHeader": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "refineAssistantHint": "Ask anything about this trip…",
+  "refineHint": "Ask for changes...",
+  "chatDictationPermission": "Microphone access was blocked. Check your browser settings.",
+  "chatDictationUnsupported": "Voice input isn't available in this browser.",
+  "chatDictationUnavailable": "Voice input isn't available right now.",
+  "chatDictationFailed": "Couldn't transcribe audio. You can type instead.",
+  "placeSearchAddTitle": "Add Location",
+  "placeSearchEditTitle": "Edit Location",
+  "placeSearchManualCoords": "Use Manual Coordinates",
+  "placeSearchManualCoordsSubtitle": "Enter latitude/longitude manually instead of searching places",
+  "placeSearchNameLabel": "Location Name *",
+  "placeSearchNameRequired": "Location name is required",
+  "placeSearchCategoryLabel": "Category (optional)",
+  "placeSearchCategoryHint": "e.g., restaurant, museum, coffee_shop",
+  "placeSearchVisitDurationLabel": "Visit Duration (minutes, optional)",
+  "placeSearchDurationInvalid": "Please enter a valid duration in minutes",
+  "placeSearchSearchLabel": "Search for a place",
+  "placeSearchSearchHint": "Type to search for restaurants, attractions, etc.",
+  "placeSearchLatitude": "Latitude",
+  "placeSearchLongitude": "Longitude",
+  "placeSearchLatitudeRequired": "Latitude *",
+  "placeSearchLongitudeRequired": "Longitude *",
+  "placeSearchLatitudeRequiredError": "Latitude is required",
+  "placeSearchLongitudeRequiredError": "Longitude is required",
+  "placeSearchLatitudeInvalid": "Enter valid latitude (-90 to 90)",
+  "placeSearchLongitudeInvalid": "Enter valid longitude (-180 to 180)",
+  "placeSearchNoResults": "No places found. Try a different search term.",
+  "placeSearchError": "Error: {error}",
+  "@placeSearchError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "addToTripAddedTo": "Added to {title}",
+  "@addToTripAddedTo": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "addToTripViewTrip": "View trip",
+  "addToTripTitle": "Add to trip",
+  "addToTripDuplicate": "Already on this trip.",
+  "addToTripAddAnyway": "Add anyway",
+  "addToTripLoadTripError": "Could not load that trip: {error}",
+  "@addToTripLoadTripError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "addToTripAddPlaceError": "Could not add the place: {error}",
+  "@addToTripAddPlaceError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "addToTripLoadTripsError": "Could not load your trips.",
+  "addToTripNoTrips": "No trips yet — plan a trip first, then add places to it.",
+  "addToTripUnscheduled": "Unscheduled",
+  "addToTripDay": "Day {day}",
+  "@addToTripDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "routeOptTitle": "Route Optimizer",
+  "routeOptClearAllTooltip": "Clear all locations",
+  "routeOptLocationsCount": "Locations ({count})",
+  "@routeOptLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "routeOptAddLocation": "Add Location",
+  "routeOptEmptyTitle": "No locations added yet",
+  "routeOptEmptyMessage": "Add locations to optimize your route",
+  "routeOptAddFirstLocation": "Add Your First Location",
+  "routeOptOptimizing": "Optimizing...",
+  "routeOptOptimize": "Optimize Route",
+  "routeOptClearAllTitle": "Clear All Locations",
+  "routeOptClearAllBody": "Are you sure you want to clear all locations? This action cannot be undone.",
+  "routeOptClearAllConfirm": "Clear All",
+  "routeOptEditLocationTooltip": "Edit location",
+  "routeOptDeleteLocationTooltip": "Delete location",
+  "optParamsTitle": "Optimization Parameters",
+  "optParamsStartDate": "Start Date",
+  "optParamsSelectDate": "Select date",
+  "optParamsStartTime": "Start Time",
+  "optParamsSelectTime": "Select time",
+  "optParamsReturnToStart": "Return to Starting Point",
+  "optParamsClearDate": "Clear Date",
+  "optParamsClearTime": "Clear Time",
+  "flightSearchTitle": "Find Flights",
+  "flightSearchFrom": "From",
+  "flightSearchTo": "To",
+  "flightSearchDepartDate": "Departure date",
+  "flightSearchReturnOptional": "Return (optional)",
+  "flightSearchClearReturnTooltip": "Clear return date",
+  "flightSearchChildAges": "Child ages",
+  "flightSearchCabinEconomy": "Economy",
+  "flightSearchCabinPremiumEconomy": "Premium economy",
+  "flightSearchCabinBusiness": "Business",
+  "flightSearchCabinFirst": "First",
+  "flightSearchBaggagePersonalItem": "Personal item",
+  "flightSearchBaggageCarryOn": "Carry-on",
+  "flightSearchBaggageChecked": "Checked bag",
+  "flightSearchPresetCheapest": "Cheapest",
+  "flightSearchPresetFastest": "Fastest",
+  "flightSearchPresetBalanced": "Balanced",
+  "flightSearchSearching": "Searching…",
+  "flightSearchSubmit": "Search Flights",
+  "flightSearchWatchRoute": "Watch this route — email me on a drop",
+  "flightSearchErrorTitle": "Could not load flights",
+  "flightSearchHintInitial": "Choose an origin, destination, and date to find flights.",
+  "flightSearchHintEmpty": "No flights found for this route and date.",
+  "flightCardSavings": "Saves {amount} vs next option",
+  "@flightCardSavings": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "flightCardBagIncluded": "Bag included",
+  "flightCardBagPaid": "incl. bag +{fee}",
+  "@flightCardBagPaid": {
+    "placeholders": {
+      "fee": {
+        "type": "String"
+      }
+    }
+  },
+  "flightCardBagUnknown": "Bag fee unknown",
+  "flightCardOpenLinkError": "Could not open link",
+  "flightCardBestMatch": "BEST MATCH",
+  "flightCardFlight": "Flight",
+  "flightCardScore": "score {score}",
+  "@flightCardScore": {
+    "placeholders": {
+      "score": {
+        "type": "String"
+      }
+    }
+  },
+  "flightCardBook": "Book",
+  "flightSheetOutbound": "Outbound",
+  "flightSheetReturn": "Return",
+  "flightSheetRoundTrip": "Round trip",
+  "flightSheetBookThisFlight": "Book this flight",
+  "flightSheetBookWith": "Book with {airline}",
+  "@flightSheetBookWith": {
+    "placeholders": {
+      "airline": {
+        "type": "String"
+      }
+    }
+  },
+  "flightSheetBagPersonalItem": "Personal item",
+  "flightSheetBagCarryOnCount": "{count, plural, =1{carry-on} other{{count} carry-ons}}",
+  "@flightSheetBagCarryOnCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "flightSheetBagCheckedCount": "{count, plural, =1{checked bag} other{{count} checked bags}}",
+  "@flightSheetBagCheckedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "flightSheetIncluded": "Included: {list}",
+  "@flightSheetIncluded": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "flightSheetBagFeeNote": "+{fee} bag fee included in price",
+  "@flightSheetBagFeeNote": {
+    "placeholders": {
+      "fee": {
+        "type": "String"
+      }
+    }
+  },
+  "flightSheetBagUnknownNote": "Your bag is not included — check the fee with the airline",
+  "flightSheetLayover": "Layover {airport}",
+  "@flightSheetLayover": {
+    "placeholders": {
+      "airport": {
+        "type": "String"
+      }
+    }
+  },
+  "flightSheetLayoverWithDuration": "Layover {airport} · {duration}",
+  "@flightSheetLayoverWithDuration": {
+    "placeholders": {
+      "airport": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "airportFieldHint": "City or airport",
+  "guidesTitle": "Local guides",
+  "guidesErrorTitle": "Could not load guides",
+  "guidesEmptyTitle": "No guides yet",
+  "guidesEmptyMessage": "Guides from real locals appear here as they publish.",
+  "guidesElsewhere": "Elsewhere",
+  "guidesByline": "by {name}",
+  "@guidesByline": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guideDetailTitle": "Local guide",
+  "guideDetailErrorTitle": "Could not load this guide",
+  "guideDetailErrorMessage": "Check your connection and try again.",
+  "guideDetailByline": "By {name}",
+  "@guideDetailByline": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guideDetailPlacesTitle": "Places in this guide",
+  "guideDetailNoPinsTitle": "No places pinned yet",
+  "guideDetailNoPinsMessage": "This guide is all narrative for now.",
+  "appMapCredits": "Map credits",
+  "flightStops": "{count, plural, =0{Nonstop} =1{1 stop} other{{count} stops}}",
+  "@flightStops": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "flightStopsEachWay": "{stops} each way",
+  "@flightStopsEachWay": {
+    "placeholders": {
+      "stops": {
+        "type": "String"
+      }
+    }
+  },
+  "flightStopsSplit": "{outbound} / {inbound}",
+  "@flightStopsSplit": {
+    "placeholders": {
+      "outbound": {
+        "type": "String"
+      },
+      "inbound": {
+        "type": "String"
+      }
+    }
+  }
 }

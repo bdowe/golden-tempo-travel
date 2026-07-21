@@ -174,7 +174,7 @@ void main() {
     await engine.end();
     await pumpEventQueue();
 
-    expect(dictation.consumeError(), contains('Microphone access'));
+    expect(dictation.consumeError(), DictationError.permissionBlocked);
     expect(dictation.consumeError(), isNull, reason: 'one-shot');
     expect(dictation.status, DictationStatus.idle);
   });
@@ -221,7 +221,7 @@ void main() {
     await pumpEventQueue();
 
     expect(dictation.available, isFalse);
-    expect(dictation.consumeError(), contains("isn't available"));
+    expect(dictation.consumeError(), DictationError.unsupportedBrowser);
   });
 
   test('a 503 mid-session hides the mic going forward', () async {
@@ -240,7 +240,7 @@ void main() {
     await pumpEventQueue();
 
     expect(dictation.available, isFalse);
-    expect(dictation.consumeError(), contains("isn't available"));
+    expect(dictation.consumeError(), DictationError.unavailable);
   });
 
   test('transcribing status is reported for the recorder path', () async {

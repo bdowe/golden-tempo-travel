@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import '../l10n/l10n.dart';
 import '../models/plan_message.dart';
 import '../providers/dictation_provider.dart';
 import '../providers/plan_provider.dart';
@@ -30,7 +31,10 @@ import 'result_summary_chip.dart';
 class ChatPanel extends ConsumerStatefulWidget {
   final ProviderListenable<PlanState> state;
   final ProviderListenable<PlanNotifier> notifier;
-  final String inputHint;
+
+  /// Composer placeholder. Null falls back to the generic localized hint —
+  /// a default can't be a const literal now that it is translated.
+  final String? inputHint;
 
   /// Shown instead of the message list while the conversation is empty.
   final Widget? emptyState;
@@ -55,7 +59,7 @@ class ChatPanel extends ConsumerStatefulWidget {
     super.key,
     required this.state,
     required this.notifier,
-    this.inputHint = 'Describe your trip...',
+    this.inputHint,
     this.emptyState,
     this.footerBuilder,
     this.onViewTrip,
@@ -118,9 +122,16 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   void _onDictationChanged() {
     final error = _dictation.consumeError();
     if (error != null && mounted) {
+      final l10n = context.l10n;
+      final message = switch (error) {
+        DictationError.permissionBlocked => l10n.chatDictationPermission,
+        DictationError.unsupportedBrowser => l10n.chatDictationUnsupported,
+        DictationError.unavailable => l10n.chatDictationUnavailable,
+        DictationError.transcriptionFailed => l10n.chatDictationFailed,
+      };
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error)));
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -165,7 +176,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final text = _controller.text.trim();
     if (text.isEmpty && _pending.isEmpty) return;
     if (_processingCount > 0) {
-      _notify('Still preparing an image — one moment.');
+      _notify(context.l10n.chatStillPreparingImage);
       return;
     }
     final attachments = List<PlanAttachment>.of(_pending);
@@ -186,9 +197,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// Single intake seam: drag-drop, the paperclip picker, and any future
   /// paste path all feed (bytes, mimeType) pairs through here.
   Future<void> _addFiles(Iterable<(Uint8List, String)> files) async {
+    // Resolved up front: the loop awaits, so a later lookup could run against
+    // an unmounted State.
+    final l10n = context.l10n;
     for (final (bytes, mime) in files) {
       if (_pending.length + _processingCount >= _maxAttachments) {
-        _notify('You can attach up to $_maxAttachments images.');
+        _notify(l10n.chatAttachLimit(_maxAttachments));
         return;
       }
       setState(() => _processingCount++);
@@ -199,7 +213,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         if (attachment != null) _pending.add(attachment);
       });
       if (attachment == null) {
-        _notify("Couldn't read that image — try a JPEG, PNG, GIF, or WebP under 10 MB.");
+        _notify(l10n.chatImageUnreadable);
       }
     }
   }
@@ -224,6 +238,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   }
 
   Future<void> _onDragDone(DropDoneDetails detail) async {
+    final l10n = context.l10n;
     final files = <(Uint8List, String)>[];
     for (final item in detail.files) {
       final mime = (item.mimeType?.isNotEmpty ?? false)
@@ -234,7 +249,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     }
     if (!mounted) return;
     if (files.isEmpty) {
-      _notify('Only image files can be attached.');
+      _notify(l10n.chatOnlyImages);
       return;
     }
     await _addFiles(files);
@@ -315,7 +330,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           controller: _controller,
           focusNode: _inputFocus,
           isStreaming: isStreaming,
-          hint: widget.inputHint,
+          hint: widget.inputHint ?? context.l10n.chatInputHint,
           onSend: _send,
           onAttach: _pickImages,
           dictation: _dictation,
@@ -367,7 +382,7 @@ class _DropOverlay extends StatelessWidget {
                     size: 40, color: theme.colorScheme.primary),
                 const SizedBox(height: 8),
                 Text(
-                  'Drop images to attach',
+                  context.l10n.chatDropImages,
                   style: theme.textTheme.titleMedium
                       ?.copyWith(color: theme.colorScheme.primary),
                 ),
@@ -427,7 +442,7 @@ class _PendingAttachmentsRow extends StatelessWidget {
                       right: 0,
                       child: Semantics(
                         button: true,
-                        label: 'Remove image',
+                        label: context.l10n.chatRemoveImage,
                         child: InkWell(
                           onTap: () => onRemove(i),
                           child: Container(
@@ -537,6 +552,7 @@ class _ActiveToolChips extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeTools = ref.watch(state.select((s) => s.activeTools));
     if (activeTools.isEmpty) return const SizedBox.shrink();
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Wrap(
@@ -548,29 +564,31 @@ class _ActiveToolChips extends ConsumerWidget {
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            label: Text(_toolLabel(tool)),
+            label: Text(_toolLabel(l10n, tool)),
           );
         }).toList(),
       ),
     );
   }
 
-  static String _toolLabel(String tool) {
+  // `tool` is the canonical server tool name (never translated); only its
+  // display label is localized.
+  static String _toolLabel(AppLocalizations l10n, String tool) {
     switch (tool) {
       case 'search_places':
-        return 'Searching places...';
+        return l10n.chatToolSearchPlaces;
       case 'create_itinerary':
-        return 'Building itinerary...';
+        return l10n.chatToolCreateItinerary;
       case 'update_itinerary_section':
-        return 'Updating itinerary...';
+        return l10n.chatToolUpdateItinerary;
       case 'search_flights':
-        return 'Searching flights...';
+        return l10n.chatToolSearchFlights;
       case 'check_flight_connectivity':
-        return 'Checking route connectivity...';
+        return l10n.chatToolCheckConnectivity;
       case 'search_events':
-        return 'Finding events...';
+        return l10n.chatToolSearchEvents;
       case 'suggest_ferries':
-        return 'Finding ferries...';
+        return l10n.chatToolSuggestFerries;
       default:
         return '$tool...';
     }
@@ -589,17 +607,17 @@ class _CompactingChip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final compacting = ref.watch(state.select((s) => s.isCompacting));
     if (!compacting) return const SizedBox.shrink();
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Chip(
-          avatar: SizedBox(
+          avatar: const SizedBox(
             width: 16,
             height: 16,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          label: Text('Summarizing earlier conversation…'),
+          label: Text(context.l10n.chatSummarizing),
         ),
       ),
     );
@@ -621,11 +639,11 @@ class _ProfileNoteChip extends ConsumerWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Tooltip(
-          message: note.isEmpty ? 'Travel profile updated' : note,
+          message: note.isEmpty ? context.l10n.chatProfileUpdatedTooltip : note,
           child: Chip(
             avatar: Icon(Icons.check_circle_outline,
                 size: 16, color: theme.colorScheme.primary),
-            label: const Text('Noted — travel profile updated'),
+            label: Text(context.l10n.chatProfileUpdated),
           ),
         ),
       ),
@@ -654,7 +672,7 @@ class _ItineraryUpdatedChip extends ConsumerWidget {
         child: Chip(
           avatar: Icon(Icons.check_circle_outline,
               size: 16, color: theme.colorScheme.primary),
-          label: const Text('Trip updated'),
+          label: Text(context.l10n.chatTripUpdated),
         ),
       ),
     );
@@ -730,48 +748,49 @@ class _ResultChips extends ConsumerWidget {
         ? () => onViewTrip!(tripId)
         : null;
 
-    String label(int count, String singular, String plural, String? suffix) {
-      final base = '$count ${count == 1 ? singular : plural}';
-      return (suffix == null || suffix.trim().isEmpty) ? base : '$base · $suffix';
-    }
+    // The count phrase is a localized plural; the optional city/route suffix is
+    // live data appended the same way in every language.
+    String label(String base, String? suffix) =>
+        (suffix == null || suffix.trim().isEmpty) ? base : '$base · $suffix';
 
+    final l10n = context.l10n;
     final chips = <Widget>[
       if (r.flights != null && r.flights!.isNotEmpty)
         ResultSummaryChip(
           icon: Icons.flight,
           accent: AppColors.toolFlights,
-          label: label(r.flights!.length, 'flight option', 'flight options',
-              r.flightRoute),
+          label: label(
+              l10n.chatChipFlightOptions(r.flights!.length), r.flightRoute),
           onTap: onTap,
         ),
       if (r.localRecs != null && r.localRecs!.isNotEmpty)
         ResultSummaryChip(
           icon: Icons.verified,
           accent: AppColors.toolLocal,
-          label: label(r.localRecs!.length, 'local pick', 'local picks',
-              r.localRecsCity),
+          label: label(
+              l10n.chatChipLocalPicks(r.localRecs!.length), r.localRecsCity),
           onTap: onTap,
         ),
       if (r.events != null && r.events!.isNotEmpty)
         ResultSummaryChip(
           icon: Icons.local_activity,
           accent: AppColors.toolEvents,
-          label: label(r.events!.length, 'event', 'events', r.eventsCity),
+          label: label(l10n.chatChipEvents(r.events!.length), r.eventsCity),
           onTap: onTap,
         ),
       if (r.ferries != null && r.ferries!.isNotEmpty)
         ResultSummaryChip(
           icon: Icons.directions_boat,
           accent: AppColors.toolFerries,
-          label: label(r.ferries!.length, 'ferry option', 'ferry options',
-              r.ferryRoute),
+          label: label(
+              l10n.chatChipFerryOptions(r.ferries!.length), r.ferryRoute),
           onTap: onTap,
         ),
       if (r.eventLinks != null && r.eventLinks!.isNotEmpty)
         ResultSummaryChip(
           icon: Icons.link,
           accent: AppColors.toolEvents,
-          label: label(r.eventLinks!.length, 'event source', 'event sources',
+          label: label(l10n.chatChipEventSources(r.eventLinks!.length),
               r.eventLinksCity),
           onTap: onTap,
         ),
@@ -839,7 +858,7 @@ class _ErrorBanner extends ConsumerWidget {
                 ),
                 onPressed: () => ref.read(notifier).retryLastSend(),
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Try again'),
+                label: Text(context.l10n.chatTryAgain),
               ),
             ),
         ],
@@ -920,7 +939,7 @@ class _QueuedBubble extends StatelessWidget {
                       style: TextStyle(color: theme.colorScheme.onPrimary),
                     ),
                   Text(
-                    'Queued',
+                    context.l10n.chatQueued,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onPrimary.withValues(alpha: 0.8),
                     ),
@@ -931,7 +950,7 @@ class _QueuedBubble extends StatelessWidget {
             const SizedBox(width: 4),
             IconButton(
               visualDensity: VisualDensity.compact,
-              tooltip: 'Remove queued message',
+              tooltip: context.l10n.chatRemoveQueued,
               onPressed: onRemove,
               icon: Icon(
                 Icons.close,
@@ -1070,7 +1089,7 @@ class _BubbleAttachments extends StatelessWidget {
                   Icon(Icons.image_outlined,
                       size: 18, color: theme.colorScheme.onPrimary),
                   const SizedBox(width: 6),
-                  Text('Image',
+                  Text(context.l10n.chatImagePlaceholder,
                       style: TextStyle(color: theme.colorScheme.onPrimary)),
                 ],
               ),
@@ -1157,7 +1176,7 @@ class _InputBar extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            tooltip: 'Attach images',
+            tooltip: context.l10n.chatAttachImages,
             onPressed: onAttach,
             icon: const Icon(Icons.attach_file),
           ),
@@ -1169,7 +1188,7 @@ class _InputBar extends StatelessWidget {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
               decoration: InputDecoration(
-                hintText: isStreaming ? 'Ask a follow-up…' : hint,
+                hintText: isStreaming ? context.l10n.chatFollowUpHint : hint,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
@@ -1218,13 +1237,13 @@ class _MicButton extends StatelessWidget {
             );
           case DictationStatus.listening:
             return IconButton(
-              tooltip: 'Stop dictating',
+              tooltip: context.l10n.chatStopDictating,
               onPressed: dictation.toggle,
               icon: Icon(Icons.mic, color: theme.colorScheme.error),
             );
           case DictationStatus.idle:
             return IconButton(
-              tooltip: 'Dictate',
+              tooltip: context.l10n.chatDictate,
               onPressed: dictation.toggle,
               icon: const Icon(Icons.mic_none),
             );

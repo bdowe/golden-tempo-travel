@@ -12,6 +12,8 @@ import 'package:travel_route_planner/services/dictation_engine.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
 import 'package:travel_route_planner/widgets/chat_panel.dart';
 
+import 'support/l10n_test_app.dart';
+
 class _FakeEngine implements DictationEngine {
   final bool initOk;
   StreamController<DictationEvent>? _events;
@@ -83,6 +85,7 @@ Future<_FakePlanService> _pumpPanel(
         ),
       ],
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: ChatPanel(state: provider, notifier: provider.notifier),
         ),

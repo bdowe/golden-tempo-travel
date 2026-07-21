@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
+import '../utils/flight_labels.dart';
 import '../models/flight_leg.dart';
 import '../models/flight_offer.dart';
 import '../utils/money_format.dart';
@@ -31,6 +33,7 @@ class _FlightDetailsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final segments = offer.segments;
     final from = segments.isNotEmpty ? segments.first.from : '';
     final to = segments.isNotEmpty ? segments.last.to : '';
@@ -40,13 +43,13 @@ class _FlightDetailsSheet extends StatelessWidget {
     final rows = <Widget>[];
     if (offer.isRoundTrip) {
       rows.add(_DirectionHeader(
-          label: 'Outbound',
-          detail: '${offer.durationLabel} · ${offer.stopsLabel}'));
+          label: l10n.flightSheetOutbound,
+          detail: '${offer.durationLabel} · ${stopsLabel(l10n, offer.stops)}'));
       rows.addAll(_sliceRows(offer.segments));
       rows.add(const Divider(height: 24));
       rows.add(_DirectionHeader(
-          label: 'Return',
-          detail: '${offer.returnDurationLabel} · ${offer.returnStopsLabel}'));
+          label: l10n.flightSheetReturn,
+          detail: '${offer.returnDurationLabel} · ${stopsLabel(l10n, offer.returnStops)}'));
       rows.addAll(_sliceRows(offer.returnSegments));
     } else {
       rows.addAll(_sliceRows(segments));
@@ -81,8 +84,8 @@ class _FlightDetailsSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 offer.isRoundTrip
-                    ? 'Round trip'
-                    : '${offer.durationLabel} · ${offer.stopsLabel}',
+                    ? l10n.flightSheetRoundTrip
+                    : '${offer.durationLabel} · ${stopsLabel(l10n, offer.stops)}',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -98,8 +101,8 @@ class _FlightDetailsSheet extends StatelessWidget {
                     onPressed: () => _book(context, offer.bookingUrl!),
                     icon: const Icon(Icons.open_in_new, size: 18),
                     label: Text(offer.airlines.isEmpty
-                        ? 'Book this flight'
-                        : 'Book with ${offer.airlines.first}'),
+                        ? l10n.flightSheetBookThisFlight
+                        : l10n.flightSheetBookWith(offer.airlines.first)),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -138,18 +141,15 @@ class _BaggageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final muted = theme.colorScheme.onSurfaceVariant;
 
     final included = <String>[
-      'Personal item',
+      l10n.flightSheetBagPersonalItem,
       if (offer.includedCarryOn > 0)
-        offer.includedCarryOn == 1
-            ? 'carry-on'
-            : '${offer.includedCarryOn} carry-ons',
+        l10n.flightSheetBagCarryOnCount(offer.includedCarryOn),
       if (offer.includedChecked > 0)
-        offer.includedChecked == 1
-            ? 'checked bag'
-            : '${offer.includedChecked} checked bags',
+        l10n.flightSheetBagCheckedCount(offer.includedChecked),
     ];
 
     String? note;
@@ -157,10 +157,10 @@ class _BaggageRow extends StatelessWidget {
     switch (offer.baggageStatus) {
       case 'paid':
         note =
-            '+${formatMoney(offer.bagFee, offer.currency)} bag fee included in price';
+            l10n.flightSheetBagFeeNote(formatMoney(offer.bagFee, offer.currency));
         noteColor = muted;
       case 'unknown':
-        note = 'Your bag is not included — check the fee with the airline';
+        note = l10n.flightSheetBagUnknownNote;
         noteColor = theme.colorScheme.error;
     }
 
@@ -173,7 +173,7 @@ class _BaggageRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Included: ${included.join(' + ')}',
+              Text(l10n.flightSheetIncluded(included.join(' + ')),
                   style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
               if (note != null)
                 Text(note,
@@ -239,7 +239,7 @@ class _SegmentRow extends StatelessWidget {
                   size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
-                _carrierLabel(leg),
+                _carrierLabel(context.l10n, leg),
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
@@ -282,10 +282,11 @@ class _LayoverRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final muted = theme.colorScheme.onSurfaceVariant;
     final label = duration == null
-        ? 'Layover $airport'
-        : 'Layover $airport · ${_hm(duration!)}';
+        ? l10n.flightSheetLayover(airport)
+        : l10n.flightSheetLayoverWithDuration(airport, _hm(duration!));
     return Padding(
       padding: const EdgeInsets.only(left: 26, top: 4, bottom: 4),
       child: Row(
@@ -304,17 +305,18 @@ class _LayoverRow extends StatelessWidget {
 /// Opens the offer's booking link (airline site or airline-filtered Google
 /// Flights) in an external tab.
 Future<void> _book(BuildContext context, String url) async {
+  final l10n = context.l10n;
   final ok = await trackedLaunchUrl(context, url,
       provider: 'duffel', surface: 'flight_details');
-  if (!ok && context.mounted) showSnack(context, 'Could not open link');
+  if (!ok && context.mounted) showSnack(context, l10n.flightCardOpenLinkError);
 }
 
 /// "TAP TP204" — carrier name with flight number, de-duplicating when the
 /// flight number already starts with the carrier text.
-String _carrierLabel(FlightLeg leg) {
+String _carrierLabel(AppLocalizations l10n, FlightLeg leg) {
   final carrier = leg.carrier.trim();
   final number = leg.flightNumber.trim();
-  if (number.isEmpty) return carrier.isEmpty ? 'Flight' : carrier;
+  if (number.isEmpty) return carrier.isEmpty ? l10n.flightCardFlight : carrier;
   if (carrier.isEmpty) return number;
   return '$carrier $number';
 }

@@ -10,6 +10,8 @@ import 'package:travel_route_planner/screens/notification_center_screen.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/notifications_api_service.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Minimal auth stub — the notification providers only read `isSignedIn`.
 class _FakeAuthNotifier extends StateNotifier<AuthState>
     implements AuthNotifier {
@@ -99,7 +101,8 @@ Future<_FakeNotificationsApiService> _pump(
         authProvider.overrideWith((ref) => _FakeAuthNotifier(_user())),
         notificationsApiServiceProvider.overrideWithValue(service),
       ],
-      child: const MaterialApp(home: NotificationCenterScreen()),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: NotificationCenterScreen()),
     ),
   );
   await tester.pumpAndSettle();
