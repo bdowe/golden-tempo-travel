@@ -8,6 +8,7 @@ import '../models/trip.dart';
 import '../navigation/app_nav.dart';
 import '../providers/auth_provider.dart';
 import '../providers/shared_trip_provider.dart';
+import '../providers/shared_with_me_provider.dart';
 import '../providers/trips_provider.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_days.dart';
@@ -144,14 +145,28 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
           ? await service.acceptInvite(widget.token)
           : await service.joinSharedTrip(widget.token);
       if (!mounted) return;
+      ref.invalidate(sharedWithMeProvider);
       ref.read(navIndexProvider.notifier).state = AppTab.trips.index;
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-      // Give the shell a frame to mount, then open the trip on the Trips tab.
+      // Read before navigating: pushNamedAndRemoveUntil disposes this state,
+      // so the callbacks below must not touch ref.
       final navKeys = ref.read(tabNavKeysProvider);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        navKeys[AppTab.trips.index].currentState?.push(MaterialPageRoute(
-            builder: (_) => TripDetailScreen(tripId: tripId)));
-      });
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      // The shell (and the Trips tab's nested navigator) remounts over the
+      // next frames; retry until it's attached rather than betting on one
+      // frame and silently dropping the push. If every attempt misses, the
+      // user still lands on the Trips tab where the joined trip now shows.
+      void openOnTripsTab([int attempts = 10]) {
+        final nav = navKeys[AppTab.trips.index].currentState;
+        if (nav != null) {
+          nav.push(MaterialPageRoute(
+              builder: (_) => TripDetailScreen(tripId: tripId)));
+        } else if (attempts > 0) {
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => openOnTripsTab(attempts - 1));
+        }
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => openOnTripsTab());
     } catch (e) {
       if (mounted) showSnack(context, l10n.sharedJoinError('$e'));
     } finally {
