@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+import '../l10n/l10n.dart';
 import '../models/accommodation.dart';
 import '../models/itinerary_item.dart';
 import '../theme/app_colors.dart';
@@ -39,8 +40,9 @@ class TripMap extends StatefulWidget {
   final Object? fitSignature;
 
   /// Message shown when nothing is mappable (no items or stays with
-  /// coordinates). The default keeps existing call sites unchanged.
-  final String emptyLabel;
+  /// coordinates). Null — the default — uses the generic localized message,
+  /// which keeps existing call sites unchanged.
+  final String? emptyLabel;
 
   /// Optional second line under [emptyLabel] in the empty state.
   final String? emptyMessage;
@@ -63,7 +65,7 @@ class TripMap extends StatefulWidget {
     this.segmentLabels = const {},
     this.accommodations = const [],
     this.fitSignature,
-    this.emptyLabel = 'No mapped places',
+    this.emptyLabel,
     this.emptyMessage,
     this.emptyAction,
     this.topOverlayInset = 0,
@@ -213,6 +215,7 @@ class _TripMapState extends State<TripMap> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     final mapped = <({ItineraryItem item, LatLng point})>[];
     for (final it in widget.items) {
@@ -238,7 +241,7 @@ class _TripMapState extends State<TripMap> {
         child: EmptyState(
           compact: true,
           icon: Icons.location_off_outlined,
-          title: widget.emptyLabel,
+          title: widget.emptyLabel ?? l10n.mapNoMappedPlaces,
           message: widget.emptyMessage,
           actions: [if (widget.emptyAction != null) widget.emptyAction!],
         ),
@@ -413,19 +416,19 @@ class _TripMapState extends State<TripMap> {
             children: [
               MapControlButton(
                 icon: Icons.add,
-                tooltip: 'Zoom in',
+                tooltip: l10n.mapZoomIn,
                 onTap: () => _zoomBy(1),
               ),
               const SizedBox(height: 8),
               MapControlButton(
                 icon: Icons.remove,
-                tooltip: 'Zoom out',
+                tooltip: l10n.mapZoomOut,
                 onTap: () => _zoomBy(-1),
               ),
               const SizedBox(height: 8),
               MapControlButton(
                 icon: Icons.center_focus_strong,
-                tooltip: 'Reset map',
+                tooltip: l10n.mapResetMap,
                 onTap: () => _fitToTrip(fitPoints),
               ),
             ],

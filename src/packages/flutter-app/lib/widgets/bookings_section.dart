@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import '../models/accommodation.dart';
 import '../models/trip.dart';
 import '../models/trip_segment.dart';
@@ -8,6 +9,19 @@ import '../utils/tracked_launch.dart';
 import 'add_to_calendar_button.dart';
 import 'section_header.dart';
 import 'status_pill.dart';
+
+/// Transport modes are canonical API values ('flight', 'train', …) sent to the
+/// server, so they are never translated — only their display labels are
+/// (specs/i18n-spanish). Anything unrecognized renders as-is.
+String _modeLabel(AppLocalizations l10n, String value) => switch (value) {
+      'flight' => l10n.bookingsModeFlight,
+      'train' => l10n.bookingsModeTrain,
+      'bus' => l10n.bookingsModeBus,
+      'car' => l10n.bookingsModeCar,
+      'ferry' => l10n.bookingsModeFerry,
+      'other' => l10n.bookingsModeOther,
+      _ => value,
+    };
 
 /// The unified "Bookings" hub in trip detail: the stays and transport segments
 /// the user has actually saved, plus itinerary-seeded Suggested drafts
@@ -127,10 +141,10 @@ class BookingsSection extends StatelessWidget {
     );
   }
 
-  Widget _suggestedPill(ThemeData theme) => Padding(
+  Widget _suggestedPill(ThemeData theme, AppLocalizations l10n) => Padding(
         padding: const EdgeInsets.only(left: AppSpacing.sm),
         child: StatusPill.custom(
-          label: 'Suggested',
+          label: l10n.bookingsSuggested,
           background: theme.colorScheme.secondaryContainer,
           foreground: theme.colorScheme.onSecondaryContainer,
         ),
@@ -139,7 +153,8 @@ class BookingsSection extends StatelessWidget {
   /// Trailing actions for a Suggested draft: keep (confirm as-is), edit
   /// (prefilled sheet), dismiss (tombstoned server-side so it won't re-seed).
   Widget _draftActions(
-      {required VoidCallback onKeep,
+      {required AppLocalizations l10n,
+      required VoidCallback onKeep,
       required VoidCallback onEdit,
       required VoidCallback onDismiss,
       Widget? dragHandle}) {
@@ -148,17 +163,17 @@ class BookingsSection extends StatelessWidget {
       children: [
         IconButton(
           icon: const Icon(Icons.check, size: 18),
-          tooltip: 'Keep',
+          tooltip: l10n.bookingsKeep,
           onPressed: onKeep,
         ),
         IconButton(
           icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: 'Edit',
+          tooltip: l10n.bookingsEdit,
           onPressed: onEdit,
         ),
         IconButton(
           icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: 'Dismiss suggestion',
+          tooltip: l10n.bookingsDismissSuggestion,
           onPressed: onDismiss,
         ),
         if (dragHandle != null) dragHandle,
@@ -209,6 +224,7 @@ class BookingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     // Belt and braces: the server withholds drafts from viewers, but a stale
     // cached copy could still carry them.
     final visibleStays = (readOnly ? stays.where((a) => !a.auto) : stays)
@@ -226,7 +242,7 @@ class BookingsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionHeader(
-          title: 'Bookings',
+          title: l10n.bookingsTitle,
           action: readOnly
               ? null
               : Row(
@@ -235,12 +251,12 @@ class BookingsSection extends StatelessWidget {
                     TextButton.icon(
                       onPressed: onAddStay,
                       icon: const Icon(Icons.hotel_outlined, size: 18),
-                      label: const Text('Add stay'),
+                      label: Text(l10n.bookingsAddStay),
                     ),
                     TextButton.icon(
                       onPressed: onAddSegment,
                       icon: const Icon(Icons.route_outlined, size: 18),
-                      label: const Text('Add transport'),
+                      label: Text(l10n.bookingsAddTransport),
                     ),
                   ],
                 ),
@@ -251,8 +267,7 @@ class BookingsSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Text(
-              'Nothing saved yet — add the stays, transport, and other '
-              'bookings for your trip so it all lives in one place.',
+              l10n.bookingsEmptyMessage,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
@@ -261,7 +276,7 @@ class BookingsSection extends StatelessWidget {
         // view, and a pair of always-present empty ones would pollute the
         // page's scrollable tree (and every find.byType(CustomScrollView)).
         if (visibleStays.isNotEmpty) ...[
-          _subHeader(theme, 'Stays'),
+          _subHeader(theme, l10n.bookingsStays),
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -284,7 +299,7 @@ class BookingsSection extends StatelessWidget {
                         child: Text(a.name,
                             style: _bookedTitleStyle(theme, a.booked)),
                       ),
-                      if (a.auto) _suggestedPill(theme),
+                      if (a.auto) _suggestedPill(theme, l10n),
                     ],
                   ),
                   subtitle: Text(
@@ -298,6 +313,7 @@ class BookingsSection extends StatelessWidget {
                   ),
                   trailing: a.auto && !readOnly
                       ? _draftActions(
+                          l10n: l10n,
                           onKeep: () => onConfirmStay(a),
                           onEdit: () => onEditStay(a),
                           onDismiss: () => onDeleteStay(a),
@@ -323,20 +339,20 @@ class BookingsSection extends StatelessWidget {
                             if (a.url != null && a.url!.isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.open_in_new, size: 18),
-                                tooltip: 'Open listing',
+                                tooltip: l10n.bookingsOpenListing,
                                 onPressed: () => _open(context, a.url!,
                                     provider: a.provider, kind: 'stay'),
                               ),
                             if (!readOnly) ...[
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined, size: 18),
-                                tooltip: 'Edit stay',
+                                tooltip: l10n.bookingsEditStay,
                                 onPressed: () => onEditStay(a),
                               ),
                               IconButton(
                                 icon:
                                     const Icon(Icons.delete_outline, size: 18),
-                                tooltip: 'Remove stay',
+                                tooltip: l10n.bookingsRemoveStay,
                                 onPressed: () => onDeleteStay(a),
                               ),
                             ],
@@ -356,7 +372,7 @@ class BookingsSection extends StatelessWidget {
           ),
         ],
         if (visibleSegments.isNotEmpty) ...[
-          _subHeader(theme, 'Transport'),
+          _subHeader(theme, l10n.bookingsTransport),
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -383,12 +399,12 @@ class BookingsSection extends StatelessWidget {
                           style: _bookedTitleStyle(theme, s.booked),
                         ),
                       ),
-                      if (s.auto) _suggestedPill(theme),
+                      if (s.auto) _suggestedPill(theme, l10n),
                     ],
                   ),
                   subtitle: Text(
                     [
-                      s.mode,
+                      _modeLabel(l10n, s.mode),
                       if (s.departDate != null) s.departDate,
                       if (s.provider != null && s.provider!.isNotEmpty)
                         s.provider,
@@ -397,6 +413,7 @@ class BookingsSection extends StatelessWidget {
                   ),
                   trailing: s.auto && !readOnly
                       ? _draftActions(
+                          l10n: l10n,
                           onKeep: () => onConfirmSegment(s),
                           onEdit: () => onEditSegment(s),
                           onDismiss: () => onDeleteSegment(s),
@@ -421,20 +438,20 @@ class BookingsSection extends StatelessWidget {
                             if (s.url != null && s.url!.isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.open_in_new, size: 18),
-                                tooltip: 'Open booking',
+                                tooltip: l10n.bookingsOpenBooking,
                                 onPressed: () => _open(context, s.url!,
                                     provider: s.provider, kind: 'transport'),
                               ),
                             if (!readOnly) ...[
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined, size: 18),
-                                tooltip: 'Edit transport',
+                                tooltip: l10n.bookingsEditTransport,
                                 onPressed: () => onEditSegment(s),
                               ),
                               IconButton(
                                 icon:
                                     const Icon(Icons.delete_outline, size: 18),
-                                tooltip: 'Remove transport',
+                                tooltip: l10n.bookingsRemoveTransport,
                                 onPressed: () => onDeleteSegment(s),
                               ),
                             ],
@@ -454,7 +471,7 @@ class BookingsSection extends StatelessWidget {
           ),
         ],
         if (otherBookings != null) ...[
-          _subHeader(theme, 'Other'),
+          _subHeader(theme, l10n.bookingsOther),
           otherBookings!,
         ],
         if (!readOnly)
@@ -463,7 +480,7 @@ class BookingsSection extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onAddBooking,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add booking'),
+              label: Text(l10n.bookingsAddBooking),
             ),
           ),
       ],
@@ -571,6 +588,7 @@ class _AddStaySheetState extends State<AddStaySheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final editing = widget.initial != null;
     return Padding(
       padding: EdgeInsets.only(
@@ -584,38 +602,38 @@ class _AddStaySheetState extends State<AddStaySheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(editing ? 'Edit stay' : 'Add a stay',
+            Text(editing ? l10n.bookingsEditStay : l10n.bookingsAddAStay,
                 style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Name *',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsStayNameLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _provider,
-              decoration: const InputDecoration(
-                labelText: 'Provider (Airbnb, Booking.com, …)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsStayProviderLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _url,
-              decoration: const InputDecoration(
-                labelText: 'Listing URL',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsStayUrlLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _address,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsStayAddressLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
@@ -628,7 +646,7 @@ class _AddStaySheetState extends State<AddStaySheet> {
                     label: Text(
                       _checkIn != null && _checkOut != null
                           ? '${_fmt(_checkIn!)} → ${_fmt(_checkOut!)}'
-                          : 'Check-in / check-out',
+                          : l10n.bookingsCheckInOut,
                     ),
                   ),
                 ),
@@ -637,9 +655,9 @@ class _AddStaySheetState extends State<AddStaySheet> {
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _priceNote,
-              decoration: const InputDecoration(
-                labelText: 'Price note (e.g. €120/night)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsPriceNoteLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -648,12 +666,13 @@ class _AddStaySheetState extends State<AddStaySheet> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.commonCancel),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 FilledButton(
                   onPressed: _save,
-                  child: Text(editing ? 'Save' : 'Add stay'),
+                  child:
+                      Text(editing ? l10n.commonSave : l10n.bookingsAddStay),
                 ),
               ],
             ),
@@ -763,6 +782,7 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final editing = widget.initial != null;
     return Padding(
       padding: EdgeInsets.only(
@@ -776,7 +796,10 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(editing ? 'Edit transport' : 'Add transport',
+            Text(
+                editing
+                    ? l10n.bookingsEditTransport
+                    : l10n.bookingsAddTransport,
                 style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.md),
             Wrap(
@@ -791,7 +814,7 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
                   'other',
                 ])
                   ChoiceChip(
-                    label: Text(m),
+                    label: Text(_modeLabel(l10n, m)),
                     selected: _mode == m,
                     onSelected: (_) => setState(() => _mode = m),
                   ),
@@ -803,9 +826,9 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
                 Expanded(
                   child: TextField(
                     controller: _origin,
-                    decoration: const InputDecoration(
-                      labelText: 'From *',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.bookingsSegmentFromLabel,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -813,9 +836,9 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
                 Expanded(
                   child: TextField(
                     controller: _destination,
-                    decoration: const InputDecoration(
-                      labelText: 'To *',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.bookingsSegmentToLabel,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -826,31 +849,33 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
               onPressed: _pickDate,
               icon: const Icon(Icons.today, size: 18),
               label: Text(
-                _departDate != null ? _fmt(_departDate!) : 'Departure date',
+                _departDate != null
+                    ? _fmt(_departDate!)
+                    : l10n.bookingsDepartureDate,
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _provider,
-              decoration: const InputDecoration(
-                labelText: 'Provider / carrier',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsSegmentProviderLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _url,
-              decoration: const InputDecoration(
-                labelText: 'Booking URL',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsSegmentUrlLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bookingsNotesLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -859,12 +884,13 @@ class _AddSegmentSheetState extends State<AddSegmentSheet> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.commonCancel),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 FilledButton(
                   onPressed: _save,
-                  child: Text(editing ? 'Save' : 'Add transport'),
+                  child: Text(
+                      editing ? l10n.commonSave : l10n.bookingsAddTransport),
                 ),
               ],
             ),

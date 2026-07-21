@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_info.dart';
+import '../l10n/l10n.dart';
 import '../models/local_guide.dart';
 import '../providers/auth_provider.dart';
 import '../providers/live_trip_provider.dart';
@@ -22,13 +23,25 @@ import 'guides_screen.dart';
 import 'local_guide_detail_screen.dart';
 import 'trip_detail_screen.dart';
 
+/// Which time-of-day greeting the home header shows. The variant is chosen
+/// without a BuildContext (and unit-tested that way); [greetingText] maps it to
+/// localized copy at render time (specs/i18n-spanish).
+enum Greeting { morning, afternoon, evening }
+
 /// Time-of-day greeting for the home header.
 @visibleForTesting
-String greetingForHour(int hour) {
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+Greeting greetingForHour(int hour) {
+  if (hour < 12) return Greeting.morning;
+  if (hour < 17) return Greeting.afternoon;
+  return Greeting.evening;
 }
+
+String greetingText(AppLocalizations l10n, Greeting greeting) =>
+    switch (greeting) {
+      Greeting.morning => l10n.homeGreetingMorning,
+      Greeting.afternoon => l10n.homeGreetingAfternoon,
+      Greeting.evening => l10n.homeGreetingEvening,
+    };
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -159,22 +172,23 @@ class _GreetingHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final firstName = displayName?.trim().split(RegExp(r'\s+')).first;
-    final greeting = greetingForHour(DateTime.now().hour);
+    final greeting = greetingText(l10n, greetingForHour(DateTime.now().hour));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           (firstName == null || firstName.isEmpty)
               ? greeting
-              : '$greeting, $firstName',
+              : l10n.homeGreetingNamed(greeting, firstName),
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 2),
         Text(
-          'Where are we off to next?',
+          l10n.homeGreetingSubtitle,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -189,11 +203,13 @@ class _AgentHeroCard extends StatelessWidget {
 
   const _AgentHeroCard({required this.onStart});
 
-  static const _suggestions = [
-    '2 days in Paris',
-    'Museums in Rome',
-    'Weekend in Tokyo'
-  ];
+  /// Seed prompts for the chat. Free text (not API values), so they are
+  /// localized — the agent answers in whatever language it is asked.
+  static List<String> _suggestions(AppLocalizations l10n) => [
+        l10n.homeSuggestionParis,
+        l10n.homeSuggestionRome,
+        l10n.homeSuggestionTokyo,
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -233,6 +249,7 @@ class _AgentHeroCard extends StatelessWidget {
   }
 
   Widget _heroContent(BuildContext context) {
+    final l10n = context.l10n;
     return Container(
       constraints: const BoxConstraints(minHeight: 440),
       padding: const EdgeInsets.all(28),
@@ -251,7 +268,7 @@ class _AgentHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Plan less. Travel more.',
+            l10n.homeHeroTitle,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -259,7 +276,7 @@ class _AgentHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Describe the trip you\'re dreaming of and I\'ll build the full itinerary — places, days, and routes.',
+            l10n.homeHeroSubtitle,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: Colors.white.withValues(alpha: 0.85),
                 ),
@@ -277,9 +294,10 @@ class _AgentHeroCard extends StatelessWidget {
                   borderRadius: AppRadius.mdAll,
                 ),
               ),
-              child: const Text(
-                'Let\'s go',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              child: Text(
+                l10n.homeHeroCta,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
           ),
@@ -287,7 +305,7 @@ class _AgentHeroCard extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _suggestions
+            children: _suggestions(l10n)
                 .map((s) => ActionChip(
                       label: Text(s,
                           style: TextStyle(
@@ -305,6 +323,15 @@ class _AgentHeroCard extends StatelessWidget {
     );
   }
 }
+
+/// Trip status is a canonical API value ('draft' / 'planned') — only its
+/// display label is translated; anything unrecognized keeps its raw
+/// capitalized form (specs/i18n-spanish).
+String _statusLabel(AppLocalizations l10n, String status) => switch (status) {
+      '' || 'draft' => l10n.homeStatusDraft,
+      'planned' => l10n.homeStatusPlanned,
+      _ => '${status[0].toUpperCase()}${status.substring(1)}',
+    };
 
 /// One-tap way back into the most recently viewed trip, styled as a lighter
 /// sibling of the hero card (same teal family as the app bar gradient).
@@ -324,14 +351,12 @@ class _RecentTripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     // Date + status snapshot, styled white-on-teal to match the card rather
     // than the light-surface StatusPill used elsewhere.
     final meta = <String>[
       if (dateRange != null && dateRange!.isNotEmpty) dateRange!,
-      if (status.isNotEmpty)
-        '${status[0].toUpperCase()}${status.substring(1)}'
-      else
-        'Draft',
+      _statusLabel(l10n, status),
     ].join('  ·  ');
 
     return Container(
@@ -370,7 +395,7 @@ class _RecentTripCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'PICK UP WHERE YOU LEFT OFF',
+                        l10n.homeRecentTripEyebrow,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
@@ -429,12 +454,12 @@ class _LocalGuidesRow extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionHeader(
-          title: 'Local guides',
+          title: context.l10n.homeLocalGuidesTitle,
           action: TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const GuidesScreen()),
             ),
-            child: const Text('See all'),
+            child: Text(context.l10n.commonSeeAll),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
@@ -534,7 +559,7 @@ class _GuideCard extends StatelessWidget {
                             const SizedBox(width: AppSpacing.xs),
                             Expanded(
                               child: Text(
-                                'By ${guide.sourceName}',
+                                context.l10n.homeGuideByline(guide.sourceName),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.labelSmall?.copyWith(

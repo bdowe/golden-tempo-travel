@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:travel_route_planner/models/accommodation.dart';
@@ -6,6 +7,8 @@ import 'package:travel_route_planner/models/trip.dart';
 import 'package:travel_route_planner/models/trip_segment.dart';
 import 'package:travel_route_planner/widgets/bookings_section.dart';
 import 'package:travel_route_planner/widgets/status_pill.dart';
+
+import 'support/l10n_test_app.dart';
 
 Trip _trip() => Trip(
       id: 't1',
@@ -43,8 +46,16 @@ const _draftLeg = TripSegment(
   autoKey: 'transport:lisbon>>porto',
 );
 
-Widget _wrap(BookingsSection section) => MaterialApp(
-      home: Scaffold(body: SingleChildScrollView(child: section)),
+// ProviderScope is required, not incidental: confirmed booking rows render
+// AddToCalendarButton, a ConsumerWidget. It only started being looked up once
+// the button gained a Localizations dependency (which makes
+// didChangeDependencies fire when the reorderable row is reparented), so the
+// missing scope was latent breakage rather than a new requirement.
+Widget _wrap(BookingsSection section) => ProviderScope(
+      child: MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        home: Scaffold(body: SingleChildScrollView(child: section)),
+      ),
     );
 
 BookingsSection _section({
@@ -121,19 +132,22 @@ void main() {
 
   testWidgets('edit sheet prefills from the draft and pops a PATCH body',
       (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: Center(
-            child: FilledButton(
-              onPressed: () async {
-                await showModalBottomSheet<Map<String, dynamic>>(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (_) => const AddStaySheet(initial: _draftStay),
-                );
-              },
-              child: const Text('open'),
+    await tester.pumpWidget(ProviderScope(
+      child: MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () async {
+                  await showModalBottomSheet<Map<String, dynamic>>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => const AddStaySheet(initial: _draftStay),
+                  );
+                },
+                child: const Text('open'),
+              ),
             ),
           ),
         ),

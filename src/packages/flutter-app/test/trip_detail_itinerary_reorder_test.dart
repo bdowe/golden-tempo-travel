@@ -9,6 +9,8 @@ import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 
+import 'support/l10n_test_app.dart';
+
 ItineraryItem _item(int pos, String name, String category,
         {int? day, String? city, String? dayTripFrom}) =>
     ItineraryItem(
@@ -76,7 +78,8 @@ Future<_FakeTripsApiService> _pump(WidgetTester tester, Trip trip,
   await tester.pumpWidget(
     ProviderScope(
       overrides: [tripsApiServiceProvider.overrideWithValue(fake)],
-      child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

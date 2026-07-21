@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/budget.dart';
 import '../models/expense.dart';
 import '../providers/budget_provider.dart';
@@ -33,8 +34,10 @@ class BudgetSection extends ConsumerStatefulWidget {
   ConsumerState<BudgetSection> createState() => _BudgetSectionState();
 }
 
-// Display order + labels for the category groups. The server bounds category to
-// this exact set (default "general"); anything unexpected falls under "General".
+// Display order for the category groups. These are canonical API values sent to
+// the server, so they are NEVER translated — only their display labels are
+// (specs/i18n-spanish). The server bounds category to this exact set (default
+// "general"); anything unexpected falls under "general".
 const List<String> _categoryOrder = [
   'flights',
   'lodging',
@@ -45,15 +48,16 @@ const List<String> _categoryOrder = [
   'general',
 ];
 
-const Map<String, String> _categoryLabels = {
-  'flights': 'Flights',
-  'lodging': 'Lodging',
-  'food': 'Food',
-  'activities': 'Activities',
-  'transport': 'Transport',
-  'shopping': 'Shopping',
-  'general': 'General',
-};
+String _categoryLabel(AppLocalizations l10n, String value) => switch (value) {
+      'flights' => l10n.budgetCategoryFlights,
+      'lodging' => l10n.budgetCategoryLodging,
+      'food' => l10n.budgetCategoryFood,
+      'activities' => l10n.budgetCategoryActivities,
+      'transport' => l10n.budgetCategoryTransport,
+      'shopping' => l10n.budgetCategoryShopping,
+      'general' => l10n.budgetCategoryGeneral,
+      _ => value,
+    };
 
 const Map<String, IconData> _categoryIcons = {
   'flights': Icons.flight_outlined,
@@ -88,7 +92,7 @@ const List<String> _currencyCodes = [
 
 String _normalizeCategory(String raw) {
   final c = raw.trim().toLowerCase();
-  return _categoryLabels.containsKey(c) ? c : 'general';
+  return _categoryOrder.contains(c) ? c : 'general';
 }
 
 class _BudgetSectionState extends ConsumerState<BudgetSection> {
@@ -107,8 +111,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
   bool _guard() {
     if (widget.isOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("You're offline — reconnect to make changes.")),
+        SnackBar(content: Text(context.l10n.commonOffline)),
       );
       return true;
     }
@@ -125,7 +128,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Try again.')),
+          SnackBar(content: Text(context.l10n.commonGenericError)),
         );
       }
     } finally {
@@ -155,6 +158,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
 
   Future<void> _editExpense(Expense expense) async {
     if (_guard()) return;
+    final l10n = context.l10n;
     final labelController = TextEditingController(text: expense.label);
     final amountController =
         TextEditingController(text: _trimAmount(expense.amount));
@@ -163,24 +167,24 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Edit expense'),
+          title: Text(l10n.budgetEditExpenseTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 initialValue: category,
-                decoration: const InputDecoration(labelText: 'Category'),
+                decoration: InputDecoration(labelText: l10n.budgetCategoryLabel),
                 onChanged: (v) => setLocal(() => category = v ?? 'general'),
                 items: [
                   for (final cat in _categoryOrder)
                     DropdownMenuItem(
-                        value: cat, child: Text(_categoryLabels[cat]!)),
+                        value: cat, child: Text(_categoryLabel(l10n, cat))),
                 ],
               ),
               TextField(
                 controller: labelController,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Label'),
+                decoration: InputDecoration(labelText: l10n.budgetLabelField),
               ),
               TextField(
                 controller: amountController,
@@ -189,14 +193,14 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                 ],
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: l10n.budgetAmount),
               ),
             ],
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel')),
+                child: Text(l10n.commonCancel)),
             FilledButton(
               onPressed: () {
                 final label = labelController.text.trim();
@@ -208,7 +212,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
                   'amount': amount,
                 });
               },
-              child: const Text('Save'),
+              child: Text(l10n.commonSave),
             ),
           ],
         ),
@@ -223,6 +227,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
 
   Future<void> _editTarget(Budget budget) async {
     if (_guard()) return;
+    final l10n = context.l10n;
     final amountController = TextEditingController(
         text: budget.targetAmount == null
             ? ''
@@ -234,7 +239,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Set budget target'),
+          title: Text(l10n.budgetSetTargetTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -244,7 +249,8 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
                     width: 96,
                     child: DropdownButtonFormField<String>(
                       initialValue: currency,
-                      decoration: const InputDecoration(labelText: 'Currency'),
+                      decoration:
+                          InputDecoration(labelText: l10n.budgetCurrencyLabel),
                       onChanged: (v) => setLocal(() => currency = v ?? 'USD'),
                       items: [
                         for (final code in _currencyCodes)
@@ -262,9 +268,9 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                       ],
-                      decoration: const InputDecoration(
-                        labelText: 'Target',
-                        hintText: 'Leave blank for none',
+                      decoration: InputDecoration(
+                        labelText: l10n.budgetTargetLabel,
+                        hintText: l10n.budgetTargetHint,
                       ),
                     ),
                   ),
@@ -272,7 +278,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Leave the target blank to just track spending.',
+                l10n.budgetTargetHelp,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -280,7 +286,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel')),
+                child: Text(l10n.commonCancel)),
             FilledButton(
               onPressed: () {
                 final raw = amountController.text.trim();
@@ -291,7 +297,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
                   'currency': currency,
                 });
               },
-              child: const Text('Save'),
+              child: Text(l10n.commonSave),
             ),
           ],
         ),
@@ -327,6 +333,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
     }
 
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final currency = budget.currency;
 
     return Column(
@@ -334,7 +341,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
       children: [
         const Divider(height: 32),
         SectionHeader(
-          title: 'Budget',
+          title: l10n.budgetTitle,
           action: StatusPill.custom(
             label: hasTarget
                 ? '${formatMoney(budget.spent, currency)} / ${formatMoney(budget.targetAmount!, currency)}'
@@ -346,12 +353,11 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
         const SizedBox(height: AppSpacing.sm),
         if (widget.canEdit) _buildTargetControl(theme, budget),
         if (expenses.isEmpty && !hasTarget)
-          const EmptyState(
+          EmptyState(
             compact: true,
             icon: Icons.account_balance_wallet_outlined,
-            title: 'No budget yet',
-            message:
-                'Set a target above, or add expenses below to track your spending.',
+            title: l10n.budgetEmptyTitle,
+            message: l10n.budgetEmptyMessage,
           )
         else ...[
           ..._buildGroups(theme, expenses, currency),
@@ -383,8 +389,10 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
               Expanded(
                 child: Text(
                   hasTarget
-                      ? 'Target: ${formatMoney(budget.targetAmount!, budget.currency)} (${budget.currency})'
-                      : 'No target set — tracking spend only',
+                      ? context.l10n.budgetTargetSet(
+                          formatMoney(budget.targetAmount!, budget.currency),
+                          budget.currency)
+                      : context.l10n.budgetNoTarget,
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -419,7 +427,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
             const SizedBox(width: AppSpacing.xs),
             Expanded(
               child: Text(
-                _categoryLabels[cat]!,
+                _categoryLabel(context.l10n, cat),
                 style: theme.textTheme.labelLarge
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -461,14 +469,16 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert,
                   size: 18, color: theme.colorScheme.onSurfaceVariant),
-              tooltip: 'Expense options',
+              tooltip: context.l10n.budgetExpenseOptions,
               onSelected: (v) {
                 if (v == 'edit') _editExpense(expense);
                 if (v == 'delete') _delete(expense);
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Edit')),
-                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                    value: 'edit', child: Text(context.l10n.budgetMenuEdit)),
+                PopupMenuItem(
+                    value: 'delete', child: Text(context.l10n.commonDelete)),
               ],
             )
           else
@@ -490,7 +500,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
         Row(
           children: [
             Expanded(
-              child: Text('Total spent',
+              child: Text(context.l10n.budgetTotalSpent,
                   style: theme.textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.bold)),
             ),
@@ -506,7 +516,7 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
           Row(
             children: [
               Expanded(
-                child: Text('Remaining',
+                child: Text(context.l10n.budgetRemaining,
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ),
@@ -550,9 +560,9 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
           child: TextField(
             controller: _labelController,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              hintText: 'Add an expense…',
+              hintText: context.l10n.budgetAddHint,
             ),
           ),
         ),
@@ -566,16 +576,16 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
             ],
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              hintText: 'Amount',
+              hintText: context.l10n.budgetAmount,
             ),
             onSubmitted: (_) => _add(),
           ),
         ),
         IconButton(
           icon: const Icon(Icons.add),
-          tooltip: 'Add expense',
+          tooltip: context.l10n.budgetAddExpenseTooltip,
           onPressed: widget.isOffline ? null : _add,
         ),
       ],

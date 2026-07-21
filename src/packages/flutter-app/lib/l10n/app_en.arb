@@ -210,5 +210,982 @@
   "quizTripsSubtitle": "Places, seasons, occasions — the planner will keep them in mind.",
   "quizTripsHint": "e.g. Japan for cherry blossom season, a Greek island hop next summer…",
   "quizSaveFailed": "Could not save your answers — try again, or skip for now.",
-  "quizProfileUpdated": "Travel profile updated"
+  "quizProfileUpdated": "Travel profile updated",
+  "bookingCardEdit": "Edit",
+  "bookingCardRemove": "Remove",
+  "bookingCardBooked": "Booked",
+  "bookingCardOpenIn": "Open in {provider}",
+  "@bookingCardOpenIn": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "bookingCardOpenSearch": "Open search",
+  "calendarAddTo": "Add to calendar",
+  "calendarGoogle": "Google Calendar",
+  "calendarApple": "Apple Calendar (.ics)",
+  "calendarExportFailed": "Could not export the event: {error}",
+  "@calendarExportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "bookingsTitle": "Bookings",
+  "bookingsAddStay": "Add stay",
+  "bookingsAddTransport": "Add transport",
+  "bookingsAddBooking": "Add booking",
+  "bookingsEmptyMessage": "Nothing saved yet — add the stays, transport, and other bookings for your trip so it all lives in one place.",
+  "bookingsStays": "Stays",
+  "bookingsTransport": "Transport",
+  "bookingsOther": "Other",
+  "bookingsSuggested": "Suggested",
+  "bookingsKeep": "Keep",
+  "bookingsEdit": "Edit",
+  "bookingsDismissSuggestion": "Dismiss suggestion",
+  "bookingsOpenListing": "Open listing",
+  "bookingsEditStay": "Edit stay",
+  "bookingsRemoveStay": "Remove stay",
+  "bookingsOpenBooking": "Open booking",
+  "bookingsEditTransport": "Edit transport",
+  "bookingsRemoveTransport": "Remove transport",
+  "bookingsAddAStay": "Add a stay",
+  "bookingsStayNameLabel": "Name *",
+  "bookingsStayProviderLabel": "Provider (Airbnb, Booking.com, …)",
+  "bookingsStayUrlLabel": "Listing URL",
+  "bookingsStayAddressLabel": "Address",
+  "bookingsCheckInOut": "Check-in / check-out",
+  "bookingsPriceNoteLabel": "Price note (e.g. €120/night)",
+  "bookingsSegmentFromLabel": "From *",
+  "bookingsSegmentToLabel": "To *",
+  "bookingsDepartureDate": "Departure date",
+  "bookingsSegmentProviderLabel": "Provider / carrier",
+  "bookingsSegmentUrlLabel": "Booking URL",
+  "bookingsNotesLabel": "Notes",
+  "bookingsModeFlight": "flight",
+  "bookingsModeTrain": "train",
+  "bookingsModeBus": "bus",
+  "bookingsModeCar": "car",
+  "bookingsModeFerry": "ferry",
+  "bookingsModeOther": "other",
+  "budgetTitle": "Budget",
+  "budgetEmptyTitle": "No budget yet",
+  "budgetEmptyMessage": "Set a target above, or add expenses below to track your spending.",
+  "budgetTargetSet": "Target: {amount} ({currency})",
+  "@budgetTargetSet": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetNoTarget": "No target set — tracking spend only",
+  "budgetEditExpenseTitle": "Edit expense",
+  "budgetSetTargetTitle": "Set budget target",
+  "budgetCategoryLabel": "Category",
+  "budgetLabelField": "Label",
+  "budgetAmount": "Amount",
+  "budgetCurrencyLabel": "Currency",
+  "budgetTargetLabel": "Target",
+  "budgetTargetHint": "Leave blank for none",
+  "budgetTargetHelp": "Leave the target blank to just track spending.",
+  "budgetExpenseOptions": "Expense options",
+  "budgetMenuEdit": "Edit",
+  "budgetTotalSpent": "Total spent",
+  "budgetRemaining": "Remaining",
+  "budgetAddHint": "Add an expense…",
+  "budgetAddExpenseTooltip": "Add expense",
+  "budgetCategoryFlights": "Flights",
+  "budgetCategoryLodging": "Lodging",
+  "budgetCategoryFood": "Food",
+  "budgetCategoryActivities": "Activities",
+  "budgetCategoryTransport": "Transport",
+  "budgetCategoryShopping": "Shopping",
+  "budgetCategoryGeneral": "General",
+  "checklistTitle": "Packing & prep",
+  "checklistEmptyTitle": "Nothing packed yet",
+  "checklistEmptyMessage": "Add items below, or ask the AI assistant to help build your list.",
+  "checklistEditItemTitle": "Edit item",
+  "checklistItemLabel": "Item",
+  "checklistItemOptions": "Item options",
+  "checklistMenuEdit": "Edit",
+  "checklistAddHint": "Add an item…",
+  "checklistAddItemTooltip": "Add item",
+  "checklistCategoryDocuments": "Documents",
+  "checklistCategoryClothing": "Clothing",
+  "checklistCategoryElectronics": "Electronics",
+  "checklistCategoryHealth": "Health",
+  "checklistCategoryGeneral": "General",
+  "itemDialogTitle": "Add place",
+  "itemDialogSearchLabel": "Search for a place",
+  "itemDialogSearchHint": "e.g. Pastéis de Belém, Lisbon",
+  "itemDialogPickDifferent": "Pick a different place",
+  "itemDialogAddManually": "Can't find it? Add manually",
+  "itemDialogPlaceNameLabel": "Place name",
+  "itemDialogSearchInstead": "Search places instead",
+  "itemDialogDayLabel": "Day",
+  "itemDialogUnscheduled": "Unscheduled",
+  "itemDialogDayN": "Day {day}",
+  "@itemDialogDayN": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "itemDialogNewDay": "New day ({day})",
+  "@itemDialogNewDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "itemDialogTimeOfDayLabel": "Time of day",
+  "itemDialogTimeAny": "Any",
+  "itemDialogTimeMorning": "Morning",
+  "itemDialogTimeAfternoon": "Afternoon",
+  "itemDialogTimeEvening": "Evening",
+  "itemDialogCategoryAttraction": "Attraction",
+  "itemDialogCategoryRestaurant": "Restaurant",
+  "itemDialogAdd": "Add",
+  "itemDialogNoResults": "No places found — try a different search, or add the place manually.",
+  "itemDialogSearchUnavailable": "Search unavailable — add the place manually below.",
+  "itemDialogErrorEnterName": "Enter a name for the place.",
+  "itemDialogErrorPickPlace": "Pick a place first.",
+  "itemDialogErrorAddFailed": "Could not add the place: {error}",
+  "@itemDialogErrorAddFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "commonOffline": "You're offline — reconnect to make changes.",
+  "commonGenericError": "Something went wrong. Try again.",
+  "tripTitleFallback": "Trip",
+  "tripOtherPlaces": "Other places",
+  "tripOfflineGuard": "You're offline — reconnect to make changes.",
+  "tripTravelModeDriving": "Driving",
+  "tripTravelModeByTrain": "By train",
+  "tripTravelModeByBus": "By bus",
+  "tripTravelModeByFerry": "By ferry",
+  "tripTravelModeMixed": "Mixed modes",
+  "tripTravelModeFlying": "Flying",
+  "tripTravelModeUnset": "Travel mode",
+  "tripTravelModeTooltip": "Travel mode",
+  "tripModeTrain": "Train",
+  "tripModeBus": "Bus",
+  "tripModeFerry": "Ferry",
+  "tripUpdateFailed": "Update failed: {error}",
+  "@tripUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripDeleteFailed": "Delete failed: {error}",
+  "@tripDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripReorderFailed": "Could not reorder: {error}",
+  "@tripReorderFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripLeaveFailed": "Could not remove trip: {error}",
+  "@tripLeaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripAddStayFailed": "Could not add stay: {error}",
+  "@tripAddStayFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRemoveStayFailed": "Could not remove stay: {error}",
+  "@tripRemoveStayFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUpdateStayFailed": "Could not update stay: {error}",
+  "@tripUpdateStayFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripKeepStayFailed": "Could not keep stay: {error}",
+  "@tripKeepStayFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripAddTransportFailed": "Could not add transport: {error}",
+  "@tripAddTransportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRemoveTransportFailed": "Could not remove transport: {error}",
+  "@tripRemoveTransportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUpdateTransportFailed": "Could not update transport: {error}",
+  "@tripUpdateTransportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripKeepTransportFailed": "Could not keep transport: {error}",
+  "@tripKeepTransportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripShareLinkFailed": "Could not create share link: {error}",
+  "@tripShareLinkFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripPrintExportFailed": "Could not open the printable view: {error}",
+  "@tripPrintExportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripCalendarExportFailed": "Could not export the calendar: {error}",
+  "@tripCalendarExportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripEventExportFailed": "Could not export the event: {error}",
+  "@tripEventExportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripSharingOffFailed": "Could not turn off sharing: {error}",
+  "@tripSharingOffFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripInviteFailed": "Could not create invite: {error}",
+  "@tripInviteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRemoveItemFailed": "Could not remove {name}: {error}",
+  "@tripRemoveItemFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRestoreItemFailed": "Could not restore {name}: {error}",
+  "@tripRestoreItemFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUpdateItemFailed": "Could not update {name}: {error}",
+  "@tripUpdateItemFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripMoveItemFailed": "Could not move item: {error}",
+  "@tripMoveItemFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUpdateBookingFailed": "Could not update booking: {error}",
+  "@tripUpdateBookingFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUndoFailed": "Could not undo: {error}",
+  "@tripUndoFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripAddPackingFailed": "Could not add packing item: {error}",
+  "@tripAddPackingFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripLoadBudgetFailed": "Could not load budget: {error}",
+  "@tripLoadBudgetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripUpdateBudgetFailed": "Could not update budget: {error}",
+  "@tripUpdateBudgetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripSaveFailed": "Save failed: {error}",
+  "@tripSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tripOpenLinkFailed": "Could not open link",
+  "tripFerrySearchFailed": "Could not open ferry search",
+  "tripLoadFailed": "Could not load this trip",
+  "tripEditTitle": "Edit title",
+  "tripDeleteTitle": "Delete trip?",
+  "tripDeleteBody": "This cannot be undone.",
+  "tripLeaveTitle": "Remove from my trips?",
+  "tripLeaveBody": "You'll lose access until you're invited again. The trip itself is not deleted.",
+  "tripRemove": "Remove",
+  "tripUndo": "Undo",
+  "tripAddPlacesBeforeRefine": "Add some places before refining with AI.",
+  "tripAssistantLabel": "Trip assistant",
+  "tripRefiningSection": "Refining {section}",
+  "@tripRefiningSection": {
+    "placeholders": {
+      "section": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRefineCity": "Refine {city}",
+  "@tripRefineCity": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRefineThisDay": "Refine this day",
+  "tripRefineWithAI": "Refine with AI",
+  "tripAskAI": "Ask AI about this trip",
+  "tripShareLinkCopied": "Share link copied to clipboard",
+  "tripSharingTurnedOff": "Sharing turned off — links no longer work (existing co-planners and followers keep access)",
+  "tripCoPlanInviteMessage": "Co-plan with me: {summary}",
+  "@tripCoPlanInviteMessage": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "tripInviteCopied": "Co-planner invite copied — anyone with it can edit",
+  "tripCoPlannerRemoved": "Co-planner removed",
+  "tripInviteSent": "Invite sent to {email}",
+  "@tripInviteSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "tripShareTrip": "Share trip",
+  "tripShareLinkAction": "Share link…",
+  "tripCopyShareLink": "Copy share link",
+  "tripShareInviteAction": "Share co-planner invite…",
+  "tripCopyInviteLink": "Copy invite link (can edit)",
+  "tripManageAccess": "Manage access",
+  "tripPrintSavePdf": "Print / Save as PDF",
+  "tripAddToCalendar": "Add to calendar",
+  "tripTurnOffSharing": "Turn off sharing",
+  "tripDeleteTrip": "Delete trip",
+  "tripRemoveFromMyTrips": "Remove from my trips",
+  "tripLocalIntel": "Local intel",
+  "tripLocalGuideTitle": "Local guide: {title}",
+  "@tripLocalGuideTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tripGuideBy": "By {name}",
+  "@tripGuideBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripEventsWhileHere": "Events while you're here",
+  "tripFindingEvents": "Finding events in {city}…",
+  "@tripFindingEvents": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "tripFindEventsIn": "Find events in {city}",
+  "@tripFindEventsIn": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRecommendedBy": "Recommended by {name}",
+  "@tripRecommendedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripFindFlights": "Find flights",
+  "tripFindFerries": "Find ferries",
+  "tripAddBooking": "Add a booking",
+  "tripEditBooking": "Edit booking",
+  "tripFieldType": "Type",
+  "tripKindStay": "Stay",
+  "tripKindTransport": "Transport",
+  "tripKindOther": "Other",
+  "tripFieldTitle": "Title",
+  "tripFieldOrigin": "Origin (optional)",
+  "tripFieldDestination": "Destination (optional)",
+  "tripFieldDepartDate": "Depart date (optional)",
+  "tripFieldCheckIn": "Check-in (optional)",
+  "tripFieldCheckOut": "Check-out (optional)",
+  "tripFieldLink": "Link (optional, overrides search)",
+  "tripTitleRequired": "Title is required",
+  "tripClearDate": "Clear date",
+  "tripItinerary": "Itinerary",
+  "tripToday": "Today",
+  "tripAddPlace": "Add place",
+  "tripFilterAll": "All",
+  "tripFilterAttractions": "Attractions",
+  "tripFilterRestaurants": "Restaurants",
+  "tripFilterNoMatch": "No places match this filter.",
+  "tripNoPlacesYet": "No places yet",
+  "tripNoPlacesYetMessage": "Refine with AI or add a place to start your itinerary.",
+  "tripNoMappedPlaces": "No mapped places",
+  "tripNoPlacesOnDay": "No places pinned on Day {day}",
+  "@tripNoPlacesOnDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "tripAddPlaceMapHint": "Add a place to see it on the map.",
+  "tripDayN": "Day {n}",
+  "@tripDayN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tripDayTripTo": "Day trip · {town}",
+  "@tripDayTripTo": {
+    "placeholders": {
+      "town": {
+        "type": "String"
+      }
+    }
+  },
+  "tripDayTripFallback": "Day trip",
+  "tripTonight": "Tonight: {stays}",
+  "@tripTonight": {
+    "placeholders": {
+      "stays": {
+        "type": "String"
+      }
+    }
+  },
+  "tripTravelMinutes": "{minutes} min",
+  "@tripTravelMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTravelHours": "{hours}h",
+  "@tripTravelHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTravelHoursMinutes": "{hours}h {minutes}m",
+  "@tripTravelHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTravelFromHub": "{duration} from {hub}",
+  "@tripTravelFromHub": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      },
+      "hub": {
+        "type": "String"
+      }
+    }
+  },
+  "tripTravelTotal": "{duration} travel",
+  "@tripTravelTotal": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRainChance": "{percent}% rain",
+  "@tripRainChance": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTypicalForDates": "typical for these dates",
+  "tripPlaceActions": "Place actions",
+  "tripOpenInGoogleMaps": "Open in Google Maps",
+  "tripEdit": "Edit",
+  "tripMoveUp": "Move up",
+  "tripMoveDown": "Move down",
+  "tripReorderSection": "Reorder section",
+  "tripAddToGoogleCalendar": "Add to Google Calendar",
+  "tripAddToAppleCalendar": "Add to Apple Calendar (.ics)",
+  "tripRemovedItem": "Removed {name}",
+  "@tripRemovedItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripMovedToDay": "Moved to Day {day}",
+  "@tripMovedToDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "tripMarkedAsBooked": "Marked as booked",
+  "tripAddedToPacking": "Added \"{item}\" to packing",
+  "@tripAddedToPacking": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      }
+    }
+  },
+  "tripSetBudgetTarget": "Set budget target",
+  "tripBudgetTargetLabel": "Target ({currency})",
+  "@tripBudgetTargetLabel": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "tripBudgetTargetHint": "Leave blank to just track spending",
+  "tripRename": "Rename",
+  "tripAddDates": "Add dates",
+  "tripChangeStatus": "Change status",
+  "tripStatusDraft": "Draft",
+  "tripStatusPlanned": "Planned",
+  "tripCoPlanningWith": "Co-planning with {name} — your changes save for everyone.",
+  "@tripCoPlanningWith": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripCoPlanningShared": "Co-planning a shared trip — your changes save for everyone.",
+  "tripSharedBy": "Shared by {name} — view only.",
+  "@tripSharedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripSharedViewOnly": "Shared trip — view only.",
+  "tripUpdatedBy": "Updated by {name} · {time}",
+  "@tripUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tripOverview": "Overview",
+  "tripShowMore": "Show more",
+  "tripShowLess": "Show less",
+  "tripTimeRecently": "recently",
+  "tripTimeJustNow": "just now",
+  "tripTimeMinutesAgo": "{minutes}m ago",
+  "@tripTimeMinutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTimeHoursAgo": "{hours}h ago",
+  "@tripTimeHoursAgo": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "tripTimeDaysAgo": "{days}d ago",
+  "@tripTimeDaysAgo": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tripFriendEmail": "Friend's email",
+  "tripInvite": "Invite",
+  "tripNoCoPlanners": "No co-planners yet. Invite a friend by email above, or copy an invite link from the share menu.",
+  "tripRoleViewer": "Viewer",
+  "tripRoleCanEdit": "Can edit",
+  "tripRemoveAccess": "Remove access",
+  "tripPendingInvites": "Pending invites",
+  "tripInvited": "Invited — {expires}",
+  "@tripInvited": {
+    "placeholders": {
+      "expires": {
+        "type": "String"
+      }
+    }
+  },
+  "tripRevokeInvite": "Revoke invite",
+  "tripExpiresInDays": "expires in {days}d",
+  "@tripExpiresInDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tripExpiresInHours": "expires in {hours}h",
+  "@tripExpiresInHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "tripExpiresSoon": "expires soon",
+  "tripEditPlace": "Edit place",
+  "tripFieldName": "Name",
+  "tripFieldCity": "City",
+  "tripFieldDay": "Day",
+  "tripCategoryAttraction": "Attraction",
+  "tripCategoryRestaurant": "Restaurant",
+  "tripTimeMorning": "Morning",
+  "tripTimeAfternoon": "Afternoon",
+  "tripTimeEvening": "Evening",
+  "tripReorderPlaces": "Reorder places",
+  "tripReorderHint": "Drag to change the visit order within this section.",
+  "tripSaveOrder": "Save order",
+  "tripsListTitle": "My Trips",
+  "tripsListErrorTitle": "Could not load trips",
+  "tripsListErrorMessage": "Check your connection and try again.",
+  "tripsListEmptyTitle": "No trips yet",
+  "tripsListEmptyMessage": "Chat with the AI agent to create your first trip.",
+  "tripsListPlanTrip": "Plan a trip",
+  "tripsListSharedWithYou": "Shared with you",
+  "tripsListCreated": "Created {date}",
+  "@tripsListCreated": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "tripsListPlannedWith": "Planned with {name}",
+  "@tripsListPlannedWith": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripsListSharedBy": "Shared by {name}",
+  "@tripsListSharedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tripsListVersionsError": "Could not load versions",
+  "tripsListVersionLatest": "latest · {date}",
+  "@tripsListVersionLatest": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "tripsListVersionNumbered": "v{version} · {date}",
+  "@tripsListVersionNumbered": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "homeGreetingMorning": "Good morning",
+  "homeGreetingAfternoon": "Good afternoon",
+  "homeGreetingEvening": "Good evening",
+  "homeGreetingNamed": "{greeting}, {name}",
+  "@homeGreetingNamed": {
+    "placeholders": {
+      "greeting": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeGreetingSubtitle": "Where are we off to next?",
+  "homeHeroTitle": "Plan less. Travel more.",
+  "homeHeroSubtitle": "Describe the trip you're dreaming of and I'll build the full itinerary — places, days, and routes.",
+  "homeHeroCta": "Let's go",
+  "homeSuggestionParis": "2 days in Paris",
+  "homeSuggestionRome": "Museums in Rome",
+  "homeSuggestionTokyo": "Weekend in Tokyo",
+  "homeStatusDraft": "Draft",
+  "homeStatusPlanned": "Planned",
+  "homeRecentTripEyebrow": "PICK UP WHERE YOU LEFT OFF",
+  "homeLocalGuidesTitle": "Local guides",
+  "homeGuideByline": "By {name}",
+  "@homeGuideByline": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "shellNavHome": "Home",
+  "shellNavPlan": "Plan",
+  "shellNavTrips": "Trips",
+  "healthMetricsErrorTitle": "Could not load metrics",
+  "healthHealthErrorTitle": "Could not load health",
+  "healthProcessSection": "Process",
+  "healthRoutesSection": "Routes",
+  "healthUptime": "Uptime",
+  "healthRequests": "Requests",
+  "healthErrorRate": "Error rate",
+  "healthGoroutines": "Goroutines",
+  "healthMemory": "Memory",
+  "healthPlacesCalls": "Places calls",
+  "healthCacheHits": "{count} cache hits",
+  "@healthCacheHits": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthColRoute": "Route",
+  "healthColMethod": "Method",
+  "healthColCount": "Count",
+  "healthColErrorPct": "Error %",
+  "healthDependenciesSection": "Dependencies",
+  "healthDatabase": "Database",
+  "healthPing": "{ms} ms ping",
+  "@healthPing": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "healthPillOk": "ok",
+  "healthPillUnreachable": "unreachable",
+  "healthPillConfigured": "configured",
+  "healthPillNotConfigured": "not configured",
+  "healthPillUnknown": "unknown",
+  "healthPillStale": "stale",
+  "healthPillFresh": "fresh",
+  "healthBackupsSection": "Backups",
+  "healthLastBackup": "Last backup",
+  "healthBackupAge": "{age} ago",
+  "@healthBackupAge": {
+    "placeholders": {
+      "age": {
+        "type": "String"
+      }
+    }
+  },
+  "healthNoBackupRecorded": "no backup recorded",
+  "healthBuildSection": "Build",
+  "healthRelease": "release {release}",
+  "@healthRelease": {
+    "placeholders": {
+      "release": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDegradedTitle": "System degraded",
+  "reviewSectionTitle": "Trip health",
+  "reviewCountToReview": "{count} to review",
+  "@reviewCountToReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reviewEmptyTitle": "Looks good",
+  "reviewEmptyMessage": "No issues found — your trip is in good shape.",
+  "reviewSeverityCritical": "Critical",
+  "reviewSeverityWarning": "Warning",
+  "reviewSeverityInfo": "Info",
+  "reviewOfflineSnack": "You're offline — reconnect to run more checks.",
+  "reviewHoursChecked": "Opening hours checked",
+  "reviewCheckHours": "Also check opening hours",
+  "liveTripEyebrow": "HAPPENING NOW",
+  "liveTripStatusLive": "Live",
+  "liveTripDay": "Day {day}",
+  "@liveTripDay": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "liveTripDayOfTotal": "Day {day} of {total}",
+  "@liveTripDayOfTotal": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "continueChatsTitle": "Continue where you left off",
+  "continueChatsReopenError": "Could not reopen that conversation.",
+  "continueChatsDismissError": "Could not dismiss that conversation.",
+  "continueChatsDismiss": "Dismiss",
+  "mapNoMappedPlaces": "No mapped places",
+  "mapZoomIn": "Zoom in",
+  "mapZoomOut": "Zoom out",
+  "mapResetMap": "Reset map",
+  "accountMenuTooltip": "Account",
+  "accountMenuTravelProfile": "Travel profile",
+  "accountMenuPriceAlerts": "Price alerts",
+  "accountMenuRetakeQuiz": "Retake travel quiz",
+  "accountMenuAccountSettings": "Account settings",
+  "accountMenuLocalIntelAdmin": "Local intel admin",
+  "accountMenuMetrics": "Metrics",
+  "accountMenuSignOut": "Sign out"
 }

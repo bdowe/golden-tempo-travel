@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/checklist_item.dart';
 import '../providers/checklist_provider.dart';
 import '../theme/spacing.dart';
@@ -28,8 +29,10 @@ class ChecklistSection extends ConsumerStatefulWidget {
   ConsumerState<ChecklistSection> createState() => _ChecklistSectionState();
 }
 
-// Display order + labels for the category groups. Free-text on the server, but
-// the client groups into this known set; anything else falls under "General".
+// Display order for the category groups. Free-text on the server, but the
+// client groups into this known set; anything else falls under "general". The
+// values themselves are sent to the server, so they are NEVER translated —
+// only their display labels are (specs/i18n-spanish).
 const List<String> _categoryOrder = [
   'documents',
   'clothing',
@@ -38,13 +41,14 @@ const List<String> _categoryOrder = [
   'general',
 ];
 
-const Map<String, String> _categoryLabels = {
-  'documents': 'Documents',
-  'clothing': 'Clothing',
-  'electronics': 'Electronics',
-  'health': 'Health',
-  'general': 'General',
-};
+String _categoryLabel(AppLocalizations l10n, String value) => switch (value) {
+      'documents' => l10n.checklistCategoryDocuments,
+      'clothing' => l10n.checklistCategoryClothing,
+      'electronics' => l10n.checklistCategoryElectronics,
+      'health' => l10n.checklistCategoryHealth,
+      'general' => l10n.checklistCategoryGeneral,
+      _ => value,
+    };
 
 const Map<String, IconData> _categoryIcons = {
   'documents': Icons.description_outlined,
@@ -56,7 +60,7 @@ const Map<String, IconData> _categoryIcons = {
 
 String _normalizeCategory(String raw) {
   final c = raw.trim().toLowerCase();
-  return _categoryLabels.containsKey(c) ? c : 'general';
+  return _categoryOrder.contains(c) ? c : 'general';
 }
 
 class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
@@ -73,8 +77,7 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
   bool _guard() {
     if (widget.isOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("You're offline — reconnect to make changes.")),
+        SnackBar(content: Text(context.l10n.commonOffline)),
       );
       return true;
     }
@@ -90,7 +93,7 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Try again.')),
+          SnackBar(content: Text(context.l10n.commonGenericError)),
         );
       }
     } finally {
@@ -118,24 +121,25 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
 
   Future<void> _editTitle(ChecklistItem item) async {
     if (_guard()) return;
+    final l10n = context.l10n;
     final controller = TextEditingController(text: item.title);
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit item'),
+        title: Text(l10n.checklistEditItemTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Item'),
+          decoration: InputDecoration(labelText: l10n.checklistItemLabel),
           onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(l10n.commonSave),
           ),
         ],
       ),
@@ -159,6 +163,7 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
     if (items.isEmpty && !widget.canEdit) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final checked = items.where((i) => i.checked).length;
 
     return Column(
@@ -166,7 +171,7 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
       children: [
         const Divider(height: 32),
         SectionHeader(
-          title: 'Packing & prep',
+          title: l10n.checklistTitle,
           action: items.isEmpty
               ? null
               : StatusPill.custom(
@@ -177,12 +182,11 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
         ),
         const SizedBox(height: AppSpacing.sm),
         if (items.isEmpty)
-          const EmptyState(
+          EmptyState(
             compact: true,
             icon: Icons.luggage_outlined,
-            title: 'Nothing packed yet',
-            message:
-                'Add items below, or ask the AI assistant to help build your list.',
+            title: l10n.checklistEmptyTitle,
+            message: l10n.checklistEmptyMessage,
           )
         else
           ..._buildGroups(theme, items),
@@ -210,7 +214,7 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
             Icon(_categoryIcons[cat], size: 16, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: AppSpacing.xs),
             Text(
-              _categoryLabels[cat]!,
+              _categoryLabel(context.l10n, cat),
               style: theme.textTheme.labelLarge
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
@@ -256,14 +260,16 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert,
                   size: 18, color: theme.colorScheme.onSurfaceVariant),
-              tooltip: 'Item options',
+              tooltip: context.l10n.checklistItemOptions,
               onSelected: (v) {
                 if (v == 'edit') _editTitle(item);
                 if (v == 'delete') _delete(item);
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Edit')),
-                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                    value: 'edit', child: Text(context.l10n.checklistMenuEdit)),
+                PopupMenuItem(
+                    value: 'delete', child: Text(context.l10n.commonDelete)),
               ],
             ),
         ],
@@ -295,16 +301,16 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
           child: TextField(
             controller: _addController,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              hintText: 'Add an item…',
+              hintText: context.l10n.checklistAddHint,
             ),
             onSubmitted: (_) => _add(),
           ),
         ),
         IconButton(
           icon: const Icon(Icons.add),
-          tooltip: 'Add item',
+          tooltip: context.l10n.checklistAddItemTooltip,
           onPressed: widget.isOffline ? null : _add,
         ),
       ],

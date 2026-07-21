@@ -10,6 +10,8 @@ import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Returns a fixed trip without hitting the network, so we can exercise the
 /// real TripDetailScreen render path.
 class _FakeTripsApiService extends TripsApiService {
@@ -78,7 +80,8 @@ void main() {
         overrides: [
           tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         ],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
       ),
     );
     await tester.pumpAndSettle();
@@ -125,7 +128,8 @@ void main() {
         overrides: [
           tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         ],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't2')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't2')),
       ),
     );
     await tester.pumpAndSettle();

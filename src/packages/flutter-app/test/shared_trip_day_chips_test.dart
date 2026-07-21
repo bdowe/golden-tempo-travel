@@ -13,6 +13,8 @@ import 'package:travel_route_planner/screens/shared_trip_screen.dart';
 import 'package:travel_route_planner/widgets/map_day_chips.dart';
 import 'package:travel_route_planner/widgets/trip_map.dart';
 
+import 'support/l10n_test_app.dart';
+
 class _FakeTripsApiService extends TripsApiService {
   final SharedTrip shared;
   _FakeTripsApiService(this.shared) : super(ApiClient(baseUrl: 'http://test'));
@@ -79,7 +81,8 @@ void main() {
           tripsApiServiceProvider
               .overrideWithValue(_FakeTripsApiService(shared)),
         ],
-        child: const MaterialApp(home: SharedTripScreen(token: 'tok')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: SharedTripScreen(token: 'tok')),
       ),
     );
     await tester.pumpAndSettle();

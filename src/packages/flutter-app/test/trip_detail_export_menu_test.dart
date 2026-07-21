@@ -17,6 +17,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trip_cache.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// A trips service whose getTrip returns [trip] (or throws when null), and
 /// whose mintExportToken records the call and hands back a fixed token. Its
 /// ApiClient carries a known base so the built export URL is deterministic.
@@ -106,7 +108,8 @@ Future<void> _pump(
         tripCacheProvider.overrideWithValue(cache ?? TripCache('u1')),
         analyticsApiServiceProvider.overrideWithValue(_NoopAnalytics()),
       ],
-      child: const MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

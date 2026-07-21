@@ -7,6 +7,8 @@ import 'package:travel_route_planner/models/accommodation.dart';
 import 'package:travel_route_planner/models/itinerary_item.dart';
 import 'package:travel_route_planner/widgets/trip_map.dart';
 
+import 'support/l10n_test_app.dart';
+
 ItineraryItem _item(int pos, String name, double lat, double lng) =>
     ItineraryItem(
       id: 'i$pos',
@@ -19,6 +21,7 @@ ItineraryItem _item(int pos, String name, double lat, double lng) =>
 
 /// Hosts the map at a fixed size (FlutterMap needs bounded constraints).
 Widget _host(Widget child) => MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
       home: Scaffold(
         body: Center(
           child: SizedBox(width: 400, height: 300, child: child),

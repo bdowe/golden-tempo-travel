@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/ops_health.dart';
 import '../models/ops_metrics.dart';
 import '../providers/ops_admin_provider.dart';
@@ -71,6 +72,7 @@ class _HealthPaneState extends ConsumerState<HealthPane>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final l10n = context.l10n;
     final metrics = ref.watch(opsMetricsProvider);
     final health = ref.watch(opsHealthProvider);
 
@@ -95,12 +97,12 @@ class _HealthPaneState extends ConsumerState<HealthPane>
               ),
               error: (e, _) => EmptyState(
                 icon: Icons.cloud_off,
-                title: 'Could not load metrics',
+                title: l10n.healthMetricsErrorTitle,
                 message: '$e',
                 actions: [
                   FilledButton(
                     onPressed: () => ref.invalidate(opsMetricsProvider),
-                    child: const Text('Retry'),
+                    child: Text(l10n.commonRetry),
                   ),
                 ],
               ),
@@ -114,12 +116,12 @@ class _HealthPaneState extends ConsumerState<HealthPane>
               ),
               error: (e, _) => EmptyState(
                 icon: Icons.cloud_off,
-                title: 'Could not load health',
+                title: l10n.healthHealthErrorTitle,
                 message: '$e',
                 actions: [
                   FilledButton(
                     onPressed: () => ref.invalidate(opsHealthProvider),
-                    child: const Text('Retry'),
+                    child: Text(l10n.commonRetry),
                   ),
                 ],
               ),
@@ -142,31 +144,32 @@ class _MetricsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final m = metrics;
     final errRate = m.requests.errorRate;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(title: 'Process'),
+        SectionHeader(title: l10n.healthProcessSection),
         const SizedBox(height: AppSpacing.sm),
         _TileGrid(tiles: [
-          _Stat('Uptime', _formatUptime(m.process.uptimeS)),
-          _Stat('Requests', _compact(m.requests.total),
+          _Stat(l10n.healthUptime, _formatUptime(m.process.uptimeS)),
+          _Stat(l10n.healthRequests, _compact(m.requests.total),
               caption: _classCaption(m.requests.byClass)),
-          _Stat('Error rate', '${(errRate * 100).toStringAsFixed(1)}%',
+          _Stat(l10n.healthErrorRate, '${(errRate * 100).toStringAsFixed(1)}%',
               severity: _errSeverity(errRate)),
-          _Stat('Goroutines', '${m.process.goroutines}',
+          _Stat(l10n.healthGoroutines, '${m.process.goroutines}',
               caption: 'GOMAXPROCS ${m.process.gomaxprocs}'),
-          _Stat('Memory', '${_mb(m.process.memAllocBytes)} MB',
+          _Stat(l10n.healthMemory, '${_mb(m.process.memAllocBytes)} MB',
               caption: '${_mb(m.process.memSysBytes)} MB sys'),
           if (m.upstream.placesUpstreamCalls > 0 ||
               m.upstream.placesCacheHits > 0)
-            _Stat('Places calls', '${m.upstream.placesUpstreamCalls}',
-                caption: '${m.upstream.placesCacheHits} cache hits'),
+            _Stat(l10n.healthPlacesCalls, '${m.upstream.placesUpstreamCalls}',
+                caption: l10n.healthCacheHits(m.upstream.placesCacheHits)),
         ]),
         if (m.requests.routes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Routes'),
+          SectionHeader(title: l10n.healthRoutesSection),
           const SizedBox(height: AppSpacing.sm),
           _RouteTable(routes: m.requests.routes),
         ],
@@ -196,6 +199,7 @@ class _RouteTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final sorted = [...routes]..sort((a, b) => b.count.compareTo(a.count));
     final top = sorted.take(12).toList();
 
@@ -206,12 +210,12 @@ class _RouteTable extends StatelessWidget {
         headingRowHeight: 36,
         dataRowMinHeight: 36,
         dataRowMaxHeight: 44,
-        columns: const [
-          DataColumn(label: Text('Route')),
-          DataColumn(label: Text('Method')),
-          DataColumn(label: Text('Count'), numeric: true),
-          DataColumn(label: Text('Error %'), numeric: true),
-          DataColumn(label: Text('p95 ms'), numeric: true),
+        columns: [
+          DataColumn(label: Text(l10n.healthColRoute)),
+          DataColumn(label: Text(l10n.healthColMethod)),
+          DataColumn(label: Text(l10n.healthColCount), numeric: true),
+          DataColumn(label: Text(l10n.healthColErrorPct), numeric: true),
+          const DataColumn(label: Text('p95 ms'), numeric: true),
         ],
         rows: [
           for (final r in top)
@@ -245,6 +249,7 @@ class _HealthSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final h = health;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -253,38 +258,39 @@ class _HealthSection extends StatelessWidget {
           _DegradedBanner(reasons: h.reasons),
           const SizedBox(height: AppSpacing.lg),
         ],
-        const SectionHeader(title: 'Dependencies'),
+        SectionHeader(title: l10n.healthDependenciesSection),
         const SizedBox(height: AppSpacing.sm),
         _DependencyRow(
-          label: 'Database',
-          detail: h.db.status == 'ok' ? '${h.db.pingMs} ms ping' : null,
-          pill: _dbPill(theme, h.db),
+          label: l10n.healthDatabase,
+          detail: h.db.status == 'ok' ? l10n.healthPing(h.db.pingMs) : null,
+          pill: _dbPill(theme, l10n, h.db),
         ),
         for (final p in h.providers)
           _DependencyRow(
             label: _humanize(p.name),
             detail: p.note.isEmpty ? null : p.note,
             pill: p.configured
-                ? _pill(theme, 'configured', 'ok')
-                : _pill(theme, 'not configured', 'warn'),
+                ? _pill(theme, l10n.healthPillConfigured, 'ok')
+                : _pill(theme, l10n.healthPillNotConfigured, 'warn'),
           ),
         const SizedBox(height: AppSpacing.xl),
-        const SectionHeader(title: 'Backups'),
+        SectionHeader(title: l10n.healthBackupsSection),
         const SizedBox(height: AppSpacing.sm),
         _DependencyRow(
-          label: 'Last backup',
+          label: l10n.healthLastBackup,
           detail: h.backups.ageS != null
-              ? '${_humanizeAge(h.backups.ageS!)} ago'
-              : 'no backup recorded',
-          pill: _backupPill(theme, h.backups),
+              ? l10n.healthBackupAge(_humanizeAge(h.backups.ageS!))
+              : l10n.healthNoBackupRecorded,
+          pill: _backupPill(theme, l10n, h.backups),
         ),
         if (h.build.release.isNotEmpty || h.build.goVersion.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Build'),
+          SectionHeader(title: l10n.healthBuildSection),
           const SizedBox(height: AppSpacing.sm),
           Text(
             [
-              if (h.build.release.isNotEmpty) 'release ${h.build.release}',
+              if (h.build.release.isNotEmpty)
+                l10n.healthRelease(h.build.release),
               if (h.build.goVersion.isNotEmpty) h.build.goVersion,
             ].join(' · '),
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -296,21 +302,24 @@ class _HealthSection extends StatelessWidget {
     );
   }
 
-  static Widget _dbPill(ThemeData theme, HealthDb db) {
+  // db.status / backup state are canonical API values — only their pill
+  // labels are translated (specs/i18n-spanish).
+  static Widget _dbPill(ThemeData theme, AppLocalizations l10n, HealthDb db) {
     switch (db.status) {
       case 'ok':
-        return _pill(theme, 'ok', 'ok');
+        return _pill(theme, l10n.healthPillOk, 'ok');
       case 'unreachable':
-        return _pill(theme, 'unreachable', 'critical');
+        return _pill(theme, l10n.healthPillUnreachable, 'critical');
       default:
-        return _pill(theme, 'not configured', 'warn');
+        return _pill(theme, l10n.healthPillNotConfigured, 'warn');
     }
   }
 
-  static Widget _backupPill(ThemeData theme, BackupInfo b) {
-    if (b.ageS == null) return _pill(theme, 'unknown', 'warn');
-    if (b.stale) return _pill(theme, 'stale', 'critical');
-    return _pill(theme, 'fresh', 'ok');
+  static Widget _backupPill(
+      ThemeData theme, AppLocalizations l10n, BackupInfo b) {
+    if (b.ageS == null) return _pill(theme, l10n.healthPillUnknown, 'warn');
+    if (b.stale) return _pill(theme, l10n.healthPillStale, 'critical');
+    return _pill(theme, l10n.healthPillFresh, 'ok');
   }
 }
 
@@ -337,7 +346,7 @@ class _DegradedBanner extends StatelessWidget {
                   size: 20, color: theme.colorScheme.onErrorContainer),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                'System degraded',
+                context.l10n.healthDegradedTitle,
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                   fontWeight: FontWeight.bold,

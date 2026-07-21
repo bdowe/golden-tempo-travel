@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../navigation/app_nav.dart';
 import '../theme/spacing.dart';
 import '../utils/trip_format.dart';
@@ -40,6 +41,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final state = ref.watch(tripsProvider);
     final resumable =
         ref.watch(resumableChatsProvider).valueOrNull ?? const <ChatSessionSummary>[];
@@ -56,27 +58,27 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     } else if (state.error != null && state.trips.isEmpty && resumable.isEmpty) {
       body = EmptyState(
         icon: Icons.cloud_off,
-        title: 'Could not load trips',
-        message: 'Check your connection and try again.',
+        title: l10n.tripsListErrorTitle,
+        message: l10n.tripsListErrorMessage,
         iconColor: theme.colorScheme.error.withValues(alpha: 0.6),
         actions: [
           FilledButton(
             onPressed: () => ref.read(tripsProvider.notifier).loadTrips(),
-            child: const Text('Retry'),
+            child: Text(l10n.commonRetry),
           ),
         ],
       );
     } else if (state.trips.isEmpty && resumable.isEmpty) {
       body = EmptyState(
         icon: Icons.luggage,
-        title: 'No trips yet',
-        message: 'Chat with the AI agent to create your first trip.',
+        title: l10n.tripsListEmptyTitle,
+        message: l10n.tripsListEmptyMessage,
         actions: [
           FilledButton.icon(
             onPressed: () => ref.read(navIndexProvider.notifier).state =
                 AppTab.plan.index,
             icon: const Icon(Icons.auto_awesome),
-            label: const Text('Plan a trip'),
+            label: Text(l10n.tripsListPlanTrip),
           ),
         ],
       );
@@ -112,7 +114,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.xs, 0, 0, AppSpacing.sm),
-                child: Text('Continue where you left off',
+                child: Text(l10n.continueChatsTitle,
                     style: theme.textTheme.titleMedium),
               ),
               for (final c in resumable) ContinueChatCard(chat: c),
@@ -120,7 +122,8 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                       AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
-                  child: Text('My Trips', style: theme.textTheme.titleMedium),
+                  child: Text(l10n.tripsListTitle,
+                      style: theme.textTheme.titleMedium),
                 ),
             ],
             for (final t in state.trips) _TripCard(trip: t, isAdmin: isAdmin),
@@ -131,7 +134,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
-                child: Text('Shared with you',
+                child: Text(l10n.tripsListSharedWithYou,
                     style: theme.textTheme.titleMedium),
               ),
               for (final t in shared) _TripCard(trip: t, isAdmin: false),
@@ -157,9 +160,9 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     }
 
     return Scaffold(
-      appBar: const GradientAppBar(
-        title: Text('My Trips'),
-        actions: [AccountMenu()],
+      appBar: GradientAppBar(
+        title: Text(l10n.tripsListTitle),
+        actions: const [AccountMenu()],
       ),
       body: body,
     );
@@ -182,12 +185,18 @@ class _TripCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final versions = trip.versionCount ?? 1;
     final hasHistory = isAdmin && versions > 1 && trip.chatId != null;
     final range = tripDateRange(trip.startDate, trip.endDate);
 
     final title = Text(
-      citiesLabel(trip.cities) ?? trip.title,
+      citiesLabel(
+            trip.cities,
+            two: (a, b) => l10n.citiesTwo(a, b),
+            more: (a, b, n) => l10n.citiesMore(a, b, n),
+          ) ??
+          trip.title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: Theme.of(context)
@@ -206,13 +215,13 @@ class _TripCard extends ConsumerWidget {
           if (range != null)
             _DateChip(label: range)
           else
-            Text('Created ${shortDate(trip.createdAt)}'),
+            Text(l10n.tripsListCreated(shortDate(trip.createdAt))),
           StatusPill(status: trip.status),
           if (!trip.isOwner && (trip.ownerName ?? '').isNotEmpty)
             Text(
               trip.canEdit
-                  ? 'Planned with ${trip.ownerName}'
-                  : 'Shared by ${trip.ownerName}',
+                  ? l10n.tripsListPlannedWith(trip.ownerName!)
+                  : l10n.tripsListSharedBy(trip.ownerName!),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
@@ -326,6 +335,7 @@ class _VersionList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return FutureBuilder<List<Trip>>(
       future: ref.read(tripsApiServiceProvider).listTripVersions(chatId),
       builder: (context, snap) {
@@ -338,7 +348,8 @@ class _VersionList extends ConsumerWidget {
         if (snap.hasError) {
           return Padding(
             padding: const EdgeInsets.all(16),
-            child: Text('Could not load versions', style: theme.textTheme.bodySmall),
+            child: Text(l10n.tripsListVersionsError,
+                style: theme.textTheme.bodySmall),
           );
         }
         final versions = snap.data ?? const [];
@@ -351,8 +362,10 @@ class _VersionList extends ConsumerWidget {
                 title: Text(versions[i].title, maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   i == 0
-                      ? 'latest · ${shortDate(versions[i].createdAt)}'
-                      : 'v${versions.length - i} · ${shortDate(versions[i].createdAt)}',
+                      ? l10n.tripsListVersionLatest(
+                          shortDate(versions[i].createdAt))
+                      : l10n.tripsListVersionNumbered(versions.length - i,
+                          shortDate(versions[i].createdAt)),
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _openTrip(context, versions[i].id),

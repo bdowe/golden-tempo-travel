@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../navigation/app_nav.dart';
 import '../theme/spacing.dart';
 import '../widgets/account_menu.dart';
@@ -12,11 +13,23 @@ import 'trips_list_screen.dart';
 /// outside the per-tab navigators, so it never moves when a page is pushed —
 /// only the content area animates. Each tab keeps its own push stack, so a trip
 /// opened in one tab stays put when you switch away and back.
+///
+/// [navDestinations] carries the icons and ordering; its labels are display
+/// copy, so the shell renders the localized label for each tab instead
+/// (specs/i18n-spanish).
+String _destinationLabel(AppLocalizations l10n, int index) =>
+    switch (AppTab.values[index]) {
+      AppTab.home => l10n.shellNavHome,
+      AppTab.plan => l10n.shellNavPlan,
+      AppTab.trips => l10n.shellNavTrips,
+    };
+
 class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final index = ref.watch(navIndexProvider);
     final navKeys = ref.watch(tabNavKeysProvider);
     final isWide = MediaQuery.sizeOf(context).width >= kRailBreakpoint;
@@ -64,11 +77,11 @@ class AppShell extends ConsumerWidget {
                 child: RailAccountButton(),
               ),
               destinations: [
-                for (final d in navDestinations)
+                for (final (i, d) in navDestinations.indexed)
                   NavigationRailDestination(
                     icon: Icon(d.icon),
                     selectedIcon: Icon(d.selectedIcon),
-                    label: Text(d.label),
+                    label: Text(_destinationLabel(l10n, i)),
                   ),
               ],
             ),
@@ -85,11 +98,11 @@ class AppShell extends ConsumerWidget {
         selectedIndex: index,
         onDestinationSelected: onSelect,
         destinations: [
-          for (final d in navDestinations)
+          for (final (i, d) in navDestinations.indexed)
             NavigationDestination(
               icon: Icon(d.icon),
               selectedIcon: Icon(d.selectedIcon),
-              label: d.label,
+              label: _destinationLabel(l10n, i),
             ),
         ],
       ),

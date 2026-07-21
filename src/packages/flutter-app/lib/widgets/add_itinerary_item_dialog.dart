@@ -1,12 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/trip.dart';
 import '../models/itinerary_item.dart';
 import '../models/place_search_result.dart';
 import '../providers/places_api_provider.dart';
 import '../providers/trips_provider.dart';
 import '../utils/trip_days.dart';
+
+/// Category chips send canonical API values ('attraction', 'restaurant'), which
+/// are never translated — only their display labels are (specs/i18n-spanish).
+String _categoryLabel(AppLocalizations l10n, String value) => switch (value) {
+      'attraction' => l10n.itemDialogCategoryAttraction,
+      'restaurant' => l10n.itemDialogCategoryRestaurant,
+      _ => value,
+    };
 
 /// Manually adds one place to a trip's itinerary: Google Places search picks a
 /// real place (coordinates/address auto-filled), with a typed-name fallback
@@ -90,10 +99,12 @@ class _AddItineraryItemDialogState
   }
 
   Future<void> _save() async {
+    final l10n = context.l10n;
     final name = _manual ? _nameController.text.trim() : _selected?.name ?? '';
     if (name.isEmpty) {
-      setState(() => _error =
-          _manual ? 'Enter a name for the place.' : 'Pick a place first.');
+      setState(() => _error = _manual
+          ? l10n.itemDialogErrorEnterName
+          : l10n.itemDialogErrorPickPlace);
       return;
     }
     setState(() {
@@ -119,7 +130,7 @@ class _AddItineraryItemDialogState
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = 'Could not add the place: $e';
+          _error = l10n.itemDialogErrorAddFailed('$e');
         });
       }
     }
@@ -128,8 +139,9 @@ class _AddItineraryItemDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Add place'),
+      title: Text(l10n.itemDialogTitle),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -142,11 +154,11 @@ class _AddItineraryItemDialogState
                   TextField(
                     controller: _searchController,
                     autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Search for a place',
-                      hintText: 'e.g. Pastéis de Belém, Lisbon',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.itemDialogSearchLabel,
+                      hintText: l10n.itemDialogSearchHint,
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
                     ),
                     onChanged: _onSearchChanged,
                   ),
@@ -162,7 +174,7 @@ class _AddItineraryItemDialogState
                           : Text(_selected!.address),
                       trailing: IconButton(
                         icon: const Icon(Icons.clear),
-                        tooltip: 'Pick a different place',
+                        tooltip: l10n.itemDialogPickDifferent,
                         onPressed: () => setState(() => _selected = null),
                       ),
                     ),
@@ -172,23 +184,23 @@ class _AddItineraryItemDialogState
                     alignment: Alignment.centerLeft,
                     child: TextButton(
                       onPressed: () => setState(() => _manual = true),
-                      child: const Text("Can't find it? Add manually"),
+                      child: Text(l10n.itemDialogAddManually),
                     ),
                   ),
               ] else ...[
                 TextField(
                   controller: _nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Place name',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.itemDialogPlaceNameLabel,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: () => setState(() => _manual = false),
-                    child: const Text('Search places instead'),
+                    child: Text(l10n.itemDialogSearchInstead),
                   ),
                 ),
               ],
@@ -201,21 +213,23 @@ class _AddItineraryItemDialogState
                       // Fill the field and ellipsize instead of overflowing
                       // when an item label outgrows the half-width column.
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Day',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n.itemDialogDayLabel,
+                        border: const OutlineInputBorder(),
                         isDense: true,
                       ),
                       items: [
-                        const DropdownMenuItem(
-                            value: null, child: Text('Unscheduled')),
+                        DropdownMenuItem(
+                            value: null,
+                            child: Text(l10n.itemDialogUnscheduled)),
                         for (var d = 1; d <= _dayCount; d++)
-                          DropdownMenuItem(value: d, child: Text('Day $d')),
+                          DropdownMenuItem(
+                              value: d, child: Text(l10n.itemDialogDayN(d))),
                         DropdownMenuItem(
                             value: _dayCount + 1,
                             child: Text(_dayCount == 0
-                                ? 'Day 1'
-                                : 'New day (${_dayCount + 1})')),
+                                ? l10n.itemDialogDayN(1)
+                                : l10n.itemDialogNewDay(_dayCount + 1))),
                       ],
                       onChanged: (v) => setState(() => _day = v),
                     ),
@@ -225,19 +239,25 @@ class _AddItineraryItemDialogState
                     child: DropdownButtonFormField<String?>(
                       initialValue: _timeOfDay,
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Time of day',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n.itemDialogTimeOfDayLabel,
+                        border: const OutlineInputBorder(),
                         isDense: true,
                       ),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('Any')),
+                      // Values are canonical API values — only labels are
+                      // translated (specs/i18n-spanish).
+                      items: [
                         DropdownMenuItem(
-                            value: 'morning', child: Text('Morning')),
+                            value: null, child: Text(l10n.itemDialogTimeAny)),
                         DropdownMenuItem(
-                            value: 'afternoon', child: Text('Afternoon')),
+                            value: 'morning',
+                            child: Text(l10n.itemDialogTimeMorning)),
                         DropdownMenuItem(
-                            value: 'evening', child: Text('Evening')),
+                            value: 'afternoon',
+                            child: Text(l10n.itemDialogTimeAfternoon)),
+                        DropdownMenuItem(
+                            value: 'evening',
+                            child: Text(l10n.itemDialogTimeEvening)),
                       ],
                       onChanged: (v) => setState(() => _timeOfDay = v),
                     ),
@@ -248,15 +268,13 @@ class _AddItineraryItemDialogState
               Wrap(
                 spacing: 8,
                 children: [
-                  for (final c in const [
-                    ('attraction', 'Attraction'),
-                    ('restaurant', 'Restaurant'),
-                  ])
+                  // Canonical API values with translated labels.
+                  for (final c in const ['attraction', 'restaurant'])
                     ChoiceChip(
-                      label: Text(c.$2),
-                      selected: _category == c.$1,
+                      label: Text(_categoryLabel(l10n, c)),
+                      selected: _category == c,
                       onSelected: (sel) =>
-                          setState(() => _category = sel ? c.$1 : null),
+                          setState(() => _category = sel ? c : null),
                     ),
                 ],
               ),
@@ -271,7 +289,7 @@ class _AddItineraryItemDialogState
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -281,22 +299,22 @@ class _AddItineraryItemDialogState
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Add'),
+              : Text(l10n.itemDialogAdd),
         ),
       ],
     );
   }
 
   Widget _buildResults(ThemeData theme) {
+    final l10n = context.l10n;
     return Consumer(builder: (context, ref, _) {
       final results = ref.watch(placeSearchProvider(_query));
       return results.when(
         data: (list) {
           if (list.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('No places found — try a different search, '
-                  'or add the place manually.'),
+            return Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(l10n.itemDialogNoResults),
             );
           }
           return Container(
@@ -330,7 +348,7 @@ class _AddItineraryItemDialogState
         // Search unavailable (e.g. no Places key): steer to manual entry.
         error: (e, _) => Padding(
           padding: const EdgeInsets.all(12),
-          child: Text('Search unavailable — add the place manually below.',
+          child: Text(l10n.itemDialogSearchUnavailable,
               style: TextStyle(color: theme.colorScheme.error)),
         ),
       );

@@ -13,6 +13,8 @@ import 'package:travel_route_planner/providers/resumable_chats_provider.dart';
 import 'package:travel_route_planner/screens/home_screen.dart';
 import 'package:travel_route_planner/widgets/live_trip_card.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Home-screen slotting of the "Happening now" card (specs/happening-now):
 /// the live card takes the recent-trip slot, and the recent-trip tile only
 /// renders below it when it points at a *different* trip.
@@ -89,7 +91,8 @@ Future<void> _pumpHome(WidgetTester tester, Trip? liveTrip) async {
         // behind the home ContinueChatsSection.
         resumableChatsProvider.overrideWith((ref) async => const []),
       ],
-      child: const MaterialApp(home: HomeScreen()),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: HomeScreen()),
     ),
   );
   // Extra pumps flush the SharedPreferences read behind recentTripProvider.

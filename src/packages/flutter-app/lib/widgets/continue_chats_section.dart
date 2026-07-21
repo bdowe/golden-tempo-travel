@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../models/chat_session.dart';
 import '../models/plan_message.dart';
 import '../navigation/app_nav.dart';
@@ -31,7 +32,7 @@ class ContinueChatsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader(title: 'Continue where you left off'),
+        SectionHeader(title: context.l10n.continueChatsTitle),
         const SizedBox(height: AppSpacing.sm),
         for (final c in resumable) ContinueChatCard(chat: c),
         const SizedBox(height: AppSpacing.lg),
@@ -49,6 +50,7 @@ class ContinueChatCard extends ConsumerWidget {
 
   Future<void> _resume(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     try {
       final detail =
           await ref.read(chatsApiServiceProvider).getChat(chat.chatId);
@@ -74,18 +76,19 @@ class ContinueChatCard extends ConsumerWidget {
       ref.read(navIndexProvider.notifier).state = AppTab.plan.index;
     } catch (_) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not reopen that conversation.')),
+        SnackBar(content: Text(l10n.continueChatsReopenError)),
       );
     }
   }
 
   Future<void> _dismiss(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     try {
       await ref.read(chatsApiServiceProvider).dismissChat(chat.chatId);
     } catch (_) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not dismiss that conversation.')),
+        SnackBar(content: Text(l10n.continueChatsDismissError)),
       );
     }
     ref.invalidate(resumableChatsProvider);
@@ -123,7 +126,7 @@ class ContinueChatCard extends ConsumerWidget {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.close, size: 20),
-          tooltip: 'Dismiss',
+          tooltip: context.l10n.continueChatsDismiss,
           onPressed: () => _dismiss(context, ref),
         ),
         onTap: () => _resume(context, ref),

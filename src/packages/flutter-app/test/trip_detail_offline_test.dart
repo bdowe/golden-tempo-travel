@@ -16,6 +16,8 @@ import 'package:travel_route_planner/services/trip_cache.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/offline_banner.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// getTrip answers from a queue: a Trip resolves, anything else throws it.
 class _QueuedTripsApiService extends TripsApiService {
   final List<Object> responses;
@@ -79,7 +81,8 @@ Future<void> _pumpDetail(
         tripsApiServiceProvider.overrideWithValue(service),
         tripCacheProvider.overrideWithValue(cache),
       ],
-      child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
 }

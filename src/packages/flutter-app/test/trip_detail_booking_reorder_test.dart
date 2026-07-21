@@ -12,6 +12,8 @@ import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/booking_todo_card.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Returns a fixed trip without hitting the network, so we can exercise the
 /// real TripDetailScreen render path.
 class _FakeTripsApiService extends TripsApiService {
@@ -75,7 +77,8 @@ Future<_FakeBookingTodosApiService> _pumpTrip(WidgetTester tester, Trip trip,
         tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         bookingTodosApiServiceProvider.overrideWithValue(fake),
       ],
-      child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

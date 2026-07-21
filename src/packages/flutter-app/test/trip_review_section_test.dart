@@ -9,6 +9,8 @@ import 'package:travel_route_planner/providers/trip_review_provider.dart';
 import 'package:travel_route_planner/widgets/trip_review_section.dart';
 import 'package:travel_route_planner/widgets/empty_state.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// A fake that returns a fixed list and records the checkHours values it was
 /// asked for, so tests can assert the opt-in extra check re-fetches.
 class _FakeTripReviewApiService extends TripReviewApiService {
@@ -53,6 +55,7 @@ Future<_FakeTripReviewApiService> _pump(
         tripReviewApiServiceProvider.overrideWithValue(fake),
       ],
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: SingleChildScrollView(
             child: TripReviewSection(

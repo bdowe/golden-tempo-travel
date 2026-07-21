@@ -12,6 +12,8 @@ import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/providers/weather_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Weather in the itinerary (specs/weather-in-itinerary): a dated day renders a
 /// per-day weather chip under its day header; historical reports read "typical";
 /// an undated trip renders none. Dates are relative to now so the day headers
@@ -78,7 +80,8 @@ Future<void> _pump(
         weatherApiServiceProvider
             .overrideWithValue(_FakeWeatherApiService(report)),
       ],
-      child: const MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

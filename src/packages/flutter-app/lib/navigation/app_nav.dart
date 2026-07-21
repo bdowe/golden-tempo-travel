@@ -28,17 +28,17 @@ void pushOnActiveTab(WidgetRef ref, Widget page) {
   state?.push(MaterialPageRoute(builder: (_) => page));
 }
 
-/// One nav destination's display data. Shared so the shell's rail and bar render
-/// the exact same set, in lockstep.
+/// One nav destination's icons. Shared so the shell's rail and bar render the
+/// exact same set, in lockstep. Labels are NOT here: they are localized and
+/// resolved from [AppTab] in the shell (specs/i18n-spanish), so there is one
+/// source of truth rather than an English copy that silently drifts.
 class NavDestinationData {
   final IconData icon;
   final IconData selectedIcon;
-  final String label;
 
   const NavDestinationData({
     required this.icon,
     required this.selectedIcon,
-    required this.label,
   });
 }
 
@@ -48,17 +48,14 @@ const List<NavDestinationData> navDestinations = [
   NavDestinationData(
     icon: Icons.home_outlined,
     selectedIcon: Icons.home,
-    label: 'Home',
   ),
   NavDestinationData(
     icon: Icons.auto_awesome_outlined,
     selectedIcon: Icons.auto_awesome,
-    label: 'Plan',
   ),
   NavDestinationData(
     icon: Icons.luggage_outlined,
     selectedIcon: Icons.luggage,
-    label: 'Trips',
   ),
 ];
 

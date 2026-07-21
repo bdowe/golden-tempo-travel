@@ -12,6 +12,8 @@ import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/map_day_chips.dart';
 import 'package:travel_route_planner/widgets/trip_map.dart';
 
+import 'support/l10n_test_app.dart';
+
 class _FakeTripsApiService extends TripsApiService {
   final Trip trip;
   _FakeTripsApiService(this.trip) : super(ApiClient(baseUrl: 'http://test'));
@@ -78,7 +80,8 @@ void main() {
         overrides: [
           tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         ],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
       ),
     );
     await tester.pumpAndSettle();
