@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/trips_provider.dart';
 import '../utils/calendar_links.dart';
 import '../utils/share_link.dart';
@@ -77,7 +78,7 @@ class AddToCalendarButton extends ConsumerWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        showSnack(context, 'Could not export the event: $e');
+        showSnack(context, context.l10n.calendarExportFailed('$e'));
       }
     }
   }
@@ -86,26 +87,26 @@ class AddToCalendarButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.event_outlined, size: 18),
-      tooltip: 'Add to calendar',
+      tooltip: context.l10n.calendarAddTo,
       onSelected: (choice) => switch (choice) {
         'google' => _openGoogle(context),
         _ => _openApple(context, ref),
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'google',
           child: ListTile(
-            leading: Icon(Icons.event_outlined),
-            title: Text('Google Calendar'),
+            leading: const Icon(Icons.event_outlined),
+            title: Text(context.l10n.calendarGoogle),
             contentPadding: EdgeInsets.zero,
           ),
         ),
         PopupMenuItem(
           value: 'apple',
           enabled: appleEnabled,
-          child: const ListTile(
-            leading: Icon(Icons.event_available_outlined),
-            title: Text('Apple Calendar (.ics)'),
+          child: ListTile(
+            leading: const Icon(Icons.event_available_outlined),
+            title: Text(context.l10n.calendarApple),
             contentPadding: EdgeInsets.zero,
           ),
         ),

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../l10n/l10n.dart';
 import '../models/trip.dart';
 import '../models/itinerary_item.dart';
 import '../models/accommodation.dart';
@@ -67,6 +68,40 @@ import '../utils/snack.dart';
 /// A geographic coordinate used to resolve an itinerary place to its nearest
 /// bookable airport when the place name has no IATA match.
 typedef _Coord = ({double lat, double lng});
+
+/// Canonical group key for items whose locality can't be resolved. It keys the
+/// collapse/header registries and gates refine/events/local sections, so it is
+/// NEVER translated — only its display label is (specs/i18n-spanish).
+const _kOtherPlaces = 'Other places';
+
+/// Display text for a city-group label: the canonical [_kOtherPlaces] key gets
+/// a translated label, every real city keeps the name as-is.
+String _groupLabelText(AppLocalizations l10n, String label) =>
+    label == _kOtherPlaces ? l10n.tripOtherPlaces : label;
+
+// Canonical API values. These are sent to the server (or matched against
+// server data), so they are NEVER translated — only their display labels are.
+const _itemFilters = ['all', 'attraction', 'restaurant'];
+
+String _filterLabel(AppLocalizations l10n, String value) => switch (value) {
+      'all' => l10n.tripFilterAll,
+      'attraction' => l10n.tripFilterAttractions,
+      'restaurant' => l10n.tripFilterRestaurants,
+      _ => value,
+    };
+
+String _categoryLabel(AppLocalizations l10n, String value) => switch (value) {
+      'attraction' => l10n.tripCategoryAttraction,
+      'restaurant' => l10n.tripCategoryRestaurant,
+      _ => value,
+    };
+
+String _timeOfDayLabel(AppLocalizations l10n, String value) => switch (value) {
+      'morning' => l10n.tripTimeMorning,
+      'afternoon' => l10n.tripTimeAfternoon,
+      'evening' => l10n.tripTimeEvening,
+      _ => value,
+    };
 
 class TripDetailScreen extends ConsumerStatefulWidget {
   final String tripId;
@@ -387,7 +422,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// icons) without touching their widget subtrees.
   bool _guardOffline() {
     if (!_isOffline) return false;
-    _showSnack("You're offline — reconnect to make changes.");
+    _showSnack(context.l10n.tripOfflineGuard);
     return true;
   }
 
@@ -630,22 +665,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
-  static String _travelModeLabel(String? mode) {
+  static String _travelModeLabel(AppLocalizations l10n, String? mode) {
     switch (mode) {
       case 'car':
-        return 'Driving';
+        return l10n.tripTravelModeDriving;
       case 'train':
-        return 'By train';
+        return l10n.tripTravelModeByTrain;
       case 'bus':
-        return 'By bus';
+        return l10n.tripTravelModeByBus;
       case 'ferry':
-        return 'By ferry';
+        return l10n.tripTravelModeByFerry;
       case 'mixed':
-        return 'Mixed modes';
+        return l10n.tripTravelModeMixed;
       case 'flight':
-        return 'Flying';
+        return l10n.tripTravelModeFlying;
       default:
-        return 'Travel mode';
+        return l10n.tripTravelModeUnset;
     }
   }
 
@@ -983,6 +1018,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   Future<void> _setBooked(BookingTodo todo, bool booked) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final prev = _bookingTodos;
     setState(() {
       _bookingTodos = [
@@ -996,7 +1032,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .setBooked(widget.tripId, todo.id, booked);
     } catch (e) {
       if (mounted) setState(() => _bookingTodos = prev);
-      _showSnack('Update failed: $e');
+      _showSnack(l10n.tripUpdateFailed('$e'));
     }
   }
 
@@ -1007,6 +1043,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Future<void> _reorderResidual(
       List<BookingTodo> residual, int oldIndex, int newIndex) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     if (newIndex > oldIndex) newIndex--;
     if (newIndex == oldIndex) return;
     final newOrder = List.of(residual);
@@ -1026,7 +1063,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .reorderTodos(widget.tripId, [for (final t in newOrder) t.id]);
     } catch (e) {
       if (mounted) setState(() => _bookingTodos = prev);
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
     }
   }
 
@@ -1035,6 +1072,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// render embedded inside their city groups instead. Only called with a
   /// non-empty [residual] — the section hides the sub-group otherwise.
   Widget _residualBookingsList(List<BookingTodo> residual, ThemeData theme) {
+    final l10n = context.l10n;
     return ReorderableListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1053,8 +1091,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             todo: todo,
             onBookedChanged: (v) => _setBooked(todo, v),
             onOpen: _openCallbackFor(todo),
-            openLabelOverride:
-                _flightLegs.containsKey(todo.todoKey) ? 'Find flights' : null,
+            openLabelOverride: _flightLegs.containsKey(todo.todoKey)
+                ? l10n.tripFindFlights
+                : null,
             onEdit: todo.auto ? null : () => _editTodo(todo),
             onDelete: todo.auto ? null : () => _deleteTodo(todo),
             dragHandle: canDrag
@@ -1077,6 +1116,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// rewrites positions, so the order set here sticks across reloads.
   Future<void> _reorderStays(int oldIndex, int newIndex) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     if (newIndex > oldIndex) newIndex--;
     if (newIndex == oldIndex) return;
     final prev = _stays;
@@ -1089,13 +1129,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           stayIds: [for (final a in newOrder) a.id]);
     } catch (e) {
       if (mounted) setState(() => _stays = prev);
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
     }
   }
 
   /// Mirror of [_reorderStays] for the transport-segments list.
   Future<void> _reorderSegments(int oldIndex, int newIndex) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     if (newIndex > oldIndex) newIndex--;
     if (newIndex == oldIndex) return;
     final prev = _segments;
@@ -1108,12 +1149,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           segmentIds: [for (final s in newOrder) s.id]);
     } catch (e) {
       if (mounted) setState(() => _segments = prev);
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
     }
   }
 
   Future<void> _deleteTodo(BookingTodo todo) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       await ref
           .read(bookingTodosApiServiceProvider)
@@ -1123,7 +1165,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             _bookingTodos.where((t) => t.id != todo.id).toList());
       }
     } catch (e) {
-      _showSnack('Delete failed: $e');
+      _showSnack(l10n.tripDeleteFailed('$e'));
     }
   }
 
@@ -1169,6 +1211,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       String? status,
       String? travelMode}) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       final updated = await ref.read(tripsApiServiceProvider).patchTrip(
             widget.tripId,
@@ -1187,25 +1230,26 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         await _syncBookingDrafts(updated);
       }
     } catch (e) {
-      _showSnack('Update failed: $e');
+      _showSnack(l10n.tripUpdateFailed('$e'));
     }
   }
 
   Future<void> _editTitle() async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final controller = TextEditingController(text: _trip?.title ?? '');
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit title'),
+        title: Text(l10n.tripEditTitle),
         content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(l10n.commonSave),
           ),
         ],
       ),
@@ -1238,17 +1282,18 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     // Owners and editor co-planners refine; viewer-role members are
     // read-only. Buttons are hidden, this is the belt-and-braces guard.
     if (!trip.canEdit) return;
+    final l10n = context.l10n;
     final items = trip.items ?? [];
     if (items.isEmpty) {
-      _showSnack('Add some places before refining with AI.');
+      _showSnack(l10n.tripAddPlacesBeforeRefine);
       return;
     }
     ref
         .read(tripRefineProvider(widget.tripId).notifier)
         .beginSectionRefinement(_buildSectionSeed(trip, target),
             displayLabel: target.assistant
-                ? 'Trip assistant'
-                : 'Refining ${target.label}');
+                ? l10n.tripAssistantLabel
+                : l10n.tripRefiningSection(target.label));
     setState(() {
       _panelOpen = true;
       _refineTarget = target;
@@ -1355,20 +1400,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   Future<void> _delete() async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete trip?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l10n.tripDeleteTitle),
+        content: Text(l10n.tripDeleteBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -1381,7 +1427,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             .clearIfMatches(widget.tripId);
         if (mounted) Navigator.of(context).pop();
       } catch (e) {
-        _showSnack('Delete failed: $e');
+        _showSnack(l10n.tripDeleteFailed('$e'));
       }
     }
   }
@@ -1393,20 +1439,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Drops this shared trip from the member's own list (the owner's trip is
   /// untouched). Editors and viewer follows alike.
   Future<void> _leaveTrip() async {
+    final l10n = context.l10n;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove from my trips?'),
-        content: const Text(
-            "You'll lose access until you're invited again. The trip itself "
-            'is not deleted.'),
+        title: Text(l10n.tripLeaveTitle),
+        content: Text(l10n.tripLeaveBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remove'),
+            child: Text(l10n.tripRemove),
           ),
         ],
       ),
@@ -1417,12 +1462,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       ref.invalidate(sharedWithMeProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      _showSnack('Could not remove trip: $e');
+      _showSnack(l10n.tripLeaveFailed('$e'));
     }
   }
 
   Future<void> _addStay() async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -1435,19 +1481,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .add(widget.tripId, body);
       await _load();
     } catch (e) {
-      _showSnack('Could not add stay: $e');
+      _showSnack(l10n.tripAddStayFailed('$e'));
     }
   }
 
   Future<void> _deleteStay(Accommodation a) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       await ref
           .read(accommodationsApiServiceProvider)
           .delete(widget.tripId, a.id);
       await _load();
     } catch (e) {
-      _showSnack('Could not remove stay: $e');
+      _showSnack(l10n.tripRemoveStayFailed('$e'));
     }
   }
 
@@ -1455,6 +1502,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// confirms it if it was a Suggested draft.
   Future<void> _editStay(Accommodation a) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -1467,7 +1515,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .update(widget.tripId, a.id, body);
       await _load();
     } catch (e) {
-      _showSnack('Could not update stay: $e');
+      _showSnack(l10n.tripUpdateStayFailed('$e'));
     }
   }
 
@@ -1475,6 +1523,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// _setBooked: swap the row in _stays, PATCH {booked}, roll back on error.
   Future<void> _setStayBooked(Accommodation a, bool booked) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final prev = _stays;
     setState(() {
       _stays = [
@@ -1488,25 +1537,27 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .update(widget.tripId, a.id, {'booked': booked});
     } catch (e) {
       if (mounted) setState(() => _stays = prev);
-      _showSnack('Update failed: $e');
+      _showSnack(l10n.tripUpdateFailed('$e'));
     }
   }
 
   /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
   Future<void> _confirmStay(Accommodation a) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       await ref
           .read(accommodationsApiServiceProvider)
           .update(widget.tripId, a.id, const {});
       await _load();
     } catch (e) {
-      _showSnack('Could not keep stay: $e');
+      _showSnack(l10n.tripKeepStayFailed('$e'));
     }
   }
 
   Future<void> _addSegment() async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     // A stated travel mode prefills the form ('mixed' doesn't pick a side).
     final tm = _trip?.travelMode;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
@@ -1521,19 +1572,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .addSegment(widget.tripId, body);
       await _load();
     } catch (e) {
-      _showSnack('Could not add transport: $e');
+      _showSnack(l10n.tripAddTransportFailed('$e'));
     }
   }
 
   Future<void> _deleteSegment(TripSegment s) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       await ref
           .read(transportApiServiceProvider)
           .deleteSegment(widget.tripId, s.id);
       await _load();
     } catch (e) {
-      _showSnack('Could not remove transport: $e');
+      _showSnack(l10n.tripRemoveTransportFailed('$e'));
     }
   }
 
@@ -1541,6 +1593,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// confirms it if it was a Suggested draft.
   Future<void> _editSegment(TripSegment s) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -1553,13 +1606,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .updateSegment(widget.tripId, s.id, body);
       await _load();
     } catch (e) {
-      _showSnack('Could not update transport: $e');
+      _showSnack(l10n.tripUpdateTransportFailed('$e'));
     }
   }
 
   /// Mirror of [_setStayBooked] for the transport-segments list.
   Future<void> _setSegmentBooked(TripSegment seg, bool booked) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final prev = _segments;
     setState(() {
       _segments = [
@@ -1573,20 +1627,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .updateSegment(widget.tripId, seg.id, {'booked': booked});
     } catch (e) {
       if (mounted) setState(() => _segments = prev);
-      _showSnack('Update failed: $e');
+      _showSnack(l10n.tripUpdateFailed('$e'));
     }
   }
 
   /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
   Future<void> _confirmSegment(TripSegment s) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     try {
       await ref
           .read(transportApiServiceProvider)
           .updateSegment(widget.tripId, s.id, const {});
       await _load();
     } catch (e) {
-      _showSnack('Could not keep transport: $e');
+      _showSnack(l10n.tripKeepTransportFailed('$e'));
     }
   }
 
@@ -1615,6 +1670,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Future<void> _shareLink() async {
     final trip = _trip;
     if (trip == null) return;
+    final l10n = context.l10n;
     try {
       final token = await ref
           .read(tripsApiServiceProvider)
@@ -1624,11 +1680,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         context,
         url: shareUrl(token),
         message: _shareMessage(trip),
-        snackOnCopy: 'Share link copied to clipboard',
+        snackOnCopy: l10n.tripShareLinkCopied,
         sharePositionOrigin: _shareAnchorRect(),
       );
     } catch (e) {
-      _showSnack('Could not create share link: $e');
+      _showSnack(l10n.tripShareLinkFailed('$e'));
     }
   }
 
@@ -1643,6 +1699,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   Future<void> _openExport({required bool print}) async {
     if (_trip == null || _isOffline) return;
+    final l10n = context.l10n;
     try {
       final service = ref.read(tripsApiServiceProvider);
       final token = await service.mintExportToken(widget.tripId);
@@ -1659,8 +1716,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       );
     } catch (e) {
       _showSnack(print
-          ? 'Could not open the printable view: $e'
-          : 'Could not export the calendar: $e');
+          ? l10n.tripPrintExportFailed('$e')
+          : l10n.tripCalendarExportFailed('$e'));
     }
   }
 
@@ -1672,7 +1729,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     return [
       if (tod != null && tod.isNotEmpty)
         tod[0].toUpperCase() + tod.substring(1),
-      if (rec != null && rec.isNotEmpty) 'Recommended by $rec',
+      if (rec != null && rec.isNotEmpty) context.l10n.tripRecommendedBy(rec),
     ].join(' · ');
   }
 
@@ -1701,6 +1758,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Calendar path). Needs the network, like _openExport.
   Future<void> _addItemToAppleCalendar(ItineraryItem item) async {
     if (_isOffline) return;
+    final l10n = context.l10n;
     try {
       final service = ref.read(tripsApiServiceProvider);
       final token = await service.mintExportToken(widget.tripId);
@@ -1716,17 +1774,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         kind: 'item',
       );
     } catch (e) {
-      _showSnack('Could not export the event: $e');
+      _showSnack(l10n.tripEventExportFailed('$e'));
     }
   }
 
   Future<void> _revokeLink() async {
+    final l10n = context.l10n;
     try {
       await ref.read(tripsApiServiceProvider).revokeShareLink(widget.tripId);
-      _showSnack(
-          'Sharing turned off — links no longer work (existing co-planners and followers keep access)');
+      _showSnack(l10n.tripSharingTurnedOff);
     } catch (e) {
-      _showSnack('Could not turn off sharing: $e');
+      _showSnack(l10n.tripSharingOffFailed('$e'));
     }
   }
 
@@ -1735,6 +1793,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Future<void> _inviteCoPlanner() async {
     final trip = _trip;
     if (trip == null) return;
+    final l10n = context.l10n;
     try {
       final token = await ref
           .read(tripsApiServiceProvider)
@@ -1743,23 +1802,24 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       await shareOrCopyLink(
         context,
         url: shareUrl(token),
-        message: 'Co-plan with me: ${_shareMessage(trip)}',
-        snackOnCopy: 'Co-planner invite copied — anyone with it can edit',
+        message: l10n.tripCoPlanInviteMessage(_shareMessage(trip)),
+        snackOnCopy: l10n.tripInviteCopied,
         sharePositionOrigin: _shareAnchorRect(),
       );
     } catch (e) {
-      _showSnack('Could not create invite: $e');
+      _showSnack(l10n.tripInviteFailed('$e'));
     }
   }
 
   /// Owner-only sheet listing active co-planners with per-person removal.
   Future<void> _manageCoPlanners() async {
+    final l10n = context.l10n;
     await showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => _CoPlannersSheet(
         tripId: widget.tripId,
-        onRemoved: () => _showSnack('Co-planner removed'),
-        onInvited: (email) => _showSnack('Invite sent to $email'),
+        onRemoved: () => _showSnack(l10n.tripCoPlannerRemoved),
+        onInvited: (email) => _showSnack(l10n.tripInviteSent(email)),
       ),
     );
   }
@@ -1795,6 +1855,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Builds "City" / "City & City" / "City & City +N more", with the trip's date
   /// range appended when available. Falls back to the (truncated) stored title.
   String _computedTitle(Trip t) {
+    final l10n = context.l10n;
     final cities = <String>[];
     for (final it in t.items ?? const <ItineraryItem>[]) {
       final c = _hubOf(it);
@@ -1805,11 +1866,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       final firstLine = t.title.split('\n').first.trim();
       label = firstLine.length > 40
           ? '${firstLine.substring(0, 40).trim()}…'
-          : (firstLine.isEmpty ? 'Trip' : firstLine);
-    } else if (cities.length <= 2) {
-      label = cities.join(' & ');
+          : (firstLine.isEmpty ? l10n.tripTitleFallback : firstLine);
+    } else if (cities.length == 1) {
+      label = cities.first;
+    } else if (cities.length == 2) {
+      label = l10n.citiesTwo(cities[0], cities[1]);
     } else {
-      label = '${cities.take(2).join(' & ')} +${cities.length - 2} more';
+      label = l10n.citiesMore(cities[0], cities[1], cities.length - 2);
     }
     final start = DateTime.tryParse(t.startDate ?? '');
     final end = DateTime.tryParse(t.endDate ?? '');
@@ -1875,7 +1938,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         current = [];
         currentKey = locality;
         groups.add((
-          label: locality ?? 'Other places',
+          label: locality ?? _kOtherPlaces,
           dateRange: locationDates[item.position],
           items: current,
         ));
@@ -1902,7 +1965,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     // (and forever on failure), so nothing renders and the pinned-scroll math
     // is untouched. 'Other places' has no real city to geocode.
     WeatherReport? weatherReport;
-    if (cityKey != 'Other places' &&
+    if (cityKey != _kOtherPlaces &&
         range?.start != null &&
         range?.end != null) {
       weatherReport = ref
@@ -1951,7 +2014,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     _openRefine(
                         trip,
                         RefineTarget.day(day,
-                            city: cityKey == 'Other places' ? null : cityKey));
+                            city: cityKey == _kOtherPlaces ? null : cityKey));
                   }
                 : null,
             headerKey: _dayHeaderKeys.putIfAbsent(dayKey, GlobalKey.new),
@@ -2008,6 +2071,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       Trip trip,
       ({String label, String? dateRange, List<ItineraryItem> items}) group,
       ThemeData theme) {
+    final l10n = context.l10n;
     final cityCollapsed = _collapsedCities.contains(group.label);
     return Material(
       color: theme.scaffoldBackgroundColor,
@@ -2031,7 +2095,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      group.label,
+                      _groupLabelText(l10n, group.label),
                       style: theme.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
@@ -2048,12 +2112,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   ],
                   // 'Other places' has no hub the section tool can target;
                   // refine also needs the network.
-                  if (group.label != 'Other places' &&
+                  if (group.label != _kOtherPlaces &&
                       trip.canEdit &&
                       !_isOffline)
                     IconButton(
                       icon: const Icon(Icons.auto_awesome, size: 16),
-                      tooltip: 'Refine ${group.label}',
+                      tooltip: l10n.tripRefineCity(group.label),
                       visualDensity: VisualDensity.compact,
                       color: theme.colorScheme.primary,
                       onPressed: () =>
@@ -2080,7 +2144,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// from real locals. Renders nothing when there is no coverage for the city
   /// (empty list) or on error, so it never shows a broken/empty section.
   Widget _localIntelSliver(String label, ThemeData theme) {
-    if (label == 'Other places') {
+    if (label == _kOtherPlaces) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     return SliverToBoxAdapter(
@@ -2101,7 +2165,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   Icon(Icons.verified, size: 16, color: AppColors.toolLocal),
                   const SizedBox(width: 6),
                   Text(
-                    'Local intel',
+                    context.l10n.tripLocalIntel,
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: AppColors.toolLocal,
@@ -2152,7 +2216,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Local guide: ${guide.title}',
+                      context.l10n.tripLocalGuideTitle(guide.title),
                       style: theme.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w600),
                       maxLines: 2,
@@ -2161,7 +2225,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     if (guide.sourceName.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'By ${guide.sourceName}',
+                        context.l10n.tripGuideBy(guide.sourceName),
                         style: theme.textTheme.bodySmall?.copyWith(
                             color: accent, fontWeight: FontWeight.w600),
                         maxLines: 1,
@@ -2190,7 +2254,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     ({DateTime? start, DateTime? end})? range,
     ThemeData theme,
   ) {
-    if (label == 'Other places' ||
+    if (label == _kOtherPlaces ||
         range?.start == null ||
         range?.end == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -2210,7 +2274,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               Icon(Icons.local_activity, size: 16, color: AppColors.toolEvents),
               const SizedBox(width: 6),
               Text(
-                'Events while you\'re here',
+                context.l10n.tripEventsWhileHere,
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppColors.toolEvents,
@@ -2230,7 +2294,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                Text('Finding events in $label…',
+                Text(context.l10n.tripFindingEvents(label),
                     style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant)),
               ],
@@ -2269,7 +2333,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       return SourceLinksCard(
         icon: Icons.local_activity,
         accent: AppColors.toolEvents,
-        title: 'Find events in ${query.city}',
+        title: context.l10n.tripFindEventsIn(query.city),
         links: links,
       );
     });
@@ -2304,6 +2368,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     ({BookingTodo? arrival, BookingTodo? stay, BookingTodo? departure}) slot, {
     required bool departureOnly,
   }) {
+    final l10n = context.l10n;
     final todos = departureOnly ? [slot.departure] : [slot.arrival, slot.stay];
     return [
       for (final todo in todos)
@@ -2313,9 +2378,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             onBookedChanged: (v) => _setBooked(todo, v),
             onOpen: _openCallbackFor(todo),
             openLabelOverride: _ferryLegs.containsKey(todo.todoKey)
-                ? 'Find ferries'
+                ? l10n.tripFindFerries
                 : _flightLegs.containsKey(todo.todoKey)
-                    ? 'Find flights'
+                    ? l10n.tripFindFlights
                     : null,
           ),
     ];
@@ -2334,7 +2399,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     while (i < items.length) {
       final dt = items[i].dayTripFrom?.trim();
       if (dt != null && dt.isNotEmpty) {
-        final town = _cityOf(items[i]) ?? 'Day trip';
+        final town = _cityOf(items[i]) ?? context.l10n.tripDayTripFallback;
         slivers.add(_boxSliver([
           _dayTripSubHeader(town, theme, _dayTripTravelLabel(items[i])),
         ]));
@@ -2422,6 +2487,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Future<void> _reorderBatchInline(
       List<ItineraryItem> batch, int oldIndex, int newIndex) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final trip = _trip;
     final items = trip?.items;
     if (trip == null || items == null) return;
@@ -2442,7 +2508,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .reorderItineraryItems(trip.id, [for (final it in newItems) it.id]);
       await _load(silent: true);
     } catch (e) {
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
       await _load(silent: true);
     }
   }
@@ -2533,15 +2599,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (_hubOf(prev) != _hubOf(first)) return null;
     final timing = _travelByPos[prev.position];
     if (timing == null || timing.travelToNextMin <= 0) return null;
-    return '${_fmtTravel(timing.travelToNextMin)} from $hub';
+    return context.l10n
+        .tripTravelFromHub(_fmtTravel(timing.travelToNextMin), hub);
   }
 
   /// Formats a travel duration: "45 min", "1h", or "1h 20m".
   String _fmtTravel(int min) {
-    if (min < 60) return '$min min';
+    final l10n = context.l10n;
+    if (min < 60) return l10n.tripTravelMinutes(min);
     final h = min ~/ 60;
     final m = min % 60;
-    return m == 0 ? '${h}h' : '${h}h ${m}m';
+    return m == 0
+        ? l10n.tripTravelHours(h)
+        : l10n.tripTravelHoursMinutes(h, m);
   }
 
   /// Day section header: shows the calendar date (day N -> startDate + (N-1))
@@ -2560,9 +2630,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       VoidCallback? onRefine,
       {Key? headerKey,
       bool isToday = false}) {
+    final l10n = context.l10n;
     final label = tripStart != null
         ? _fmtDayHeader(tripStart.add(Duration(days: day - 1)))
-        : 'Day $day';
+        : l10n.tripDayN(day);
     final muted = theme.colorScheme.onSurfaceVariant;
     return Material(
       key: headerKey,
@@ -2593,7 +2664,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     if (isToday) ...[
                       const SizedBox(width: 8),
                       StatusPill.custom(
-                        label: 'Today',
+                        label: l10n.tripToday,
                         background:
                             theme.colorScheme.primary.withValues(alpha: 0.15),
                         foreground: theme.colorScheme.primary,
@@ -2606,7 +2677,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 Icon(Icons.directions_car_outlined, size: 14, color: muted),
                 const SizedBox(width: 4),
                 Text(
-                  '${_fmtTravel(travelMin)} travel',
+                  l10n.tripTravelTotal(_fmtTravel(travelMin)),
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
                 const SizedBox(width: 8),
@@ -2614,7 +2685,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               if (onRefine != null)
                 IconButton(
                   icon: const Icon(Icons.auto_awesome, size: 16),
-                  tooltip: 'Refine this day',
+                  tooltip: l10n.tripRefineThisDay,
                   visualDensity: VisualDensity.compact,
                   color: theme.colorScheme.primary,
                   onPressed: onRefine,
@@ -2645,7 +2716,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (!historical &&
         day.precipProbability != null &&
         day.precipProbability! >= 20) {
-      parts.add('${day.precipProbability}% rain');
+      parts.add(context.l10n.tripRainChance(day.precipProbability!));
     }
     return Padding(
       // Matches the Tonight caption indent (20 left, 6 top) so the chip reads
@@ -2667,7 +2738,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                'typical for these dates',
+                context.l10n.tripTypicalForDates,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -2717,7 +2788,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              'Tonight: ${names.join(', ')}',
+              context.l10n.tripTonight(names.join(', ')),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall
@@ -2739,7 +2810,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Day trip · $town',
+                context.l10n.tripDayTripTo(town),
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.secondary,
                   fontWeight: FontWeight.w600,
@@ -2794,7 +2865,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              'Recommended by ${item.localSourceName}',
+                              context.l10n
+                                  .tripRecommendedBy(item.localSourceName!),
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: AppColors.toolLocal,
                                 fontWeight: FontWeight.w600,
@@ -2815,7 +2887,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 _TimeOfDayChip(timeOfDay: item.timeOfDay!),
               IconButton(
                 icon: const Icon(Icons.map_outlined),
-                tooltip: 'Open in Google Maps',
+                tooltip: context.l10n.tripOpenInGoogleMaps,
                 onPressed: () => _launch(_mapsUrl(item)),
               ),
               if (!_readOnly) _itemMenu(item),
@@ -2835,12 +2907,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// day + hub + day-trip batch, so an item can never silently jump across a
   /// section boundary — cross-day moves go through the edit sheet instead.
   Widget _itemMenu(ItineraryItem item) {
+    final l10n = context.l10n;
     final canUp = _moveNeighbor(item, -1) != null;
     final canDown = _moveNeighbor(item, 1) != null;
     final calendarRange = itemCalendarRange(_trip?.startDate, item.day);
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
-      tooltip: 'Place actions',
+      tooltip: l10n.tripPlaceActions,
       onSelected: (action) {
         switch (action) {
           case 'edit':
@@ -2860,65 +2933,65 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'edit',
           child: ListTile(
-            leading: Icon(Icons.edit_outlined),
-            title: Text('Edit'),
+            leading: const Icon(Icons.edit_outlined),
+            title: Text(l10n.tripEdit),
             contentPadding: EdgeInsets.zero,
           ),
         ),
         if (canUp)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'up',
             child: ListTile(
-              leading: Icon(Icons.arrow_upward),
-              title: Text('Move up'),
+              leading: const Icon(Icons.arrow_upward),
+              title: Text(l10n.tripMoveUp),
               contentPadding: EdgeInsets.zero,
             ),
           ),
         if (canDown)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'down',
             child: ListTile(
-              leading: Icon(Icons.arrow_downward),
-              title: Text('Move down'),
+              leading: const Icon(Icons.arrow_downward),
+              title: Text(l10n.tripMoveDown),
               contentPadding: EdgeInsets.zero,
             ),
           ),
         if (_sectionOf(item).length > 2)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'reorder',
             child: ListTile(
-              leading: Icon(Icons.drag_indicator),
-              title: Text('Reorder section'),
+              leading: const Icon(Icons.drag_indicator),
+              title: Text(l10n.tripReorderSection),
               contentPadding: EdgeInsets.zero,
             ),
           ),
         if (calendarRange != null) ...[
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'gcal',
             child: ListTile(
-              leading: Icon(Icons.event_outlined),
-              title: Text('Add to Google Calendar'),
+              leading: const Icon(Icons.event_outlined),
+              title: Text(l10n.tripAddToGoogleCalendar),
               contentPadding: EdgeInsets.zero,
             ),
           ),
           PopupMenuItem(
             value: 'ics',
             enabled: !_isOffline,
-            child: const ListTile(
-              leading: Icon(Icons.event_available_outlined),
-              title: Text('Add to Apple Calendar (.ics)'),
+            child: ListTile(
+              leading: const Icon(Icons.event_available_outlined),
+              title: Text(l10n.tripAddToAppleCalendar),
               contentPadding: EdgeInsets.zero,
             ),
           ),
         ],
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'delete',
           child: ListTile(
-            leading: Icon(Icons.delete_outline),
-            title: Text('Remove'),
+            leading: const Icon(Icons.delete_outline),
+            title: Text(l10n.tripRemove),
             contentPadding: EdgeInsets.zero,
           ),
         ),
@@ -2964,6 +3037,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// same PUT /items/order path as Move up/down.
   Future<void> _reorderSection(ItineraryItem item) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final trip = _trip;
     if (trip == null) return;
     final section = _sectionOf(item);
@@ -2991,13 +3065,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .reorderItineraryItems(trip.id, ids);
       await _load();
     } catch (e) {
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
       await _load();
     }
   }
 
   Future<void> _moveItem(ItineraryItem item, int delta) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final trip = _trip;
     final other = _moveNeighbor(item, delta);
     if (trip == null || other == null) return;
@@ -3014,13 +3089,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .reorderItineraryItems(trip.id, ids);
       await _load();
     } catch (e) {
-      _showSnack('Could not reorder: $e');
+      _showSnack(l10n.tripReorderFailed('$e'));
       await _load();
     }
   }
 
   Future<void> _deleteItem(ItineraryItem item) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final trip = _trip;
     if (trip == null) return;
     try {
@@ -3028,16 +3104,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .read(tripsApiServiceProvider)
           .deleteItineraryItem(trip.id, item.id);
     } catch (e) {
-      _showSnack('Could not remove ${item.name}: $e');
+      _showSnack(l10n.tripRemoveItemFailed(item.name, '$e'));
       return;
     }
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Removed ${item.name}'),
+        content: Text(l10n.tripRemovedItem(item.name)),
         action: SnackBarAction(
-          label: 'Undo',
+          label: l10n.tripUndo,
           onPressed: () => _undoDelete(trip.id, item),
         ),
       ),
@@ -3047,6 +3123,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Undo = re-add through the normal add endpoint; the server slots the item
   /// back at the end of its day, which is close enough to where it was.
   Future<void> _undoDelete(String tripId, ItineraryItem item) async {
+    final l10n = context.l10n;
     final body = <String, dynamic>{
       'name': item.name,
       if (item.placeId != null) 'place_id': item.placeId,
@@ -3065,12 +3142,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       await ref.read(tripsApiServiceProvider).addItineraryItem(tripId, body);
       await _load();
     } catch (e) {
-      _showSnack('Could not restore ${item.name}: $e');
+      _showSnack(l10n.tripRestoreItemFailed(item.name, '$e'));
     }
   }
 
   Future<void> _editItem(ItineraryItem item) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final changes = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -3085,7 +3163,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .updateItineraryItem(trip.id, item.id, changes);
       await _load();
     } catch (e) {
-      _showSnack('Could not update ${item.name}: $e');
+      _showSnack(l10n.tripUpdateItemFailed(item.name, '$e'));
     }
   }
 
@@ -3098,6 +3176,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// re-reads (see [_afterFix]) so the resolved finding drops off.
   Future<void> _applyFix(TripFinding finding) async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final fix = finding.fix;
     if (fix == null) return;
     final tripId = widget.tripId;
@@ -3119,7 +3198,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               .add(tripId, body);
           await _afterFix();
         } catch (e) {
-          _showSnack('Could not add stay: $e');
+          _showSnack(l10n.tripAddStayFailed('$e'));
         }
         break;
       case 'add_transport':
@@ -3140,7 +3219,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               .addSegment(tripId, body);
           await _afterFix();
         } catch (e) {
-          _showSnack('Could not add transport: $e');
+          _showSnack(l10n.tripAddTransportFailed('$e'));
         }
         break;
       case 'move_item':
@@ -3155,16 +3234,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           await _afterFix();
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Moved to Day $targetDay'),
+            content: Text(l10n.tripMovedToDay(targetDay)),
             action: oldDay == null
                 ? null
                 : SnackBarAction(
-                    label: 'Undo',
+                    label: l10n.tripUndo,
                     onPressed: () => _moveItemToDay(itemId, oldDay),
                   ),
           ));
         } catch (e) {
-          _showSnack('Could not move item: $e');
+          _showSnack(l10n.tripMoveItemFailed('$e'));
         }
         break;
       case 'mark_booked':
@@ -3176,9 +3255,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           await _afterFix();
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Marked as booked'),
+            content: Text(l10n.tripMarkedAsBooked),
             action: SnackBarAction(
-              label: 'Undo',
+              label: l10n.tripUndo,
               onPressed: () async {
                 await _setEntityBooked(isAccommodation, itemId, false);
                 await _afterFix();
@@ -3186,7 +3265,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             ),
           ));
         } catch (e) {
-          _showSnack('Could not update booking: $e');
+          _showSnack(l10n.tripUpdateBookingFailed('$e'));
         }
         break;
       case 'add_packing':
@@ -3201,9 +3280,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           await _afterFix();
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Added "$title" to packing'),
+            content: Text(l10n.tripAddedToPacking(title)),
             action: SnackBarAction(
-              label: 'Undo',
+              label: l10n.tripUndo,
               onPressed: () async {
                 try {
                   await ref
@@ -3212,13 +3291,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   ref.invalidate(checklistProvider(tripId));
                   _invalidateReview();
                 } catch (e) {
-                  _showSnack('Could not undo: $e');
+                  _showSnack(l10n.tripUndoFailed('$e'));
                 }
               },
             ),
           ));
         } catch (e) {
-          _showSnack('Could not add packing item: $e');
+          _showSnack(l10n.tripAddPackingFailed('$e'));
         }
         break;
       case 'set_dates':
@@ -3255,13 +3334,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   }
 
   Future<void> _moveItemToDay(String itemId, int day) async {
+    final l10n = context.l10n;
     try {
       await ref
           .read(tripsApiServiceProvider)
           .updateItineraryItem(widget.tripId, itemId, {'day': day});
       await _afterFix();
     } catch (e) {
-      _showSnack('Could not move item: $e');
+      _showSnack(l10n.tripMoveItemFailed('$e'));
     }
   }
 
@@ -3282,11 +3362,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// budget provider/service; keeps the trip's existing currency.
   Future<void> _editBudgetTarget() async {
     if (_guardOffline()) return;
+    final l10n = context.l10n;
     final Budget budget;
     try {
       budget = await ref.read(budgetProvider(widget.tripId).future);
     } catch (e) {
-      _showSnack('Could not load budget: $e');
+      _showSnack(l10n.tripLoadBudgetFailed('$e'));
       return;
     }
     if (!mounted) return;
@@ -3299,20 +3380,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     final result = await showDialog<Map<String, double?>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Set budget target'),
+        title: Text(l10n.tripSetBudgetTarget),
         content: TextField(
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: 'Target ($currency)',
-            hintText: 'Leave blank to just track spending',
+            labelText: l10n.tripBudgetTargetLabel(currency),
+            hintText: l10n.tripBudgetTargetHint,
           ),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             onPressed: () {
               final raw = controller.text.trim();
@@ -3320,7 +3401,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               if (raw.isNotEmpty && (amount == null || amount < 0)) return;
               Navigator.of(ctx).pop(<String, double?>{'amount': amount});
             },
-            child: const Text('Save'),
+            child: Text(l10n.commonSave),
           ),
         ],
       ),
@@ -3335,7 +3416,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       ref.invalidate(budgetProvider(widget.tripId));
       await _afterFix();
     } catch (e) {
-      _showSnack('Could not update budget: $e');
+      _showSnack(l10n.tripUpdateBudgetFailed('$e'));
     }
   }
 
@@ -3440,7 +3521,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       final dayRange = _dayRangeFor(g, start);
       final a = auto[i];
       result.add((
-        label: locality ?? 'Other places',
+        label: locality ?? _kOtherPlaces,
         start: accRange?.start ?? dayRange?.start ?? a?.start,
         end: accRange?.end ?? dayRange?.end ?? a?.end,
         coord: _groupCoord(g),
@@ -3544,13 +3625,14 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   /// Coarse relative timestamp for the "Updated by X" line.
   String _relativeTime(String iso) {
+    final l10n = context.l10n;
     final t = DateTime.tryParse(iso);
-    if (t == null) return 'recently';
+    if (t == null) return l10n.tripTimeRecently;
     final d = DateTime.now().difference(t.toLocal());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago';
-    return '${d.inDays}d ago';
+    if (d.inMinutes < 1) return l10n.tripTimeJustNow;
+    if (d.inMinutes < 60) return l10n.tripTimeMinutesAgo(d.inMinutes);
+    if (d.inHours < 24) return l10n.tripTimeHoursAgo(d.inHours);
+    return l10n.tripTimeDaysAgo(d.inDays);
   }
 
   /// Day-header date, e.g. "Tue, Jul 15" (weekday + month + day).
@@ -3585,6 +3667,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// The trip's hero header: title (+ rename), date/status chips, a Refine
   /// button, and a collapsible overview.
   Widget _buildHeaderCard(Trip trip, ThemeData theme) {
+    final l10n = context.l10n;
     final overview = _overviewText(trip);
     final hasDates = trip.startDate != null && trip.endDate != null;
     return Card(
@@ -3609,7 +3692,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 if (trip.canEdit)
                   IconButton(
                     icon: const Icon(Icons.edit, size: 20),
-                    tooltip: 'Rename',
+                    tooltip: l10n.tripRename,
                     onPressed: _isOffline ? null : _editTitle,
                   ),
               ],
@@ -3624,18 +3707,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   avatar: const Icon(Icons.event, size: 16),
                   label: Text(hasDates
                       ? '${trip.startDate} → ${trip.endDate}'
-                      : 'Add dates'),
+                      : l10n.tripAddDates),
                   onPressed:
                       (_isOffline || !trip.canEdit) ? null : _editDates,
                 ),
                 if (trip.canEdit)
                   PopupMenuButton<String>(
-                    tooltip: 'Change status',
+                    tooltip: l10n.tripChangeStatus,
                     enabled: !_isOffline,
                     onSelected: (v) => _patch(status: v),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'draft', child: Text('Draft')),
-                      PopupMenuItem(value: 'planned', child: Text('Planned')),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                          value: 'draft', child: Text(l10n.tripStatusDraft)),
+                      PopupMenuItem(
+                          value: 'planned',
+                          child: Text(l10n.tripStatusPlanned)),
                     ],
                     child: StatusPill(
                       status: trip.status,
@@ -3646,22 +3732,30 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   StatusPill(status: trip.status),
                 if (trip.canEdit)
                   PopupMenuButton<String>(
-                    tooltip: 'Travel mode',
+                    tooltip: l10n.tripTravelModeTooltip,
                     enabled: !_isOffline,
                     onSelected: (v) => _patch(travelMode: v),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'flight', child: Text('Flying')),
-                      PopupMenuItem(value: 'car', child: Text('Driving')),
-                      PopupMenuItem(value: 'train', child: Text('Train')),
-                      PopupMenuItem(value: 'bus', child: Text('Bus')),
-                      PopupMenuItem(value: 'ferry', child: Text('Ferry')),
+                    itemBuilder: (_) => [
                       PopupMenuItem(
-                          value: 'mixed', child: Text('Mixed modes')),
+                          value: 'flight',
+                          child: Text(l10n.tripTravelModeFlying)),
+                      PopupMenuItem(
+                          value: 'car',
+                          child: Text(l10n.tripTravelModeDriving)),
+                      PopupMenuItem(
+                          value: 'train', child: Text(l10n.tripModeTrain)),
+                      PopupMenuItem(
+                          value: 'bus', child: Text(l10n.tripModeBus)),
+                      PopupMenuItem(
+                          value: 'ferry', child: Text(l10n.tripModeFerry)),
+                      PopupMenuItem(
+                          value: 'mixed',
+                          child: Text(l10n.tripTravelModeMixed)),
                     ],
                     child: Chip(
                       avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
                       label: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text(_travelModeLabel(trip.travelMode)),
+                        Text(_travelModeLabel(l10n, trip.travelMode)),
                         const Icon(Icons.arrow_drop_down, size: 18),
                       ]),
                     ),
@@ -3669,7 +3763,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 else if (trip.travelMode != null)
                   Chip(
                     avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
-                    label: Text(_travelModeLabel(trip.travelMode)),
+                    label: Text(_travelModeLabel(l10n, trip.travelMode)),
                   ),
               ],
             ),
@@ -3688,11 +3782,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     child: Text(
                       trip.canEdit
                           ? (trip.ownerName != null
-                              ? 'Co-planning with ${trip.ownerName} — your changes save for everyone.'
-                              : 'Co-planning a shared trip — your changes save for everyone.')
+                              ? l10n.tripCoPlanningWith(trip.ownerName!)
+                              : l10n.tripCoPlanningShared)
                           : (trip.ownerName != null
-                              ? 'Shared by ${trip.ownerName} — view only.'
-                              : 'Shared trip — view only.'),
+                              ? l10n.tripSharedBy(trip.ownerName!)
+                              : l10n.tripSharedViewOnly),
                       style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant),
                     ),
@@ -3710,7 +3804,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                       ? null
                       : () => _openRefine(trip, const RefineTarget.trip()),
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Refine with AI'),
+                  label: Text(l10n.tripRefineWithAI),
                 ),
               ),
             // "Updated by Maria · 2m ago" — only present when someone ELSE
@@ -3718,7 +3812,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             if (trip.updatedByName != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Updated by ${trip.updatedByName} · ${_relativeTime(trip.updatedAt)}',
+                l10n.tripUpdatedBy(
+                    trip.updatedByName!, _relativeTime(trip.updatedAt)),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -3726,7 +3821,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             if (overview != null) ...[
               const SizedBox(height: 16),
               Text(
-                'Overview',
+                l10n.tripOverview,
                 style: theme.textTheme.labelLarge
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
@@ -3751,7 +3846,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     ),
                     onPressed: () =>
                         setState(() => _overviewExpanded = !_overviewExpanded),
-                    child: Text(_overviewExpanded ? 'Show less' : 'Show more'),
+                    child: Text(_overviewExpanded
+                        ? l10n.tripShowLess
+                        : l10n.tripShowMore),
                   ),
                 ),
             ],
@@ -3764,6 +3861,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final trip = _trip;
 
     return Scaffold(
@@ -3776,13 +3874,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               !_isOffline &&
               (trip.items?.isNotEmpty ?? false))
           ? FloatingActionButton(
-              tooltip: 'Ask AI about this trip',
+              tooltip: l10n.tripAskAI,
               onPressed: () => _openChat(trip),
               child: const Icon(Icons.chat_bubble_outline),
             )
           : null,
       appBar: GradientAppBar(
-        title: Text(trip != null ? _displayTitle(trip) : 'Trip'),
+        title: Text(trip != null ? _displayTitle(trip) : l10n.tripTitleFallback),
         actions: [
           // Sharing and deletion are owner-only surfaces; editors see
           // neither. Both mutate, so they're hidden while offline-serving.
@@ -3790,7 +3888,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             PopupMenuButton<String>(
               key: _shareMenuKey,
               icon: const Icon(Icons.share_outlined),
-              tooltip: 'Share trip',
+              tooltip: l10n.tripShareTrip,
               onSelected: (v) => switch (v) {
                 'copy' => _shareLink(),
                 'invite' => _inviteCoPlanner(),
@@ -3803,29 +3901,29 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 PopupMenuItem(
                     value: 'copy',
                     child: Text(shareUsesNativeSheet
-                        ? 'Share link…'
-                        : 'Copy share link')),
+                        ? l10n.tripShareLinkAction
+                        : l10n.tripCopyShareLink)),
                 PopupMenuItem(
                     value: 'invite',
                     child: Text(shareUsesNativeSheet
-                        ? 'Share co-planner invite…'
-                        : 'Copy invite link (can edit)')),
-                const PopupMenuItem(
-                    value: 'manage', child: Text('Manage access')),
+                        ? l10n.tripShareInviteAction
+                        : l10n.tripCopyInviteLink)),
+                PopupMenuItem(
+                    value: 'manage', child: Text(l10n.tripManageAccess)),
                 const PopupMenuDivider(),
-                const PopupMenuItem(
-                    value: 'print', child: Text('Print / Save as PDF')),
-                const PopupMenuItem(
-                    value: 'calendar', child: Text('Add to calendar')),
+                PopupMenuItem(
+                    value: 'print', child: Text(l10n.tripPrintSavePdf)),
+                PopupMenuItem(
+                    value: 'calendar', child: Text(l10n.tripAddToCalendar)),
                 const PopupMenuDivider(),
-                const PopupMenuItem(
-                    value: 'revoke', child: Text('Turn off sharing')),
+                PopupMenuItem(
+                    value: 'revoke', child: Text(l10n.tripTurnOffSharing)),
               ],
             ),
           if (trip != null && trip.isOwner && !_isOffline)
             IconButton(
               icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete trip',
+              tooltip: l10n.tripDeleteTrip,
               onPressed: _delete,
             ),
           // Members (editors and viewer follows) can drop the trip from
@@ -3833,7 +3931,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           if (trip != null && !trip.isOwner && !_isOffline)
             IconButton(
               icon: const Icon(Icons.bookmark_remove_outlined),
-              tooltip: 'Remove from my trips',
+              tooltip: l10n.tripRemoveFromMyTrips,
               onPressed: _leaveTrip,
             ),
         ],
@@ -3845,10 +3943,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Could not load this trip'),
+                      Text(l10n.tripLoadFailed),
                       const SizedBox(height: 8),
                       FilledButton(
-                          onPressed: _load, child: const Text('Retry')),
+                          onPressed: _load, child: Text(l10n.commonRetry)),
                     ],
                   ),
                 )
@@ -3986,13 +4084,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                               ? MapDayChips.mapTopInset
                                               : 0,
                                           emptyLabel: _selectedDay == null
-                                              ? 'No mapped places'
-                                              : 'No places pinned on '
-                                                  'Day $_selectedDay',
+                                              ? l10n.tripNoMappedPlaces
+                                              : l10n.tripNoPlacesOnDay(
+                                                  _selectedDay!),
                                           emptyMessage: _isOffline
                                               ? null
-                                              : 'Add a place to see it '
-                                                  'on the map.',
+                                              : l10n.tripAddPlaceMapHint,
                                           emptyAction: (_isOffline ||
                                                   _readOnly)
                                               ? null
@@ -4002,7 +4099,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                                   icon: const Icon(Icons.add,
                                                       size: 18),
                                                   label:
-                                                      const Text('Add place'),
+                                                      Text(l10n.tripAddPlace),
                                                 ),
                                           onPinTap: (pos) {
                                             setState(
@@ -4060,7 +4157,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                       child: Row(
                                         children: [
                                           Expanded(
-                                            child: Text('Itinerary',
+                                            child: Text(l10n.tripItinerary,
                                                 style: theme
                                                     .textTheme.titleMedium),
                                           ),
@@ -4070,7 +4167,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                                   size: 16,
                                                   color: theme
                                                       .colorScheme.primary),
-                                              label: const Text('Today'),
+                                              label: Text(l10n.tripToday),
                                               visualDensity:
                                                   VisualDensity.compact,
                                               materialTapTargetSize:
@@ -4099,7 +4196,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                               ),
                                               icon: const Icon(Icons.add,
                                                   size: 18),
-                                              label: const Text('Add place'),
+                                              label: Text(l10n.tripAddPlace),
                                             ),
                                         ],
                                       ),
@@ -4110,16 +4207,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                       Wrap(
                                         spacing: 8,
                                         children: [
-                                          for (final f in const [
-                                            ('all', 'All'),
-                                            ('attraction', 'Attractions'),
-                                            ('restaurant', 'Restaurants'),
-                                          ])
+                                          for (final f in _itemFilters)
                                             ChoiceChip(
-                                              label: Text(f.$2),
-                                              selected: _itemFilter == f.$1,
+                                              label:
+                                                  Text(_filterLabel(l10n, f)),
+                                              selected: _itemFilter == f,
                                               onSelected: (_) => setState(
-                                                  () => _itemFilter = f.$1),
+                                                  () => _itemFilter = f),
                                             ),
                                         ],
                                       ),
@@ -4130,14 +4224,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                             ),
                           ),
                           if ((trip.items ?? []).isEmpty)
-                            const SliverToBoxAdapter(
+                            SliverToBoxAdapter(
                               child: SizedBox(
                                 height: 260,
                                 child: EmptyState(
                                   icon: Icons.place_outlined,
-                                  title: 'No places yet',
-                                  message:
-                                      'Refine with AI or add a place to start your itinerary.',
+                                  title: l10n.tripNoPlacesYet,
+                                  message: l10n.tripNoPlacesYetMessage,
                                 ),
                               ),
                             )
@@ -4451,7 +4544,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           todoKey: todo.todoKey,
           kind: todo.kind,
         );
-        if (!ok) _showSnack('Could not open link');
+        if (!ok) _showSnack(context.l10n.tripOpenLinkFailed);
       };
     }
     return null;
@@ -4463,6 +4556,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   Future<void> _openFerry(
       ({String origin, String destination, String? date}) leg,
       BookingTodo todo) async {
+    final l10n = context.l10n;
     try {
       final options = await ref.read(ferryApiServiceProvider).searchFerries(
             leg.origin,
@@ -4480,21 +4574,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           todoKey: todo.todoKey,
           kind: todo.kind,
         );
-        if (!ok) _showSnack('Could not open link');
+        if (!ok) _showSnack(l10n.tripOpenLinkFailed);
         return;
       }
     } catch (_) {
       // fall through to the generic failure snack
     }
-    _showSnack('Could not open ferry search');
+    _showSnack(l10n.tripFerrySearchFailed);
   }
 
   // Raw launcher for non-booking links only (the per-item "Open in Google
   // Maps" action) — booking handoffs must go through trackedLaunchUrl.
   Future<void> _launch(String url) async {
+    final l10n = context.l10n;
     final ok =
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (!ok) _showSnack('Could not open link');
+    if (!ok) _showSnack(l10n.tripOpenLinkFailed);
   }
 }
 
@@ -4581,8 +4676,9 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
   }
 
   Future<void> _save() async {
+    final l10n = context.l10n;
     if (_title.text.trim().isEmpty) {
-      setState(() => _error = 'Title is required');
+      setState(() => _error = l10n.tripTitleRequired);
       return;
     }
     setState(() {
@@ -4634,7 +4730,7 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
     } catch (e) {
       setState(() {
         _saving = false;
-        _error = 'Save failed: $e';
+        _error = l10n.tripSaveFailed('$e');
       });
     }
   }
@@ -4658,7 +4754,7 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
         if (value != null)
           IconButton(
             icon: const Icon(Icons.clear, size: 18),
-            tooltip: 'Clear date',
+            tooltip: context.l10n.tripClearDate,
             onPressed: () => setState(() =>
                 isDepart ? _departDate = null : _returnDate = null),
           ),
@@ -4668,52 +4764,59 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isTransport = _kind == 'transport';
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Add a booking' : 'Edit booking'),
+      title: Text(widget.existing == null
+          ? l10n.tripAddBooking
+          : l10n.tripEditBooking),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
               initialValue: _kind,
-              decoration: const InputDecoration(labelText: 'Type'),
-              items: const [
-                DropdownMenuItem(value: 'stay', child: Text('Stay')),
-                DropdownMenuItem(value: 'transport', child: Text('Transport')),
-                DropdownMenuItem(value: 'other', child: Text('Other')),
+              decoration: InputDecoration(labelText: l10n.tripFieldType),
+              items: [
+                DropdownMenuItem(
+                    value: 'stay', child: Text(l10n.tripKindStay)),
+                DropdownMenuItem(
+                    value: 'transport', child: Text(l10n.tripKindTransport)),
+                DropdownMenuItem(
+                    value: 'other', child: Text(l10n.tripKindOther)),
               ],
               onChanged: (v) => setState(() => _kind = v ?? 'stay'),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
                 controller: _title,
-                decoration: const InputDecoration(labelText: 'Title')),
+                decoration: InputDecoration(labelText: l10n.tripFieldTitle)),
             const SizedBox(height: AppSpacing.md),
             if (isTransport) ...[
               TextField(
                   controller: _origin,
                   decoration:
-                      const InputDecoration(labelText: 'Origin (optional)')),
+                      InputDecoration(labelText: l10n.tripFieldOrigin)),
               const SizedBox(height: AppSpacing.md),
             ],
             TextField(
                 controller: _destination,
                 decoration:
-                    const InputDecoration(labelText: 'Destination (optional)')),
+                    InputDecoration(labelText: l10n.tripFieldDestination)),
             const SizedBox(height: AppSpacing.md),
             _dateField(
-                isTransport ? 'Depart date (optional)' : 'Check-in (optional)',
+                isTransport
+                    ? l10n.tripFieldDepartDate
+                    : l10n.tripFieldCheckIn,
                 true),
             if (!isTransport) ...[
               const SizedBox(height: AppSpacing.sm),
-              _dateField('Check-out (optional)', false),
+              _dateField(l10n.tripFieldCheckOut, false),
             ],
             const SizedBox(height: AppSpacing.md),
             TextField(
                 controller: _url,
-                decoration: const InputDecoration(
-                    labelText: 'Link (optional, overrides search)')),
+                decoration: InputDecoration(labelText: l10n.tripFieldLink)),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(_error!,
@@ -4725,7 +4828,7 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel')),
+            child: Text(l10n.commonCancel)),
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
@@ -4733,7 +4836,7 @@ class _AddBookingTodoDialogState extends ConsumerState<_AddBookingTodoDialog> {
                   height: 18,
                   width: 18,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Save'),
+              : Text(l10n.commonSave),
         ),
       ],
     );
@@ -4760,7 +4863,7 @@ class _FilterMissNotice extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'No places match this filter.',
+            context.l10n.tripFilterNoMatch,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -4779,12 +4882,13 @@ class _TimeOfDayChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, icon) = switch (timeOfDay) {
-      'morning' => ('Morning', Icons.wb_twilight),
-      'afternoon' => ('Afternoon', Icons.wb_sunny_outlined),
-      'evening' => ('Evening', Icons.nightlight_outlined),
-      _ => (timeOfDay, Icons.schedule),
+    final icon = switch (timeOfDay) {
+      'morning' => Icons.wb_twilight,
+      'afternoon' => Icons.wb_sunny_outlined,
+      'evening' => Icons.nightlight_outlined,
+      _ => Icons.schedule,
     };
+    final label = _timeOfDayLabel(context.l10n, timeOfDay);
     final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -4911,6 +5015,7 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.lg,
@@ -4922,13 +5027,13 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Edit place', style: theme.textTheme.titleMedium),
+          Text(l10n.tripEditPlace, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _name,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.tripFieldName,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -4937,9 +5042,9 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
               Expanded(
                 child: TextField(
                   controller: _city,
-                  decoration: const InputDecoration(
-                    labelText: 'City',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.tripFieldCity,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ),
@@ -4949,9 +5054,9 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
                 child: TextField(
                   controller: _day,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Day',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.tripFieldDay,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ),
@@ -4961,15 +5066,12 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
           Wrap(
             spacing: 8,
             children: [
-              for (final c in const [
-                ('attraction', 'Attraction'),
-                ('restaurant', 'Restaurant'),
-              ])
+              for (final c in const ['attraction', 'restaurant'])
                 ChoiceChip(
-                  label: Text(c.$2),
-                  selected: _category == c.$1,
+                  label: Text(_categoryLabel(l10n, c)),
+                  selected: _category == c,
                   onSelected: (sel) =>
-                      setState(() => _category = sel ? c.$1 : _category),
+                      setState(() => _category = sel ? c : _category),
                 ),
             ],
           ),
@@ -4977,16 +5079,12 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
           Wrap(
             spacing: 8,
             children: [
-              for (final t in const [
-                ('morning', 'Morning'),
-                ('afternoon', 'Afternoon'),
-                ('evening', 'Evening'),
-              ])
+              for (final t in const ['morning', 'afternoon', 'evening'])
                 ChoiceChip(
-                  label: Text(t.$2),
-                  selected: _timeOfDay == t.$1,
+                  label: Text(_timeOfDayLabel(l10n, t)),
+                  selected: _timeOfDay == t,
                   onSelected: (sel) =>
-                      setState(() => _timeOfDay = sel ? t.$1 : _timeOfDay),
+                      setState(() => _timeOfDay = sel ? t : _timeOfDay),
                 ),
             ],
           ),
@@ -4996,10 +5094,10 @@ class _EditItineraryItemSheetState extends State<_EditItineraryItemSheet> {
             children: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               const SizedBox(width: AppSpacing.sm),
-              FilledButton(onPressed: _save, child: const Text('Save')),
+              FilledButton(onPressed: _save, child: Text(l10n.commonSave)),
             ],
           ),
         ],
@@ -5106,15 +5204,17 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
   }
 
   String _expiresIn(DateTime expiresAt) {
+    final l10n = context.l10n;
     final d = expiresAt.difference(DateTime.now());
-    if (d.inDays >= 1) return 'expires in ${d.inDays}d';
-    if (d.inHours >= 1) return 'expires in ${d.inHours}h';
-    return 'expires soon';
+    if (d.inDays >= 1) return l10n.tripExpiresInDays(d.inDays);
+    if (d.inHours >= 1) return l10n.tripExpiresInHours(d.inHours);
+    return l10n.tripExpiresSoon;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final collaborators = _collaborators;
     final invites = _invites;
     return SafeArea(
@@ -5130,7 +5230,7 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Manage access', style: theme.textTheme.titleMedium),
+            Text(l10n.tripManageAccess, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
             // Invite by email (specs/invite-by-email): the friend gets a
             // single-use link; they appear below once they accept.
@@ -5141,10 +5241,11 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    decoration: const InputDecoration(
-                      hintText: "Friend's email",
+                    decoration: InputDecoration(
+                      hintText: l10n.tripFriendEmail,
                       isDense: true,
-                      prefixIcon: Icon(Icons.alternate_email, size: 18),
+                      prefixIcon:
+                          const Icon(Icons.alternate_email, size: 18),
                     ),
                     onSubmitted: (_) => _sendInvite(),
                   ),
@@ -5157,7 +5258,7 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Invite'),
+                      : Text(l10n.tripInvite),
                 ),
               ],
             ),
@@ -5169,8 +5270,7 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
             else ...[
               if (collaborators.isEmpty && invites.isEmpty)
                 Text(
-                  'No co-planners yet. Invite a friend by email above, or '
-                  'copy an invite link from the share menu.',
+                  l10n.tripNoCoPlanners,
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -5187,17 +5287,19 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                       c.displayName.isNotEmpty ? c.displayName : c.email),
                   subtitle: Text([
                     if (c.displayName.isNotEmpty) c.email,
-                    c.role == 'viewer' ? 'Viewer' : 'Can edit',
+                    c.role == 'viewer'
+                        ? l10n.tripRoleViewer
+                        : l10n.tripRoleCanEdit,
                   ].join(' · ')),
                   trailing: IconButton(
                     icon: const Icon(Icons.person_remove_outlined),
-                    tooltip: 'Remove access',
+                    tooltip: l10n.tripRemoveAccess,
                     onPressed: () => _remove(c.userId),
                   ),
                 ),
               if (invites.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.sm),
-                Text('Pending invites',
+                Text(l10n.tripPendingInvites,
                     style: theme.textTheme.labelLarge
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                 for (final inv in invites)
@@ -5206,10 +5308,11 @@ class _CoPlannersSheetState extends ConsumerState<_CoPlannersSheet> {
                     leading: const CircleAvatar(
                         child: Icon(Icons.mail_outline, size: 18)),
                     title: Text(inv.email),
-                    subtitle: Text('Invited — ${_expiresIn(inv.expiresAt)}'),
+                    subtitle:
+                        Text(l10n.tripInvited(_expiresIn(inv.expiresAt))),
                     trailing: IconButton(
                       icon: const Icon(Icons.close),
-                      tooltip: 'Revoke invite',
+                      tooltip: l10n.tripRevokeInvite,
                       onPressed: () => _revokeInvite(inv.id),
                     ),
                   ),
@@ -5244,16 +5347,17 @@ class _ReorderSectionSheetState extends State<_ReorderSectionSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Reorder places', style: theme.textTheme.titleLarge),
+          Text(l10n.tripReorderPlaces, style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Drag to change the visit order within this section.',
+            l10n.tripReorderHint,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -5294,12 +5398,12 @@ class _ReorderSectionSheetState extends State<_ReorderSectionSheet> {
             children: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               const SizedBox(width: AppSpacing.sm),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(_items),
-                child: const Text('Save order'),
+                child: Text(l10n.tripSaveOrder),
               ),
             ],
           ),

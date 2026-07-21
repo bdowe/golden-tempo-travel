@@ -8,6 +8,8 @@ import 'package:travel_route_planner/services/checklist_api_service.dart';
 import 'package:travel_route_planner/providers/checklist_provider.dart';
 import 'package:travel_route_planner/widgets/checklist_section.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// A stateful fake: it holds the list so invalidate-after-mutate reflects the
 /// change, and records which network methods were called for assertions.
 class _FakeChecklistApiService extends ChecklistApiService {
@@ -70,6 +72,7 @@ Future<_FakeChecklistApiService> _pump(
         checklistApiServiceProvider.overrideWithValue(fake),
       ],
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: SingleChildScrollView(
             child: ChecklistSection(

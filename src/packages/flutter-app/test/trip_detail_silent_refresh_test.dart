@@ -11,6 +11,8 @@ import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// getTrip answers from a queue: a Trip resolves immediately, a Completer
 /// stays pending until the test completes it, an Exception throws.
 class _QueuedTripsApiService extends TripsApiService {
@@ -65,7 +67,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [tripsApiServiceProvider.overrideWithValue(service)],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
       ),
     );
     await tester.pumpAndSettle();
@@ -92,7 +95,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [tripsApiServiceProvider.overrideWithValue(service)],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
       ),
     );
     await tester.pumpAndSettle();

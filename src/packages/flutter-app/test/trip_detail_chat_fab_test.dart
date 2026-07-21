@@ -11,6 +11,8 @@ import 'package:travel_route_planner/services/plan_service.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Returns a fixed trip without hitting the network, so we can exercise the
 /// real TripDetailScreen render path.
 class _FakeTripsApiService extends TripsApiService {
@@ -77,7 +79,8 @@ Widget _app(Trip trip) => ProviderScope(
             _ScriptedPlanService(const []), ApiClient(),
             tripId: tripId)),
       ],
-      child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     );
 
 PlanState _refineState(WidgetTester tester) =>

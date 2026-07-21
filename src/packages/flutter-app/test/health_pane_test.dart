@@ -9,6 +9,8 @@ import 'package:travel_route_planner/models/ops_metrics.dart';
 import 'package:travel_route_planner/providers/ops_admin_provider.dart';
 import 'package:travel_route_planner/widgets/health_pane.dart';
 
+import 'support/l10n_test_app.dart';
+
 const _metrics = OpsMetrics(
   process: ProcessStats(
     uptimeS: 273600, // 3d 4h
@@ -50,7 +52,8 @@ const _health = OpsHealth(
 
 Widget _wrap(List<Override> overrides) => ProviderScope(
       overrides: overrides,
-      child: const MaterialApp(home: Scaffold(body: HealthPane())),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: Scaffold(body: HealthPane())),
     );
 
 /// Pump the pane through its initial async loads without pumpAndSettle (the

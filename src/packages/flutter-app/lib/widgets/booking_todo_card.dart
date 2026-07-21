@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import '../models/booking_todo.dart';
 
 IconData _kindIcon(BookingTodo todo) {
@@ -19,24 +20,25 @@ IconData _kindIcon(BookingTodo todo) {
   }
 }
 
-String _providerOpenLabel(BookingTodo todo, String? override) {
+/// Provider codes map to brand names, which are never translated — only the
+/// surrounding "Open in ..." phrasing is (specs/i18n-spanish).
+String? _providerBrand(String? provider) => switch (provider) {
+      'airbnb' => 'Airbnb',
+      'booking' => 'Booking.com',
+      'google_flights' => 'Google Flights',
+      'ferry' => 'Ferryhopper',
+      'kayak' => 'Kayak',
+      'rome2rio' => 'Rome2Rio',
+      _ => null,
+    };
+
+String _providerOpenLabel(
+    AppLocalizations l10n, BookingTodo todo, String? override) {
   if (override != null) return override;
-  switch (todo.provider) {
-    case 'airbnb':
-      return 'Open in Airbnb';
-    case 'booking':
-      return 'Open in Booking.com';
-    case 'google_flights':
-      return 'Open in Google Flights';
-    case 'ferry':
-      return 'Open in Ferryhopper';
-    case 'kayak':
-      return 'Open in Kayak';
-    case 'rome2rio':
-      return 'Open in Rome2Rio';
-    default:
-      return 'Open search';
-  }
+  final brand = _providerBrand(todo.provider);
+  return brand == null
+      ? l10n.bookingCardOpenSearch
+      : l10n.bookingCardOpenIn(brand);
 }
 
 /// A styled booking checklist card: an icon by kind, the title + dates, a
@@ -70,11 +72,10 @@ class BookingTodoCard extends StatelessWidget {
 
   IconData get _icon => _kindIcon(todo);
 
-  String get _openLabel => _providerOpenLabel(todo, openLabelOverride);
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -104,13 +105,13 @@ class BookingTodoCard extends StatelessWidget {
                 if (onEdit != null)
                   IconButton(
                     icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Edit',
+                    tooltip: l10n.bookingCardEdit,
                     onPressed: onEdit,
                   ),
                 if (onDelete != null)
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Remove',
+                    tooltip: l10n.bookingCardRemove,
                     onPressed: onDelete,
                   ),
                 if (dragHandle != null) dragHandle!,
@@ -122,12 +123,14 @@ class BookingTodoCard extends StatelessWidget {
                   value: todo.booked,
                   onChanged: (v) => onBookedChanged(v ?? false),
                 ),
-                Text('Booked', style: theme.textTheme.bodyMedium),
+                Text(l10n.bookingCardBooked,
+                    style: theme.textTheme.bodyMedium),
                 const Spacer(),
                 FilledButton.tonalIcon(
                   onPressed: onOpen,
                   icon: const Icon(Icons.open_in_new, size: 18),
-                  label: Text(_openLabel),
+                  label:
+                      Text(_providerOpenLabel(l10n, todo, openLabelOverride)),
                 ),
               ],
             ),
@@ -189,7 +192,8 @@ class BookingTodoRow extends StatelessWidget {
           TextButton.icon(
             onPressed: onOpen,
             icon: const Icon(Icons.open_in_new, size: 18),
-            label: Text(_providerOpenLabel(todo, openLabelOverride)),
+            label: Text(_providerOpenLabel(
+                context.l10n, todo, openLabelOverride)),
           ),
           // Last so the fixed-width checkboxes stay flush right and aligned
           // across rows despite varying button-label widths.

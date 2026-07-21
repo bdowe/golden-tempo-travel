@@ -12,6 +12,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trip_cache.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 
+import 'support/l10n_test_app.dart';
+
 class _QueuedTripsApiService extends TripsApiService {
   final List<Object> responses;
   int calls = 0;
@@ -45,7 +47,8 @@ Future<void> _pumpList(
         tripsApiServiceProvider.overrideWithValue(service),
         tripCacheProvider.overrideWithValue(cache),
       ],
-      child: const MaterialApp(home: TripsListScreen()),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripsListScreen()),
     ),
   );
 }

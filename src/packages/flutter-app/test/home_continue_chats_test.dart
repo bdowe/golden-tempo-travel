@@ -11,6 +11,8 @@ import 'package:travel_route_planner/providers/resumable_chats_provider.dart';
 import 'package:travel_route_planner/screens/home_screen.dart';
 import 'package:travel_route_planner/widgets/continue_chats_section.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Home-screen slotting of the "Continue where you left off" section
 /// (specs/continue-where-you-left-off): in-progress plan chats surface on
 /// Home too, and the section collapses to nothing when there are none.
@@ -70,7 +72,8 @@ Future<void> _pumpHome(
         liveTripProvider.overrideWithValue(null),
         resumableChatsProvider.overrideWith((ref) async => chats),
       ],
-      child: const MaterialApp(home: HomeScreen()),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: HomeScreen()),
     ),
   );
   // Extra pumps flush the SharedPreferences read behind recentTripProvider

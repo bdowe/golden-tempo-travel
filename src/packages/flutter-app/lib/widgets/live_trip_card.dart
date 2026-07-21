@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import '../models/trip.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
@@ -20,14 +21,16 @@ class LiveTripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     // Where the trip stands today: "Day N of M", or just "Day N" for an
     // open-ended trip (no end date => day count 0). The trips-list payload
     // carries no items, so the count comes from the date span alone.
     final day = tripDayOn(trip.startDate, trip.endDate, DateTime.now());
     final total = dayCount(trip.startDate, trip.endDate, const <int?>[]);
-    final progress =
-        day == null ? null : (total > 0 ? 'Day $day of $total' : 'Day $day');
+    final progress = day == null
+        ? null
+        : (total > 0 ? l10n.liveTripDayOfTotal(day, total) : l10n.liveTripDay(day));
 
     return Container(
       decoration: BoxDecoration(
@@ -65,7 +68,7 @@ class LiveTripCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'HAPPENING NOW',
+                        l10n.liveTripEyebrow,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
@@ -75,7 +78,12 @@ class LiveTripCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        citiesLabel(trip.cities) ?? trip.title,
+                        citiesLabel(
+                              trip.cities,
+                              two: (a, b) => l10n.citiesTwo(a, b),
+                              more: (a, b, n) => l10n.citiesMore(a, b, n),
+                            ) ??
+                            trip.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -90,7 +98,7 @@ class LiveTripCard extends StatelessWidget {
                           // the rest of the card, not like the light-surface
                           // StatusPill used on the trips list.
                           StatusPill.custom(
-                            label: 'Live',
+                            label: l10n.liveTripStatusLive,
                             background: Colors.white.withValues(alpha: 0.22),
                             foreground: Colors.white,
                           ),

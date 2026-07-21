@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../l10n/l10n.dart';
 import '../navigation/app_nav.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/auth_provider.dart';
@@ -41,6 +42,7 @@ void _onSelected(BuildContext context, WidgetRef ref, String value) {
 /// Sign out. Used by both presentations below.
 List<PopupMenuEntry<String>> _items(
   ThemeData theme,
+  AppLocalizations l10n,
   String? displayName,
   String? email, {
   bool isAdmin = false,
@@ -103,7 +105,7 @@ List<PopupMenuEntry<String>> _items(
         children: [
           Icon(Icons.tune, size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
-          const Text('Travel profile'),
+          Text(l10n.accountMenuTravelProfile),
         ],
       ),
     ),
@@ -120,7 +122,7 @@ List<PopupMenuEntry<String>> _items(
               : Icon(Icons.notifications_none,
                   size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
-          const Text('Price alerts'),
+          Text(l10n.accountMenuPriceAlerts),
         ],
       ),
     ),
@@ -131,7 +133,7 @@ List<PopupMenuEntry<String>> _items(
           Icon(Icons.refresh,
               size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
-          const Text('Retake travel quiz'),
+          Text(l10n.accountMenuRetakeQuiz),
         ],
       ),
     ),
@@ -142,7 +144,7 @@ List<PopupMenuEntry<String>> _items(
           Icon(Icons.manage_accounts_outlined,
               size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
-          const Text('Account settings'),
+          Text(l10n.accountMenuAccountSettings),
         ],
       ),
     ),
@@ -154,7 +156,7 @@ List<PopupMenuEntry<String>> _items(
           children: [
             Icon(Icons.verified, size: 20, color: AppColors.toolLocal),
             const SizedBox(width: AppSpacing.md),
-            const Text('Local intel admin'),
+            Text(l10n.accountMenuLocalIntelAdmin),
           ],
         ),
       ),
@@ -165,7 +167,7 @@ List<PopupMenuEntry<String>> _items(
             Icon(Icons.insights,
                 size: 20, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: AppSpacing.md),
-            const Text('Metrics'),
+            Text(l10n.accountMenuMetrics),
           ],
         ),
       ),
@@ -177,7 +179,7 @@ List<PopupMenuEntry<String>> _items(
         children: [
           Icon(Icons.logout, size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
-          const Text('Sign out'),
+          Text(l10n.accountMenuSignOut),
         ],
       ),
     ),
@@ -196,6 +198,7 @@ class AccountMenu extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final user = ref.watch(authProvider).user;
     final unread = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final avatar = user != null
@@ -213,7 +216,7 @@ class AccountMenu extends ConsumerWidget {
           )
         : const Icon(Icons.account_circle);
     return PopupMenuButton<String>(
-      tooltip: 'Account',
+      tooltip: l10n.accountMenuTooltip,
       // Open below the bar, on an M3 surface, instead of the default overlapping
       // panel that would inherit the app bar's white icons.
       position: PopupMenuPosition.under,
@@ -222,7 +225,7 @@ class AccountMenu extends ConsumerWidget {
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
       icon: unread > 0 ? Badge.count(count: unread, child: avatar) : avatar,
       onSelected: (v) => _onSelected(context, ref, v),
-      itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
+      itemBuilder: (_) => _items(theme, l10n, user?.displayName, user?.email,
           isAdmin: user?.isAdmin ?? false, unreadAlerts: unread),
     );
   }
@@ -236,6 +239,7 @@ class RailAccountButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final user = ref.watch(authProvider).user;
     final unread = ref.watch(notificationsUnreadCountProvider).valueOrNull ?? 0;
     final avatar = CircleAvatar(
@@ -251,13 +255,13 @@ class RailAccountButton extends ConsumerWidget {
       ),
     );
     return PopupMenuButton<String>(
-      tooltip: 'Account',
+      tooltip: l10n.accountMenuTooltip,
       color: theme.colorScheme.surface,
       elevation: 3,
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
       icon: unread > 0 ? Badge.count(count: unread, child: avatar) : avatar,
       onSelected: (v) => _onSelected(context, ref, v),
-      itemBuilder: (_) => _items(theme, user?.displayName, user?.email,
+      itemBuilder: (_) => _items(theme, l10n, user?.displayName, user?.email,
           isAdmin: user?.isAdmin ?? false, unreadAlerts: unread),
     );
   }

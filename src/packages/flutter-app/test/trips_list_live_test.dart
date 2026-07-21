@@ -16,6 +16,8 @@ import 'package:travel_route_planner/services/trip_cache.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/live_trip_card.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// The "Happening now" card on the trips list (specs/happening-now): promoted
 /// above the continue section and My Trips, live trip left in place below,
 /// tap-through to the trip detail, and offline-cache parity.
@@ -94,7 +96,8 @@ Future<void> _pumpList(
         tripCacheProvider.overrideWithValue(cache ?? TripCache('u1')),
         resumableChatsProvider.overrideWith((ref) async => chats),
       ],
-      child: const MaterialApp(home: TripsListScreen()),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripsListScreen()),
     ),
   );
 }

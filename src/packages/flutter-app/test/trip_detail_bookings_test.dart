@@ -11,6 +11,8 @@ import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/booking_todo_card.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Returns a fixed trip without hitting the network, so we can exercise the
 /// real TripDetailScreen render path. The booking-todo sync call fails in the
 /// test env and is swallowed, so the todos seeded on the trip survive.
@@ -86,7 +88,8 @@ void main() {
         overrides: [
           tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         ],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
       ),
     );
     await tester.pumpAndSettle();
@@ -143,7 +146,8 @@ void main() {
         overrides: [
           tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
         ],
-        child: MaterialApp(home: TripDetailScreen(tripId: 't2')),
+        child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't2')),
       ),
     );
     await tester.pumpAndSettle();

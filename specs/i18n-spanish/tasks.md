@@ -52,6 +52,24 @@ Established for batches B and C:
   fragments (no shared-ARB contention), verified English-verbatim against
   `git HEAD` before merging.
 
+**PR 4 (batch B) is DONE**: trip detail (5,310 lines), trips list, home, shell,
+bookings, budget, checklist, item dialog, health, review, map, account menu,
+booking-todo card, add-to-calendar. 378 keys (541 total). Also removed the now
+dead `NavDestinationData.label`, and collapsed duplicate offline/error copy into
+`commonOffline`/`commonGenericError`.
+
+Learned in batch B, for batch C:
+- Giving a **ConsumerWidget** a Localizations dependency makes
+  `didChangeDependencies` fire on reparenting (e.g. inside a
+  `ReorderableListView`), which triggers a Riverpod container lookup that a
+  `ProviderScope`-less test never made before. Latent-missing `ProviderScope`
+  in tests surfaces as `Bad state: No ProviderScope found` — add the scope.
+- Strings that are ALSO API payloads or seed the AI prompt stay English
+  (`'Stay in {city}'` booking-draft names, `_buildSectionSeed`). Translating
+  them would make stored data locale-dependent.
+- `_months`/`_weekdays` tables in trip_detail feed day headers and are still
+  English — see the DateFormat follow-up below.
+
 Per batch (A: auth/landing/settings/preferences/account · B: trips/itinerary/
 today/budget/checklist · C: chat/alerts/share/export/remaining):
 
@@ -74,6 +92,12 @@ today/budget/checklist · C: chat/alerts/share/export/remaining):
 - [ ] `trip_review.go` — findings, fix labels, localized dates
 - [ ] `print_view_handler.go` + `share_preview_handler.go` — `<html lang>`,
       labels, `?lang=` param; `calendar_handler.go` — time-of-day labels
+- [ ] **Calendar event titles must flip client- and server-side together.**
+      `bookings_section.dart` builds Google-link titles (`Stay: {name}`, the
+      transport `_segmentCalendarTitle`) that deliberately mirror the Go `.ics`
+      export. PR 4 left them in English on purpose: translating only the client
+      would make the Google link disagree with the downloaded `.ics`. Localize
+      both in this PR, in one change.
 - [ ] `notifications_writer.go` — fallback actor string
 - [ ] `plan_handler.go` — Spanish instruction appended only when locale != en
       (`basePrompt` and `plan_tool_registry.go` untouched)
@@ -82,6 +106,22 @@ today/budget/checklist · C: chat/alerts/share/export/remaining):
 - [ ] Tests: es email builders, Spanish trip-review integration test, and the
       **English prompt byte-stability** test via the fake-Anthropic harness
 - [ ] `make smoke`
+
+## Follow-ups (not blocking enablement)
+
+- [ ] `trip_detail_screen.dart` still has private `_months`/`_weekdays` tables
+      (`'Jan'…'Dec'`, `'Mon'…'Sun'`) feeding `_fmtDayHeader`/`_fmtShortDt`.
+      These are date-format data, not copy — convert to `intl DateFormat` the
+      way `utils/trip_format.dart` was in PR 2, rather than adding 19 ARB keys.
+      Day headers would otherwise stay English under `es`.
+- [ ] `add_itinerary_item_dialog` prefill `initialName: 'Stay in {city}'` is
+      visible in a text field but is also the persisted booking name. Localizing
+      it needs a display/value split, not a translation.
+- [ ] `RefineTarget.label` (`widgets/trip_refine_panel.dart`) is interpolated
+      into localized trip-detail copy and stays English until batch C.
+- [ ] Copy change (deliberately deferred from PR 3): the budget/pace/interest
+      chips render lowercase `budget`/`mid`/`luxury`. Capitalizing them is an
+      English-visible change, so it does not belong in an extraction PR.
 
 ## PR 7 — Enablement
 

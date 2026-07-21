@@ -10,6 +10,8 @@ import 'package:travel_route_planner/providers/budget_provider.dart';
 import 'package:travel_route_planner/utils/money_format.dart';
 import 'package:travel_route_planner/widgets/budget_section.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// A stateful fake: it holds the target/currency + the expense list so
 /// invalidate-after-mutate reflects the change, derives spent/remaining exactly
 /// like the server, and records which network methods were called.
@@ -106,6 +108,7 @@ Future<_FakeBudgetApiService> _pump(
         budgetApiServiceProvider.overrideWithValue(fake),
       ],
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: SingleChildScrollView(
             child: BudgetSection(

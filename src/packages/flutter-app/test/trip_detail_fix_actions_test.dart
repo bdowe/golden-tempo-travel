@@ -22,6 +22,8 @@ import 'package:travel_route_planner/providers/checklist_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/bookings_section.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Serves a fixed trip and records itinerary-item PATCHes for the move_item fix.
 class _FakeTripsApiService extends TripsApiService {
   final Trip trip;
@@ -163,7 +165,8 @@ Future<void> _pumpScreen(
         if (checklist != null)
           checklistApiServiceProvider.overrideWithValue(checklist),
       ],
-      child: MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

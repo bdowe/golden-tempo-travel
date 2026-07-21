@@ -14,6 +14,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/bookings_section.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Records mint calls and returns a fixed token so the built per-event .ics
 /// URL is deterministic.
 class _FakeTripsApiService extends TripsApiService {
@@ -111,6 +113,7 @@ Future<(_FakeTripsApiService, _FakeUrlLauncher)> _pump(
         analyticsApiServiceProvider.overrideWithValue(_NoopAnalytics()),
       ],
       child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
         home: Scaffold(
           body: SingleChildScrollView(
             child: BookingsSection(

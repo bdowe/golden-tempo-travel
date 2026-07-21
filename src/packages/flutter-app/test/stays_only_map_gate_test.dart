@@ -13,6 +13,8 @@ import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
 import 'package:travel_route_planner/widgets/trip_map.dart';
 
+import 'support/l10n_test_app.dart';
+
 // The map-visibility gate must count geocoded stays, not just items: a trip
 // whose only mapped things are its accommodations (hotels booked, no located
 // activities yet) still has a map worth showing — TripMap renders and
@@ -68,7 +70,8 @@ Future<void> _pumpTripDetail(WidgetTester tester, Trip trip) async {
         tripsApiServiceProvider
             .overrideWithValue(_FakeTripsApiService(trip: trip)),
       ],
-      child: const MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();
@@ -81,7 +84,8 @@ Future<void> _pumpSharedTrip(WidgetTester tester, Trip trip) async {
         tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(
             shared: SharedTrip(trip: trip, ownerName: 'Ann'))),
       ],
-      child: const MaterialApp(home: SharedTripScreen(token: 'tok')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: SharedTripScreen(token: 'tok')),
     ),
   );
   await tester.pumpAndSettle();

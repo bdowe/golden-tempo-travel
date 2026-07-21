@@ -494,4 +494,1344 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quizProfileUpdated => 'Travel profile updated';
+
+  @override
+  String get bookingCardEdit => 'Edit';
+
+  @override
+  String get bookingCardRemove => 'Remove';
+
+  @override
+  String get bookingCardBooked => 'Booked';
+
+  @override
+  String bookingCardOpenIn(String provider) {
+    return 'Open in $provider';
+  }
+
+  @override
+  String get bookingCardOpenSearch => 'Open search';
+
+  @override
+  String get calendarAddTo => 'Add to calendar';
+
+  @override
+  String get calendarGoogle => 'Google Calendar';
+
+  @override
+  String get calendarApple => 'Apple Calendar (.ics)';
+
+  @override
+  String calendarExportFailed(String error) {
+    return 'Could not export the event: $error';
+  }
+
+  @override
+  String get bookingsTitle => 'Bookings';
+
+  @override
+  String get bookingsAddStay => 'Add stay';
+
+  @override
+  String get bookingsAddTransport => 'Add transport';
+
+  @override
+  String get bookingsAddBooking => 'Add booking';
+
+  @override
+  String get bookingsEmptyMessage =>
+      'Nothing saved yet — add the stays, transport, and other bookings for your trip so it all lives in one place.';
+
+  @override
+  String get bookingsStays => 'Stays';
+
+  @override
+  String get bookingsTransport => 'Transport';
+
+  @override
+  String get bookingsOther => 'Other';
+
+  @override
+  String get bookingsSuggested => 'Suggested';
+
+  @override
+  String get bookingsKeep => 'Keep';
+
+  @override
+  String get bookingsEdit => 'Edit';
+
+  @override
+  String get bookingsDismissSuggestion => 'Dismiss suggestion';
+
+  @override
+  String get bookingsOpenListing => 'Open listing';
+
+  @override
+  String get bookingsEditStay => 'Edit stay';
+
+  @override
+  String get bookingsRemoveStay => 'Remove stay';
+
+  @override
+  String get bookingsOpenBooking => 'Open booking';
+
+  @override
+  String get bookingsEditTransport => 'Edit transport';
+
+  @override
+  String get bookingsRemoveTransport => 'Remove transport';
+
+  @override
+  String get bookingsAddAStay => 'Add a stay';
+
+  @override
+  String get bookingsStayNameLabel => 'Name *';
+
+  @override
+  String get bookingsStayProviderLabel => 'Provider (Airbnb, Booking.com, …)';
+
+  @override
+  String get bookingsStayUrlLabel => 'Listing URL';
+
+  @override
+  String get bookingsStayAddressLabel => 'Address';
+
+  @override
+  String get bookingsCheckInOut => 'Check-in / check-out';
+
+  @override
+  String get bookingsPriceNoteLabel => 'Price note (e.g. €120/night)';
+
+  @override
+  String get bookingsSegmentFromLabel => 'From *';
+
+  @override
+  String get bookingsSegmentToLabel => 'To *';
+
+  @override
+  String get bookingsDepartureDate => 'Departure date';
+
+  @override
+  String get bookingsSegmentProviderLabel => 'Provider / carrier';
+
+  @override
+  String get bookingsSegmentUrlLabel => 'Booking URL';
+
+  @override
+  String get bookingsNotesLabel => 'Notes';
+
+  @override
+  String get bookingsModeFlight => 'flight';
+
+  @override
+  String get bookingsModeTrain => 'train';
+
+  @override
+  String get bookingsModeBus => 'bus';
+
+  @override
+  String get bookingsModeCar => 'car';
+
+  @override
+  String get bookingsModeFerry => 'ferry';
+
+  @override
+  String get bookingsModeOther => 'other';
+
+  @override
+  String get budgetTitle => 'Budget';
+
+  @override
+  String get budgetEmptyTitle => 'No budget yet';
+
+  @override
+  String get budgetEmptyMessage =>
+      'Set a target above, or add expenses below to track your spending.';
+
+  @override
+  String budgetTargetSet(String amount, String currency) {
+    return 'Target: $amount ($currency)';
+  }
+
+  @override
+  String get budgetNoTarget => 'No target set — tracking spend only';
+
+  @override
+  String get budgetEditExpenseTitle => 'Edit expense';
+
+  @override
+  String get budgetSetTargetTitle => 'Set budget target';
+
+  @override
+  String get budgetCategoryLabel => 'Category';
+
+  @override
+  String get budgetLabelField => 'Label';
+
+  @override
+  String get budgetAmount => 'Amount';
+
+  @override
+  String get budgetCurrencyLabel => 'Currency';
+
+  @override
+  String get budgetTargetLabel => 'Target';
+
+  @override
+  String get budgetTargetHint => 'Leave blank for none';
+
+  @override
+  String get budgetTargetHelp =>
+      'Leave the target blank to just track spending.';
+
+  @override
+  String get budgetExpenseOptions => 'Expense options';
+
+  @override
+  String get budgetMenuEdit => 'Edit';
+
+  @override
+  String get budgetTotalSpent => 'Total spent';
+
+  @override
+  String get budgetRemaining => 'Remaining';
+
+  @override
+  String get budgetAddHint => 'Add an expense…';
+
+  @override
+  String get budgetAddExpenseTooltip => 'Add expense';
+
+  @override
+  String get budgetCategoryFlights => 'Flights';
+
+  @override
+  String get budgetCategoryLodging => 'Lodging';
+
+  @override
+  String get budgetCategoryFood => 'Food';
+
+  @override
+  String get budgetCategoryActivities => 'Activities';
+
+  @override
+  String get budgetCategoryTransport => 'Transport';
+
+  @override
+  String get budgetCategoryShopping => 'Shopping';
+
+  @override
+  String get budgetCategoryGeneral => 'General';
+
+  @override
+  String get checklistTitle => 'Packing & prep';
+
+  @override
+  String get checklistEmptyTitle => 'Nothing packed yet';
+
+  @override
+  String get checklistEmptyMessage =>
+      'Add items below, or ask the AI assistant to help build your list.';
+
+  @override
+  String get checklistEditItemTitle => 'Edit item';
+
+  @override
+  String get checklistItemLabel => 'Item';
+
+  @override
+  String get checklistItemOptions => 'Item options';
+
+  @override
+  String get checklistMenuEdit => 'Edit';
+
+  @override
+  String get checklistAddHint => 'Add an item…';
+
+  @override
+  String get checklistAddItemTooltip => 'Add item';
+
+  @override
+  String get checklistCategoryDocuments => 'Documents';
+
+  @override
+  String get checklistCategoryClothing => 'Clothing';
+
+  @override
+  String get checklistCategoryElectronics => 'Electronics';
+
+  @override
+  String get checklistCategoryHealth => 'Health';
+
+  @override
+  String get checklistCategoryGeneral => 'General';
+
+  @override
+  String get itemDialogTitle => 'Add place';
+
+  @override
+  String get itemDialogSearchLabel => 'Search for a place';
+
+  @override
+  String get itemDialogSearchHint => 'e.g. Pastéis de Belém, Lisbon';
+
+  @override
+  String get itemDialogPickDifferent => 'Pick a different place';
+
+  @override
+  String get itemDialogAddManually => 'Can\'t find it? Add manually';
+
+  @override
+  String get itemDialogPlaceNameLabel => 'Place name';
+
+  @override
+  String get itemDialogSearchInstead => 'Search places instead';
+
+  @override
+  String get itemDialogDayLabel => 'Day';
+
+  @override
+  String get itemDialogUnscheduled => 'Unscheduled';
+
+  @override
+  String itemDialogDayN(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String itemDialogNewDay(int day) {
+    return 'New day ($day)';
+  }
+
+  @override
+  String get itemDialogTimeOfDayLabel => 'Time of day';
+
+  @override
+  String get itemDialogTimeAny => 'Any';
+
+  @override
+  String get itemDialogTimeMorning => 'Morning';
+
+  @override
+  String get itemDialogTimeAfternoon => 'Afternoon';
+
+  @override
+  String get itemDialogTimeEvening => 'Evening';
+
+  @override
+  String get itemDialogCategoryAttraction => 'Attraction';
+
+  @override
+  String get itemDialogCategoryRestaurant => 'Restaurant';
+
+  @override
+  String get itemDialogAdd => 'Add';
+
+  @override
+  String get itemDialogNoResults =>
+      'No places found — try a different search, or add the place manually.';
+
+  @override
+  String get itemDialogSearchUnavailable =>
+      'Search unavailable — add the place manually below.';
+
+  @override
+  String get itemDialogErrorEnterName => 'Enter a name for the place.';
+
+  @override
+  String get itemDialogErrorPickPlace => 'Pick a place first.';
+
+  @override
+  String itemDialogErrorAddFailed(String error) {
+    return 'Could not add the place: $error';
+  }
+
+  @override
+  String get commonOffline => 'You\'re offline — reconnect to make changes.';
+
+  @override
+  String get commonGenericError => 'Something went wrong. Try again.';
+
+  @override
+  String get tripTitleFallback => 'Trip';
+
+  @override
+  String get tripOtherPlaces => 'Other places';
+
+  @override
+  String get tripOfflineGuard => 'You\'re offline — reconnect to make changes.';
+
+  @override
+  String get tripTravelModeDriving => 'Driving';
+
+  @override
+  String get tripTravelModeByTrain => 'By train';
+
+  @override
+  String get tripTravelModeByBus => 'By bus';
+
+  @override
+  String get tripTravelModeByFerry => 'By ferry';
+
+  @override
+  String get tripTravelModeMixed => 'Mixed modes';
+
+  @override
+  String get tripTravelModeFlying => 'Flying';
+
+  @override
+  String get tripTravelModeUnset => 'Travel mode';
+
+  @override
+  String get tripTravelModeTooltip => 'Travel mode';
+
+  @override
+  String get tripModeTrain => 'Train';
+
+  @override
+  String get tripModeBus => 'Bus';
+
+  @override
+  String get tripModeFerry => 'Ferry';
+
+  @override
+  String tripUpdateFailed(String error) {
+    return 'Update failed: $error';
+  }
+
+  @override
+  String tripDeleteFailed(String error) {
+    return 'Delete failed: $error';
+  }
+
+  @override
+  String tripReorderFailed(String error) {
+    return 'Could not reorder: $error';
+  }
+
+  @override
+  String tripLeaveFailed(String error) {
+    return 'Could not remove trip: $error';
+  }
+
+  @override
+  String tripAddStayFailed(String error) {
+    return 'Could not add stay: $error';
+  }
+
+  @override
+  String tripRemoveStayFailed(String error) {
+    return 'Could not remove stay: $error';
+  }
+
+  @override
+  String tripUpdateStayFailed(String error) {
+    return 'Could not update stay: $error';
+  }
+
+  @override
+  String tripKeepStayFailed(String error) {
+    return 'Could not keep stay: $error';
+  }
+
+  @override
+  String tripAddTransportFailed(String error) {
+    return 'Could not add transport: $error';
+  }
+
+  @override
+  String tripRemoveTransportFailed(String error) {
+    return 'Could not remove transport: $error';
+  }
+
+  @override
+  String tripUpdateTransportFailed(String error) {
+    return 'Could not update transport: $error';
+  }
+
+  @override
+  String tripKeepTransportFailed(String error) {
+    return 'Could not keep transport: $error';
+  }
+
+  @override
+  String tripShareLinkFailed(String error) {
+    return 'Could not create share link: $error';
+  }
+
+  @override
+  String tripPrintExportFailed(String error) {
+    return 'Could not open the printable view: $error';
+  }
+
+  @override
+  String tripCalendarExportFailed(String error) {
+    return 'Could not export the calendar: $error';
+  }
+
+  @override
+  String tripEventExportFailed(String error) {
+    return 'Could not export the event: $error';
+  }
+
+  @override
+  String tripSharingOffFailed(String error) {
+    return 'Could not turn off sharing: $error';
+  }
+
+  @override
+  String tripInviteFailed(String error) {
+    return 'Could not create invite: $error';
+  }
+
+  @override
+  String tripRemoveItemFailed(String name, String error) {
+    return 'Could not remove $name: $error';
+  }
+
+  @override
+  String tripRestoreItemFailed(String name, String error) {
+    return 'Could not restore $name: $error';
+  }
+
+  @override
+  String tripUpdateItemFailed(String name, String error) {
+    return 'Could not update $name: $error';
+  }
+
+  @override
+  String tripMoveItemFailed(String error) {
+    return 'Could not move item: $error';
+  }
+
+  @override
+  String tripUpdateBookingFailed(String error) {
+    return 'Could not update booking: $error';
+  }
+
+  @override
+  String tripUndoFailed(String error) {
+    return 'Could not undo: $error';
+  }
+
+  @override
+  String tripAddPackingFailed(String error) {
+    return 'Could not add packing item: $error';
+  }
+
+  @override
+  String tripLoadBudgetFailed(String error) {
+    return 'Could not load budget: $error';
+  }
+
+  @override
+  String tripUpdateBudgetFailed(String error) {
+    return 'Could not update budget: $error';
+  }
+
+  @override
+  String tripSaveFailed(String error) {
+    return 'Save failed: $error';
+  }
+
+  @override
+  String get tripOpenLinkFailed => 'Could not open link';
+
+  @override
+  String get tripFerrySearchFailed => 'Could not open ferry search';
+
+  @override
+  String get tripLoadFailed => 'Could not load this trip';
+
+  @override
+  String get tripEditTitle => 'Edit title';
+
+  @override
+  String get tripDeleteTitle => 'Delete trip?';
+
+  @override
+  String get tripDeleteBody => 'This cannot be undone.';
+
+  @override
+  String get tripLeaveTitle => 'Remove from my trips?';
+
+  @override
+  String get tripLeaveBody =>
+      'You\'ll lose access until you\'re invited again. The trip itself is not deleted.';
+
+  @override
+  String get tripRemove => 'Remove';
+
+  @override
+  String get tripUndo => 'Undo';
+
+  @override
+  String get tripAddPlacesBeforeRefine =>
+      'Add some places before refining with AI.';
+
+  @override
+  String get tripAssistantLabel => 'Trip assistant';
+
+  @override
+  String tripRefiningSection(String section) {
+    return 'Refining $section';
+  }
+
+  @override
+  String tripRefineCity(String city) {
+    return 'Refine $city';
+  }
+
+  @override
+  String get tripRefineThisDay => 'Refine this day';
+
+  @override
+  String get tripRefineWithAI => 'Refine with AI';
+
+  @override
+  String get tripAskAI => 'Ask AI about this trip';
+
+  @override
+  String get tripShareLinkCopied => 'Share link copied to clipboard';
+
+  @override
+  String get tripSharingTurnedOff =>
+      'Sharing turned off — links no longer work (existing co-planners and followers keep access)';
+
+  @override
+  String tripCoPlanInviteMessage(String summary) {
+    return 'Co-plan with me: $summary';
+  }
+
+  @override
+  String get tripInviteCopied =>
+      'Co-planner invite copied — anyone with it can edit';
+
+  @override
+  String get tripCoPlannerRemoved => 'Co-planner removed';
+
+  @override
+  String tripInviteSent(String email) {
+    return 'Invite sent to $email';
+  }
+
+  @override
+  String get tripShareTrip => 'Share trip';
+
+  @override
+  String get tripShareLinkAction => 'Share link…';
+
+  @override
+  String get tripCopyShareLink => 'Copy share link';
+
+  @override
+  String get tripShareInviteAction => 'Share co-planner invite…';
+
+  @override
+  String get tripCopyInviteLink => 'Copy invite link (can edit)';
+
+  @override
+  String get tripManageAccess => 'Manage access';
+
+  @override
+  String get tripPrintSavePdf => 'Print / Save as PDF';
+
+  @override
+  String get tripAddToCalendar => 'Add to calendar';
+
+  @override
+  String get tripTurnOffSharing => 'Turn off sharing';
+
+  @override
+  String get tripDeleteTrip => 'Delete trip';
+
+  @override
+  String get tripRemoveFromMyTrips => 'Remove from my trips';
+
+  @override
+  String get tripLocalIntel => 'Local intel';
+
+  @override
+  String tripLocalGuideTitle(String title) {
+    return 'Local guide: $title';
+  }
+
+  @override
+  String tripGuideBy(String name) {
+    return 'By $name';
+  }
+
+  @override
+  String get tripEventsWhileHere => 'Events while you\'re here';
+
+  @override
+  String tripFindingEvents(String city) {
+    return 'Finding events in $city…';
+  }
+
+  @override
+  String tripFindEventsIn(String city) {
+    return 'Find events in $city';
+  }
+
+  @override
+  String tripRecommendedBy(String name) {
+    return 'Recommended by $name';
+  }
+
+  @override
+  String get tripFindFlights => 'Find flights';
+
+  @override
+  String get tripFindFerries => 'Find ferries';
+
+  @override
+  String get tripAddBooking => 'Add a booking';
+
+  @override
+  String get tripEditBooking => 'Edit booking';
+
+  @override
+  String get tripFieldType => 'Type';
+
+  @override
+  String get tripKindStay => 'Stay';
+
+  @override
+  String get tripKindTransport => 'Transport';
+
+  @override
+  String get tripKindOther => 'Other';
+
+  @override
+  String get tripFieldTitle => 'Title';
+
+  @override
+  String get tripFieldOrigin => 'Origin (optional)';
+
+  @override
+  String get tripFieldDestination => 'Destination (optional)';
+
+  @override
+  String get tripFieldDepartDate => 'Depart date (optional)';
+
+  @override
+  String get tripFieldCheckIn => 'Check-in (optional)';
+
+  @override
+  String get tripFieldCheckOut => 'Check-out (optional)';
+
+  @override
+  String get tripFieldLink => 'Link (optional, overrides search)';
+
+  @override
+  String get tripTitleRequired => 'Title is required';
+
+  @override
+  String get tripClearDate => 'Clear date';
+
+  @override
+  String get tripItinerary => 'Itinerary';
+
+  @override
+  String get tripToday => 'Today';
+
+  @override
+  String get tripAddPlace => 'Add place';
+
+  @override
+  String get tripFilterAll => 'All';
+
+  @override
+  String get tripFilterAttractions => 'Attractions';
+
+  @override
+  String get tripFilterRestaurants => 'Restaurants';
+
+  @override
+  String get tripFilterNoMatch => 'No places match this filter.';
+
+  @override
+  String get tripNoPlacesYet => 'No places yet';
+
+  @override
+  String get tripNoPlacesYetMessage =>
+      'Refine with AI or add a place to start your itinerary.';
+
+  @override
+  String get tripNoMappedPlaces => 'No mapped places';
+
+  @override
+  String tripNoPlacesOnDay(int day) {
+    return 'No places pinned on Day $day';
+  }
+
+  @override
+  String get tripAddPlaceMapHint => 'Add a place to see it on the map.';
+
+  @override
+  String tripDayN(int n) {
+    return 'Day $n';
+  }
+
+  @override
+  String tripDayTripTo(String town) {
+    return 'Day trip · $town';
+  }
+
+  @override
+  String get tripDayTripFallback => 'Day trip';
+
+  @override
+  String tripTonight(String stays) {
+    return 'Tonight: $stays';
+  }
+
+  @override
+  String tripTravelMinutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String tripTravelHours(int hours) {
+    return '${hours}h';
+  }
+
+  @override
+  String tripTravelHoursMinutes(int hours, int minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String tripTravelFromHub(String duration, String hub) {
+    return '$duration from $hub';
+  }
+
+  @override
+  String tripTravelTotal(String duration) {
+    return '$duration travel';
+  }
+
+  @override
+  String tripRainChance(int percent) {
+    return '$percent% rain';
+  }
+
+  @override
+  String get tripTypicalForDates => 'typical for these dates';
+
+  @override
+  String get tripPlaceActions => 'Place actions';
+
+  @override
+  String get tripOpenInGoogleMaps => 'Open in Google Maps';
+
+  @override
+  String get tripEdit => 'Edit';
+
+  @override
+  String get tripMoveUp => 'Move up';
+
+  @override
+  String get tripMoveDown => 'Move down';
+
+  @override
+  String get tripReorderSection => 'Reorder section';
+
+  @override
+  String get tripAddToGoogleCalendar => 'Add to Google Calendar';
+
+  @override
+  String get tripAddToAppleCalendar => 'Add to Apple Calendar (.ics)';
+
+  @override
+  String tripRemovedItem(String name) {
+    return 'Removed $name';
+  }
+
+  @override
+  String tripMovedToDay(int day) {
+    return 'Moved to Day $day';
+  }
+
+  @override
+  String get tripMarkedAsBooked => 'Marked as booked';
+
+  @override
+  String tripAddedToPacking(String item) {
+    return 'Added \"$item\" to packing';
+  }
+
+  @override
+  String get tripSetBudgetTarget => 'Set budget target';
+
+  @override
+  String tripBudgetTargetLabel(String currency) {
+    return 'Target ($currency)';
+  }
+
+  @override
+  String get tripBudgetTargetHint => 'Leave blank to just track spending';
+
+  @override
+  String get tripRename => 'Rename';
+
+  @override
+  String get tripAddDates => 'Add dates';
+
+  @override
+  String get tripChangeStatus => 'Change status';
+
+  @override
+  String get tripStatusDraft => 'Draft';
+
+  @override
+  String get tripStatusPlanned => 'Planned';
+
+  @override
+  String tripCoPlanningWith(String name) {
+    return 'Co-planning with $name — your changes save for everyone.';
+  }
+
+  @override
+  String get tripCoPlanningShared =>
+      'Co-planning a shared trip — your changes save for everyone.';
+
+  @override
+  String tripSharedBy(String name) {
+    return 'Shared by $name — view only.';
+  }
+
+  @override
+  String get tripSharedViewOnly => 'Shared trip — view only.';
+
+  @override
+  String tripUpdatedBy(String name, String time) {
+    return 'Updated by $name · $time';
+  }
+
+  @override
+  String get tripOverview => 'Overview';
+
+  @override
+  String get tripShowMore => 'Show more';
+
+  @override
+  String get tripShowLess => 'Show less';
+
+  @override
+  String get tripTimeRecently => 'recently';
+
+  @override
+  String get tripTimeJustNow => 'just now';
+
+  @override
+  String tripTimeMinutesAgo(int minutes) {
+    return '${minutes}m ago';
+  }
+
+  @override
+  String tripTimeHoursAgo(int hours) {
+    return '${hours}h ago';
+  }
+
+  @override
+  String tripTimeDaysAgo(int days) {
+    return '${days}d ago';
+  }
+
+  @override
+  String get tripFriendEmail => 'Friend\'s email';
+
+  @override
+  String get tripInvite => 'Invite';
+
+  @override
+  String get tripNoCoPlanners =>
+      'No co-planners yet. Invite a friend by email above, or copy an invite link from the share menu.';
+
+  @override
+  String get tripRoleViewer => 'Viewer';
+
+  @override
+  String get tripRoleCanEdit => 'Can edit';
+
+  @override
+  String get tripRemoveAccess => 'Remove access';
+
+  @override
+  String get tripPendingInvites => 'Pending invites';
+
+  @override
+  String tripInvited(String expires) {
+    return 'Invited — $expires';
+  }
+
+  @override
+  String get tripRevokeInvite => 'Revoke invite';
+
+  @override
+  String tripExpiresInDays(int days) {
+    return 'expires in ${days}d';
+  }
+
+  @override
+  String tripExpiresInHours(int hours) {
+    return 'expires in ${hours}h';
+  }
+
+  @override
+  String get tripExpiresSoon => 'expires soon';
+
+  @override
+  String get tripEditPlace => 'Edit place';
+
+  @override
+  String get tripFieldName => 'Name';
+
+  @override
+  String get tripFieldCity => 'City';
+
+  @override
+  String get tripFieldDay => 'Day';
+
+  @override
+  String get tripCategoryAttraction => 'Attraction';
+
+  @override
+  String get tripCategoryRestaurant => 'Restaurant';
+
+  @override
+  String get tripTimeMorning => 'Morning';
+
+  @override
+  String get tripTimeAfternoon => 'Afternoon';
+
+  @override
+  String get tripTimeEvening => 'Evening';
+
+  @override
+  String get tripReorderPlaces => 'Reorder places';
+
+  @override
+  String get tripReorderHint =>
+      'Drag to change the visit order within this section.';
+
+  @override
+  String get tripSaveOrder => 'Save order';
+
+  @override
+  String get tripsListTitle => 'My Trips';
+
+  @override
+  String get tripsListErrorTitle => 'Could not load trips';
+
+  @override
+  String get tripsListErrorMessage => 'Check your connection and try again.';
+
+  @override
+  String get tripsListEmptyTitle => 'No trips yet';
+
+  @override
+  String get tripsListEmptyMessage =>
+      'Chat with the AI agent to create your first trip.';
+
+  @override
+  String get tripsListPlanTrip => 'Plan a trip';
+
+  @override
+  String get tripsListSharedWithYou => 'Shared with you';
+
+  @override
+  String tripsListCreated(String date) {
+    return 'Created $date';
+  }
+
+  @override
+  String tripsListPlannedWith(String name) {
+    return 'Planned with $name';
+  }
+
+  @override
+  String tripsListSharedBy(String name) {
+    return 'Shared by $name';
+  }
+
+  @override
+  String get tripsListVersionsError => 'Could not load versions';
+
+  @override
+  String tripsListVersionLatest(String date) {
+    return 'latest · $date';
+  }
+
+  @override
+  String tripsListVersionNumbered(int version, String date) {
+    return 'v$version · $date';
+  }
+
+  @override
+  String get homeGreetingMorning => 'Good morning';
+
+  @override
+  String get homeGreetingAfternoon => 'Good afternoon';
+
+  @override
+  String get homeGreetingEvening => 'Good evening';
+
+  @override
+  String homeGreetingNamed(String greeting, String name) {
+    return '$greeting, $name';
+  }
+
+  @override
+  String get homeGreetingSubtitle => 'Where are we off to next?';
+
+  @override
+  String get homeHeroTitle => 'Plan less. Travel more.';
+
+  @override
+  String get homeHeroSubtitle =>
+      'Describe the trip you\'re dreaming of and I\'ll build the full itinerary — places, days, and routes.';
+
+  @override
+  String get homeHeroCta => 'Let\'s go';
+
+  @override
+  String get homeSuggestionParis => '2 days in Paris';
+
+  @override
+  String get homeSuggestionRome => 'Museums in Rome';
+
+  @override
+  String get homeSuggestionTokyo => 'Weekend in Tokyo';
+
+  @override
+  String get homeStatusDraft => 'Draft';
+
+  @override
+  String get homeStatusPlanned => 'Planned';
+
+  @override
+  String get homeRecentTripEyebrow => 'PICK UP WHERE YOU LEFT OFF';
+
+  @override
+  String get homeLocalGuidesTitle => 'Local guides';
+
+  @override
+  String homeGuideByline(String name) {
+    return 'By $name';
+  }
+
+  @override
+  String get shellNavHome => 'Home';
+
+  @override
+  String get shellNavPlan => 'Plan';
+
+  @override
+  String get shellNavTrips => 'Trips';
+
+  @override
+  String get healthMetricsErrorTitle => 'Could not load metrics';
+
+  @override
+  String get healthHealthErrorTitle => 'Could not load health';
+
+  @override
+  String get healthProcessSection => 'Process';
+
+  @override
+  String get healthRoutesSection => 'Routes';
+
+  @override
+  String get healthUptime => 'Uptime';
+
+  @override
+  String get healthRequests => 'Requests';
+
+  @override
+  String get healthErrorRate => 'Error rate';
+
+  @override
+  String get healthGoroutines => 'Goroutines';
+
+  @override
+  String get healthMemory => 'Memory';
+
+  @override
+  String get healthPlacesCalls => 'Places calls';
+
+  @override
+  String healthCacheHits(int count) {
+    return '$count cache hits';
+  }
+
+  @override
+  String get healthColRoute => 'Route';
+
+  @override
+  String get healthColMethod => 'Method';
+
+  @override
+  String get healthColCount => 'Count';
+
+  @override
+  String get healthColErrorPct => 'Error %';
+
+  @override
+  String get healthDependenciesSection => 'Dependencies';
+
+  @override
+  String get healthDatabase => 'Database';
+
+  @override
+  String healthPing(int ms) {
+    return '$ms ms ping';
+  }
+
+  @override
+  String get healthPillOk => 'ok';
+
+  @override
+  String get healthPillUnreachable => 'unreachable';
+
+  @override
+  String get healthPillConfigured => 'configured';
+
+  @override
+  String get healthPillNotConfigured => 'not configured';
+
+  @override
+  String get healthPillUnknown => 'unknown';
+
+  @override
+  String get healthPillStale => 'stale';
+
+  @override
+  String get healthPillFresh => 'fresh';
+
+  @override
+  String get healthBackupsSection => 'Backups';
+
+  @override
+  String get healthLastBackup => 'Last backup';
+
+  @override
+  String healthBackupAge(String age) {
+    return '$age ago';
+  }
+
+  @override
+  String get healthNoBackupRecorded => 'no backup recorded';
+
+  @override
+  String get healthBuildSection => 'Build';
+
+  @override
+  String healthRelease(String release) {
+    return 'release $release';
+  }
+
+  @override
+  String get healthDegradedTitle => 'System degraded';
+
+  @override
+  String get reviewSectionTitle => 'Trip health';
+
+  @override
+  String reviewCountToReview(int count) {
+    return '$count to review';
+  }
+
+  @override
+  String get reviewEmptyTitle => 'Looks good';
+
+  @override
+  String get reviewEmptyMessage =>
+      'No issues found — your trip is in good shape.';
+
+  @override
+  String get reviewSeverityCritical => 'Critical';
+
+  @override
+  String get reviewSeverityWarning => 'Warning';
+
+  @override
+  String get reviewSeverityInfo => 'Info';
+
+  @override
+  String get reviewOfflineSnack =>
+      'You\'re offline — reconnect to run more checks.';
+
+  @override
+  String get reviewHoursChecked => 'Opening hours checked';
+
+  @override
+  String get reviewCheckHours => 'Also check opening hours';
+
+  @override
+  String get liveTripEyebrow => 'HAPPENING NOW';
+
+  @override
+  String get liveTripStatusLive => 'Live';
+
+  @override
+  String liveTripDay(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String liveTripDayOfTotal(int day, int total) {
+    return 'Day $day of $total';
+  }
+
+  @override
+  String get continueChatsTitle => 'Continue where you left off';
+
+  @override
+  String get continueChatsReopenError => 'Could not reopen that conversation.';
+
+  @override
+  String get continueChatsDismissError =>
+      'Could not dismiss that conversation.';
+
+  @override
+  String get continueChatsDismiss => 'Dismiss';
+
+  @override
+  String get mapNoMappedPlaces => 'No mapped places';
+
+  @override
+  String get mapZoomIn => 'Zoom in';
+
+  @override
+  String get mapZoomOut => 'Zoom out';
+
+  @override
+  String get mapResetMap => 'Reset map';
+
+  @override
+  String get accountMenuTooltip => 'Account';
+
+  @override
+  String get accountMenuTravelProfile => 'Travel profile';
+
+  @override
+  String get accountMenuPriceAlerts => 'Price alerts';
+
+  @override
+  String get accountMenuRetakeQuiz => 'Retake travel quiz';
+
+  @override
+  String get accountMenuAccountSettings => 'Account settings';
+
+  @override
+  String get accountMenuLocalIntelAdmin => 'Local intel admin';
+
+  @override
+  String get accountMenuMetrics => 'Metrics';
+
+  @override
+  String get accountMenuSignOut => 'Sign out';
 }

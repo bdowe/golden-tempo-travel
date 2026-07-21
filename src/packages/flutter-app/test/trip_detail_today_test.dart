@@ -12,6 +12,8 @@ import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/map_day_chips.dart';
 import 'package:travel_route_planner/widgets/status_pill.dart';
 
+import 'support/l10n_test_app.dart';
+
 /// Today mode (specs/today-mode PR 3): one-shot auto-scroll to today's day
 /// header, the pinned "Today" jump chip, and the header highlight.
 ///
@@ -76,7 +78,8 @@ Future<void> _pumpScreen(WidgetTester tester, TripsApiService service) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [tripsApiServiceProvider.overrideWithValue(service)],
-      child: const MaterialApp(home: TripDetailScreen(tripId: 't1')),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,home: TripDetailScreen(tripId: 't1')),
     ),
   );
   await tester.pumpAndSettle();

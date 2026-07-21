@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/trip_finding.dart';
 import '../providers/trip_review_provider.dart';
 import '../theme/spacing.dart';
@@ -51,11 +52,15 @@ const Map<String, int> _severityRank = {
   'info': 2,
 };
 
-const Map<String, String> _severityLabels = {
-  'critical': 'Critical',
-  'warn': 'Warning',
-  'info': 'Info',
-};
+/// Severity is a canonical API value — only its display label is translated
+/// (specs/i18n-spanish); anything unrecognized falls back to the raw value.
+String _severityLabel(AppLocalizations l10n, String severity) =>
+    switch (severity) {
+      'critical' => l10n.reviewSeverityCritical,
+      'warn' => l10n.reviewSeverityWarning,
+      'info' => l10n.reviewSeverityInfo,
+      _ => severity,
+    };
 
 const Map<String, IconData> _categoryIcons = {
   'dates': Icons.event_outlined,
@@ -110,8 +115,7 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
   void _toggleCheckHours() {
     if (widget.isOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("You're offline — reconnect to run more checks.")),
+        SnackBar(content: Text(context.l10n.reviewOfflineSnack)),
       );
       return;
     }
@@ -128,6 +132,7 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
     if (findings == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final sorted = [...findings]
       ..sort((a, b) => _rankOf(a.severity).compareTo(_rankOf(b.severity)));
     final worst = sorted.isEmpty ? null : sorted.first.severity;
@@ -137,23 +142,23 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
       children: [
         const Divider(height: 32),
         SectionHeader(
-          title: 'Trip health',
+          title: l10n.reviewSectionTitle,
           action: findings.isEmpty
               ? null
               : StatusPill.custom(
-                  label: '${findings.length} to review',
+                  label: l10n.reviewCountToReview(findings.length),
                   background: _severityColors(theme, worst!).bg,
                   foreground: _severityColors(theme, worst).fg,
                 ),
         ),
         const SizedBox(height: AppSpacing.sm),
         if (findings.isEmpty)
-          const EmptyState(
+          EmptyState(
             compact: true,
             icon: Icons.check_circle_outline,
             iconColor: Colors.green,
-            title: 'Looks good',
-            message: 'No issues found — your trip is in good shape.',
+            title: l10n.reviewEmptyTitle,
+            message: l10n.reviewEmptyMessage,
           )
         else
           for (final f in sorted) _buildRow(theme, f),
@@ -177,7 +182,7 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           StatusPill.custom(
-            label: _severityLabels[finding.severity] ?? finding.severity,
+            label: _severityLabel(context.l10n, finding.severity),
             background: colors.bg,
             foreground: colors.fg,
           ),
@@ -243,8 +248,8 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
               )
             : Icon(_checkHours ? Icons.check : Icons.access_time),
         label: Text(_checkHours
-            ? 'Opening hours checked'
-            : 'Also check opening hours'),
+            ? context.l10n.reviewHoursChecked
+            : context.l10n.reviewCheckHours),
         onPressed:
             (widget.isOffline || _checkHours) ? null : _toggleCheckHours,
       ),
