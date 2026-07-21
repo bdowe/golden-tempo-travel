@@ -158,7 +158,7 @@
     // beneath, so a user click on a sibling still focuses the right
     // Flutter field.
     (function () {
-      console.info('[autofill] shim v3 active');
+      console.info('[autofill] shim v3.1 active');
       var diagnosed = new WeakSet();
       var forwarded = new WeakSet();
       function logFillEvent(e) {
@@ -217,6 +217,18 @@
             diagnosed.add(el);
             el.addEventListener('input', logFillEvent);
             el.addEventListener('change', logFillEvent);
+          }
+          // Chrome paints an opaque pale-blue -internal-autofill-selected
+          // background (and forces text color) on autofilled inputs — a UA
+          // style that ignores background:transparent, which turned filled
+          // fields into blue bars covering the canvas text. The endless
+          // background transition is the standard way to keep it from ever
+          // appearing; text-fill-color keeps the DOM text invisible so only
+          // the canvas-rendered text shows.
+          if (!el.style.transition) {
+            el.style.transition =
+                'background-color 600000s 0s, background-image 600000s 0s';
+            el.style.webkitTextFillColor = 'transparent';
           }
           var y = rect.top + (i - focusedIdx) * (rect.height + 40);
           if (el !== focused) {
