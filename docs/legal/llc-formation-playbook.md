@@ -33,7 +33,7 @@ alternate name (DBA, $50).
 - [x] Gov2Go annual-report reminders + CorpWatch alerts
 - [x] Business email created (+ forwarding to personal)
 - [x] goldentempo.co registered (Cloudflare, auto-renew on)
-- [ ] **EIN** — irs.gov online, free, ~10 min, weekdays ~7am–10pm ET only
+- [x] **EIN** — obtained 2026-07-21 (irs.gov online; digital CP 575 downloaded, not mailed — number & letter live in the password manager, not this repo)
 - [ ] **NJ-REG** tax registration — free, same portal, **due 2026-09-03** (60 days from formation); do EIN first
 - [ ] Verify Gov2Go's "annual report due 2026-07-31" event — believed to be a quirk (first report should be due July 2027); confirm via the annual-report portal with the Entity ID, or DORES 609-292-9292; if genuinely due, just file ($75)
 - [ ] Sign & date the operating agreement; keep with records
