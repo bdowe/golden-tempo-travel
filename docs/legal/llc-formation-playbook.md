@@ -34,7 +34,8 @@ alternate name (DBA, $50).
 - [x] Business email created (+ forwarding to personal)
 - [x] goldentempo.co registered (Cloudflare, auto-renew on)
 - [x] **EIN** — obtained 2026-07-21 (irs.gov online; digital CP 575 downloaded, not mailed — number & letter live in the password manager, not this repo)
-- [ ] **NJ-REG** tax registration — free, same portal, **due 2026-09-03** (60 days from formation); do EIN first
+- [x] **NJ-REG** tax registration — **filed 2026-07-21** at njportal.com/DOR/BusinessRegistration (deadline was 2026-09-03). Registered as Ltd. Liability Co. – Single Member, Managing Member, fiscal year end December, **0 NJ workers**, no employer/withholding, **not** registered to collect sales tax (pre-revenue; amend via **REG-C-L** when the Phase 3 paid tier ships — same form adds employer status if wages ever start). NJ Business Code 2602 (Service – Computer Hardware, Software, Internet), NAICS 513210. NJ Taxpayer ID = EIN + `/000`. Locator/access-code + PDFs in the password manager (docs are download-only, link expired 2026-08-20).
+- [ ] **Business Registration Certificate (BRC)** — separate from the filing receipt; downloadable ~2026-07-23 (2 business days) from the NJ Division of Revenue, also mailed within 10 business days. Archive with the CP 575 + Certificate of Formation — it is the doc vendors/affiliate programs ask for.
 - [x] Gov2Go's "annual report due 2026-07-31" event **confirmed a false alarm** (2026-07-21) — the NJ annual-report portal (njportal.com/DOR/AnnualReports, Entity ID lookup) returns "No Annual Reports are due for GOLDEN TEMPO LLC at this time. Annual Reports are due for this company in July 2027." Trust the portal over Gov2Go reminders.
 - [ ] Sign & date the operating agreement; keep with records
 - [ ] Business bank account (Mercury or Relay — online-only, travel-friendly); needs certificate PDF + EIN letter (CP 575)
