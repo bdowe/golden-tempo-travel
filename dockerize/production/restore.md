@@ -47,8 +47,20 @@ docker run -d --name pg-restore \
   -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
   postgres:16-alpine
 
-# wait for it to accept connections
-until docker exec pg-restore pg_isready -U travel -d travel_planner; do sleep 1; done
+# Wait for it to accept connections — and stay up. A single pg_isready check
+# races the image's first-boot init, which starts a TEMPORARY server, then
+# stops and restarts it: the restore then fails with "the database system is
+# shutting down" (hit for real in the 2026-07-21 drill). Require several
+# consecutive successes instead.
+ok=0
+until [ "$ok" -ge 3 ]; do
+  if docker exec pg-restore pg_isready -U travel -d travel_planner >/dev/null 2>&1; then
+    ok=$((ok+1))
+  else
+    ok=0
+  fi
+  sleep 2
+done
 
 gunzip -c "$DUMP" | docker exec -i pg-restore \
   pg_restore -U travel -d travel_planner --no-owner --exit-on-error
