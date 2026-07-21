@@ -158,18 +158,55 @@
     // beneath, so a user click on a sibling still focuses the right
     // Flutter field.
     (function () {
-      console.info('[autofill] shim v3.1 active');
+      console.info('[autofill] shim v3.2 active');
       var diagnosed = new WeakSet();
       var forwarded = new WeakSet();
+      // Last value the engine is known to have ingested per input — kept in
+      // sync by the input listener below; the relay poll compares against it.
+      var lastSeen = new WeakMap();
       function logFillEvent(e) {
         // Verbose-level breadcrumbs for debugging real password-manager
         // behavior (DevTools console, "Verbose" filter, search "autofill").
+        lastSeen.set(e.target, e.target.value || '');
         console.debug('[autofill] ' + e.type +
             ' on ' + (e.target.getAttribute('autocomplete') || e.target.name) +
             ' len=' + (e.target.value || '').length +
             ' trusted=' + e.isTrusted +
             ' inputType=' + (e.inputType || '-'));
       }
+      // 1Password writes values into the inputs WITHOUT dispatching DOM
+      // events (Chrome still marks the fields autofilled, but Flutter's
+      // engine only ingests values via events, so the fill never reached
+      // Flutter state). Poll the autofill form's inputs and synthesize the
+      // input event for any value that changed with no event — the engine's
+      // own listener then ingests it. Duplicate delivery for event-ful
+      // writes is harmless: same-value updates are dropped app-side.
+      setInterval(function () {
+        var probe = document.querySelector(
+            'flt-text-editing-host form input, flt-text-editing-host form textarea');
+        if (!probe) return;
+        var fields = probe.form.querySelectorAll('input, textarea');
+        for (var i = 0; i < fields.length; i++) {
+          var el = fields[i];
+          if (el.type === 'submit') continue;
+          var value = el.value || '';
+          if (!lastSeen.has(el)) {
+            lastSeen.set(el, value);
+            continue;
+          }
+          if (lastSeen.get(el) === value) continue;
+          lastSeen.set(el, value);
+          console.debug('[autofill] relay silent write on ' +
+              (el.getAttribute('autocomplete') || el.name) +
+              ' len=' + value.length);
+          el.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            composed: true,
+            inputType: 'insertReplacementText',
+            data: value,
+          }));
+        }
+      }, 200);
       // A pointer event landed on a non-focused autofill input. Cancel it
       // (also suppresses the compatibility mouse events) and re-dispatch a
       // clone at whatever the engine has under that point, found by
