@@ -13,10 +13,11 @@ export 'app_localizations.dart';
 /// they can never disagree (a locale the provider resolved but MaterialApp
 /// didn't support would send a language header for text the app can't render).
 ///
-/// Spanish translations land ahead of enablement, so `es` stays out of this
-/// list until the string extraction is complete.
+/// Adding a locale here is what makes it selectable; the translations and the
+/// server-side catalog land in earlier PRs, so this stays a one-line change.
 const List<Locale> kSupportedLocales = [
   Locale('en'),
+  Locale('es'),
 ];
 
 /// True when [languageCode] is a language this build can actually render.

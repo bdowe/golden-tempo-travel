@@ -12,14 +12,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('supported languages', () {
-    // Spanish translations ship ahead of enablement: the .arb file exists and
-    // is complete, but `es` stays out of kSupportedLocales until the string
-    // extraction is done. Until then the app must resolve to English for
-    // everyone, so no user sees a half-translated UI.
-    test('English is supported and Spanish is not yet enabled', () {
+    // Spanish is now enabled (PR 7). Everything else must still be rejected:
+    // resolving a locale the app has no translations for would send a language
+    // header for text it cannot render.
+    test('English and Spanish are supported, other languages are not', () {
       expect(isSupportedLanguage('en'), isTrue);
-      expect(isSupportedLanguage('es'), isFalse);
+      expect(isSupportedLanguage('es'), isTrue);
       expect(isSupportedLanguage('fr'), isFalse);
+      expect(isSupportedLanguage('pt'), isFalse);
     });
   });
 
@@ -31,12 +31,13 @@ void main() {
     test('an override for a language this build cannot render is ignored', () {
       // A stale override left by a build that shipped more languages must not
       // pin the app to a language it has no translations for.
-      expect(resolveEffectiveLocale('es'), 'en');
       expect(resolveEffectiveLocale('klingon'), 'en');
+      expect(resolveEffectiveLocale('fr'), 'en');
     });
 
     test('an override for a supported language wins', () {
       expect(resolveEffectiveLocale('en'), 'en');
+      expect(resolveEffectiveLocale('es'), 'es');
     });
   });
 
@@ -51,6 +52,8 @@ void main() {
     test('an explicit choice pins MaterialApp to that locale', () {
       const state = LocaleState(override: 'en', effective: 'en');
       expect(state.materialLocale?.languageCode, 'en');
+      const spanish = LocaleState(override: 'es', effective: 'es');
+      expect(spanish.materialLocale?.languageCode, 'es');
     });
   });
 
