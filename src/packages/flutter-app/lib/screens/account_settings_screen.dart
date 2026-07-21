@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/l10n.dart';
 import '../providers/api_client_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/locale_provider.dart';
 import '../services/account_api_service.dart';
 import '../theme/spacing.dart';
 import '../widgets/legal_links.dart';
@@ -249,6 +250,10 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
+            SectionHeader(title: l10n.languageSectionTitle),
+            const SizedBox(height: AppSpacing.sm),
+            const _LanguagePicker(),
+            const SizedBox(height: AppSpacing.xl),
             SectionHeader(title: l10n.settingsEmailPrefsSection),
             const SizedBox(height: AppSpacing.sm),
             SwitchListTile(
@@ -306,6 +311,68 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Language selection (specs/i18n-spanish).
+///
+/// "System default" is the initial state and keeps following the device, so a
+/// traveler who changes their phone's language is followed rather than pinned.
+/// An explicit choice wins on this device and syncs to the account, which is
+/// what makes it carry to a second device and to the emails the server sends.
+///
+/// Options are built from [kSupportedLocales] rather than hardcoded, so
+/// enabling a language stays a one-line change.
+class _LanguagePicker extends ConsumerWidget {
+  const _LanguagePicker();
+
+  static String _nameFor(AppLocalizations l10n, String code) => switch (code) {
+        'en' => l10n.languageEnglish,
+        'es' => l10n.languageSpanish,
+        _ => code,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final state = ref.watch(localeProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        RadioGroup<String>(
+          groupValue: state.override,
+          onChanged: (v) {
+            if (v != null) ref.read(localeProvider.notifier).setOverride(v);
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.languageSystemDefault),
+                value: kLocaleSystem,
+              ),
+              for (final locale in kSupportedLocales)
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_nameFor(l10n, locale.languageCode)),
+                  value: locale.languageCode,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        // Saved trips and AI notes keep the language they were written in;
+        // say so here rather than letting it look like a bug.
+        Text(
+          l10n.languageChangeNote,
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }

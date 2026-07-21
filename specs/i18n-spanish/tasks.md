@@ -176,9 +176,19 @@ Also in PR 5:
 
 ## PR 7 — Enablement
 
-- [ ] `es` added to `supportedLocales` in `main.dart`
-- [ ] Language picker in `account_settings_screen.dart`
-      (System default / English / Español)
-- [ ] Full Spanish walkthrough of every `spec.md` acceptance criterion via
-      `make docker-dev`
-- [ ] `make smoke`
+- [x] `es` added to `kSupportedLocales` (`lib/l10n/l10n.dart` — the single
+      source of truth, so MaterialApp, the provider and the picker all follow)
+- [x] Language picker in `account_settings_screen.dart`
+      (System default / English / Español), built from `kSupportedLocales`
+      rather than hardcoded. Uses the current `RadioGroup` API, not the
+      deprecated `RadioListTile.groupValue`.
+- [x] Tests: picking Spanish redraws the app, the choice survives a relaunch,
+      "System default" clears the override, and the API language header follows
+- [x] Verified against the live dev stack: signup with `Accept-Language: es`
+      persists `users.locale = es`; `/share-preview` returns `<html lang="es">`
+      with translated copy; the built web bundle contains the Spanish strings
+- [ ] `make smoke` (run against a deployed build)
+
+**Remaining follow-ups** (all recorded above, none blocking): `PackingItem`
+values, `weather_service.go`'s `summarizeWeather`, email dates staying ISO, and
+the lowercase budget/pace chip labels.
