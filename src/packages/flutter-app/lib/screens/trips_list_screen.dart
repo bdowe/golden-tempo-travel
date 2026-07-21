@@ -35,6 +35,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(tripsProvider.notifier).loadTrips();
       ref.invalidate(resumableChatsProvider);
+      ref.invalidate(sharedWithMeProvider);
     });
   }
 
@@ -45,6 +46,10 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     final state = ref.watch(tripsProvider);
     final resumable =
         ref.watch(resumableChatsProvider).valueOrNull ?? const <ChatSessionSummary>[];
+    // Watched before the guard branches: an account whose only trips are
+    // shared-with-me must reach the list, not the plan-a-trip empty state.
+    final sharedAsync = ref.watch(sharedWithMeProvider);
+    final shared = sharedAsync.valueOrNull ?? const <Trip>[];
 
     // A conversation that just produced a saved trip graduates out of the
     // continue section — refetch when the agent reports a saved trip.
@@ -53,9 +58,15 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
     });
 
     Widget body;
-    if (state.loading && state.trips.isEmpty && resumable.isEmpty) {
+    if ((state.loading || sharedAsync.isLoading) &&
+        state.trips.isEmpty &&
+        resumable.isEmpty &&
+        shared.isEmpty) {
       body = const Center(child: CircularProgressIndicator());
-    } else if (state.error != null && state.trips.isEmpty && resumable.isEmpty) {
+    } else if (state.error != null &&
+        state.trips.isEmpty &&
+        resumable.isEmpty &&
+        shared.isEmpty) {
       body = EmptyState(
         icon: Icons.cloud_off,
         title: l10n.tripsListErrorTitle,
@@ -68,7 +79,7 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
           ),
         ],
       );
-    } else if (state.trips.isEmpty && resumable.isEmpty) {
+    } else if (state.trips.isEmpty && resumable.isEmpty && shared.isEmpty) {
       body = EmptyState(
         icon: Icons.luggage,
         title: l10n.tripsListEmptyTitle,
@@ -84,8 +95,6 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
       );
     } else {
       final isAdmin = ref.watch(authProvider).user?.isAdmin ?? false;
-      final shared =
-          ref.watch(sharedWithMeProvider).valueOrNull ?? const <Trip>[];
       final liveTrip = ref.watch(liveTripProvider);
       body = RefreshIndicator(
         onRefresh: () async {

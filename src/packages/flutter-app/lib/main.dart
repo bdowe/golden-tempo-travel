@@ -29,6 +29,70 @@ void main() {
   );
 }
 
+/// A deep link boots on exactly its own route. The default
+/// onGenerateInitialRoutes expands `/share/x` into a stack of every path
+/// prefix (`/`, `/share`, `/share/x`); the prefixes hit the AuthGate
+/// catch-all, so a signed-in session mounts two AppShells whose tab
+/// navigators share the same GlobalKeys — the tree corrupts and the body
+/// renders blank.
+List<Route<dynamic>> generateInitialRoutes(String initialRoute) =>
+    [generateRoute(RouteSettings(name: initialRoute))];
+
+/// Route by URL so share links work signed-out. Everything else lands
+/// on AuthGate, preserving the existing splash -> landing/quiz/shell
+/// flow. Legacy /#/share links are rewritten by the index.html shim.
+Route<dynamic> generateRoute(RouteSettings settings) {
+  final uri = Uri.tryParse(settings.name ?? '/');
+  final segments = uri?.pathSegments ?? const <String>[];
+  if (segments.length == 2 && segments[0] == 'share') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => SharedTripScreen(token: segments[1]),
+    );
+  }
+  // Emailed co-planner invites (specs/invite-by-email); same screen,
+  // invite-token fetch + accept.
+  if (segments.length == 2 && segments[0] == 'invite') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => SharedTripScreen(
+          token: segments[1], linkKind: SharedLinkKind.invite),
+    );
+  }
+  if (segments.length == 2 && segments[0] == 'reset') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => ResetPasswordScreen(token: segments[1]),
+    );
+  }
+  if (segments.length == 2 && segments[0] == 'verify') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => VerifyEmailScreen(token: segments[1]),
+    );
+  }
+  // Landing spot for the Google sign-in redirect (specs/google-sso):
+  // /sso/<one-time code>, or /sso/error when the flow failed upstream.
+  if (segments.length == 2 && segments[0] == 'sso') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => SsoCallbackScreen(code: segments[1]),
+    );
+  }
+  // Price-alert emails deep-link here; the screen itself handles the
+  // signed-out case with a sign-in prompt.
+  if (segments.length == 1 && segments[0] == 'alerts') {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => const AlertsScreen(),
+    );
+  }
+  return MaterialPageRoute(
+    settings: settings,
+    builder: (_) => const AuthGate(),
+  );
+}
+
 class TravelRoutePlannerApp extends ConsumerWidget {
   const TravelRoutePlannerApp({super.key});
 
@@ -51,60 +115,8 @@ class TravelRoutePlannerApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // Route by URL so share links work signed-out. Everything else lands
-      // on AuthGate, preserving the existing splash -> landing/quiz/shell
-      // flow. Legacy /#/share links are rewritten by the index.html shim.
-      onGenerateRoute: (settings) {
-        final uri = Uri.tryParse(settings.name ?? '/');
-        final segments = uri?.pathSegments ?? const <String>[];
-        if (segments.length == 2 && segments[0] == 'share') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => SharedTripScreen(token: segments[1]),
-          );
-        }
-        // Emailed co-planner invites (specs/invite-by-email); same screen,
-        // invite-token fetch + accept.
-        if (segments.length == 2 && segments[0] == 'invite') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => SharedTripScreen(
-                token: segments[1], linkKind: SharedLinkKind.invite),
-          );
-        }
-        if (segments.length == 2 && segments[0] == 'reset') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => ResetPasswordScreen(token: segments[1]),
-          );
-        }
-        if (segments.length == 2 && segments[0] == 'verify') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => VerifyEmailScreen(token: segments[1]),
-          );
-        }
-        // Landing spot for the Google sign-in redirect (specs/google-sso):
-        // /sso/<one-time code>, or /sso/error when the flow failed upstream.
-        if (segments.length == 2 && segments[0] == 'sso') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => SsoCallbackScreen(code: segments[1]),
-          );
-        }
-        // Price-alert emails deep-link here; the screen itself handles the
-        // signed-out case with a sign-in prompt.
-        if (segments.length == 1 && segments[0] == 'alerts') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => const AlertsScreen(),
-          );
-        }
-        return MaterialPageRoute(
-          settings: settings,
-          builder: (_) => const AuthGate(),
-        );
-      },
+      onGenerateRoute: generateRoute,
+      onGenerateInitialRoutes: generateInitialRoutes,
     );
   }
 }
