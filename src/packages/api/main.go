@@ -29,6 +29,9 @@ type HealthResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 	Service   string    `json:"service"`
 	Database  string    `json:"database"`
+	// Release is the git SHA this build was made from (SENTRY_RELEASE,
+	// baked into the image by CI) — lets "what's live?" be one curl.
+	Release string `json:"release,omitempty"`
 }
 
 // corsMiddleware adds CORS headers for origins listed in ALLOWED_ORIGINS
@@ -96,6 +99,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 		Service:   "travel-route-planner-api",
 		Database:  database,
+		Release:   os.Getenv("SENTRY_RELEASE"),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
