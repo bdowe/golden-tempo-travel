@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -171,5 +172,55 @@ func TestInviteAcceptNotifiesOwner(t *testing.T) {
 	// The accepter (friend) should not be notified.
 	if n := countNotificationsOfType(t, friend.ID, "invite_accepted"); n != 0 {
 		t.Fatalf("accepter invite_accepted = %d, want 0", n)
+	}
+}
+
+func TestShareJoinNotifiesOwnerOnce(t *testing.T) {
+	resetDB(t)
+	owner, ownerToken := createTestUser(t, "owner@example.com")
+	viewer, viewerToken := createTestUser(t, "viewer@example.com")
+	trip := createTestTrip(t, owner.ID, 1)
+	shareToken := createShare(t, ownerToken, trip.ID.String(), "viewer")
+
+	if rec := joinShare(t, viewerToken, shareToken); rec.Code != http.StatusOK {
+		t.Fatalf("join = %d: %s", rec.Code, rec.Body.String())
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	notes := notificationsOfType(t, owner.ID, "share_joined")
+	if len(notes) != 1 {
+		t.Fatalf("owner share_joined = %d, want 1", len(notes))
+	}
+	if !notes[0].TripID.Valid || uuid.UUID(notes[0].TripID.Bytes) != trip.ID {
+		t.Fatalf("share_joined trip_id mismatch")
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(notes[0].Payload, &payload); err != nil {
+		t.Fatalf("share_joined payload: %v", err)
+	}
+	if payload["role"] != "viewer" {
+		t.Fatalf("share_joined role = %q, want viewer", payload["role"])
+	}
+	// The joiner is not notified.
+	if n := countNotificationsOfType(t, viewer.ID, "share_joined"); n != 0 {
+		t.Fatalf("joiner share_joined = %d, want 0", n)
+	}
+
+	// Re-redeeming the link is idempotent and must NOT re-notify.
+	if rec := joinShare(t, viewerToken, shareToken); rec.Code != http.StatusOK {
+		t.Fatalf("re-join = %d: %s", rec.Code, rec.Body.String())
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := countNotificationsOfType(t, owner.ID, "share_joined"); n != 1 {
+		t.Fatalf("owner share_joined after re-join = %d, want 1 (unchanged)", n)
+	}
+
+	// An owner opening their own link never notifies.
+	if rec := joinShare(t, ownerToken, shareToken); rec.Code != http.StatusOK {
+		t.Fatalf("owner self-join = %d: %s", rec.Code, rec.Body.String())
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := countNotificationsOfType(t, owner.ID, "share_joined"); n != 1 {
+		t.Fatalf("owner share_joined after self-join = %d, want 1 (unchanged)", n)
 	}
 }

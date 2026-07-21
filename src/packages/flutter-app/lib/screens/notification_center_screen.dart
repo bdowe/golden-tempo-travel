@@ -108,7 +108,7 @@ class _NotificationTile extends StatelessWidget {
     final content = switch (notification.type) {
       'price_drop' =>
         _PriceDropBody(payload: notification.payload, unread: unread),
-      'collab_edit' || 'invite_accepted' => _TripSignalBody(
+      'collab_edit' || 'invite_accepted' || 'share_joined' => _TripSignalBody(
           type: notification.type,
           payload: notification.payload,
           unread: unread,
@@ -306,9 +306,10 @@ class _GenericBody extends StatelessWidget {
 }
 
 /// Trip collaboration signals: a co-planner edited a shared trip
-/// (`collab_edit`) or someone accepted an invite (`invite_accepted`). Both read
-/// as "<who> <did what> <trip>" with a leading icon, built from the payload's
-/// actor/trip fields.
+/// (`collab_edit`), someone accepted an invite (`invite_accepted`), or someone
+/// redeemed a share link (`share_joined` — viewer joins read as "following").
+/// All read as "<who> <did what> <trip>" with a leading icon, built from the
+/// payload's actor/trip fields.
 class _TripSignalBody extends StatelessWidget {
   final String type;
   final Map<String, dynamic> payload;
@@ -334,6 +335,14 @@ class _TripSignalBody extends StatelessWidget {
           : l10n.notifSomeone;
       icon = Icons.group_add_outlined;
       headline = l10n.notifJoinedTrip(who, tripTitle);
+    } else if (type == 'share_joined') {
+      final who = payload['joiner_name'] is String
+          ? payload['joiner_name'] as String
+          : l10n.notifSomeone;
+      icon = Icons.group_add_outlined;
+      headline = payload['role'] == 'viewer'
+          ? l10n.notifFollowedTrip(who, tripTitle)
+          : l10n.notifJoinedTrip(who, tripTitle);
     } else {
       final who = payload['actor_name'] is String
           ? payload['actor_name'] as String

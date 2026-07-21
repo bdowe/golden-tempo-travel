@@ -2012,6 +2012,11 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String notifFollowedTrip(String who, String trip) {
+    return '$who ahora sigue «$trip»';
+  }
+
+  @override
   String notifEditedTrip(String who, String trip) {
     return '$who editó «$trip»';
   }

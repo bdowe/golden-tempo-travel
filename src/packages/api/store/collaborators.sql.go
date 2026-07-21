@@ -19,7 +19,7 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (owner_id, chat_id, user_id) WHERE revoked_at IS NULL
 DO UPDATE SET role = CASE WHEN EXCLUDED.role = 'editor' THEN 'editor'
                           ELSE trip_collaborators.role END
-RETURNING role
+RETURNING role, (xmax = 0)::boolean AS inserted
 `
 
 type CreateTripCollaboratorParams struct {
@@ -29,19 +29,26 @@ type CreateTripCollaboratorParams struct {
 	Role    string    `json:"role"`
 }
 
+type CreateTripCollaboratorRow struct {
+	Role     string `json:"role"`
+	Inserted bool   `json:"inserted"`
+}
+
 // Idempotent join, upgrade-never-downgrade: redeeming an editor link (or
 // invite) upgrades an existing viewer membership; redeeming a viewer link as
-// an editor keeps editor. Returns the resulting role.
-func (q *Queries) CreateTripCollaborator(ctx context.Context, arg CreateTripCollaboratorParams) (string, error) {
+// an editor keeps editor. Returns the resulting role plus whether this call
+// created the membership (xmax = 0 only on a fresh insert), so callers can
+// fire first-join-only side effects without re-notifying on every re-redeem.
+func (q *Queries) CreateTripCollaborator(ctx context.Context, arg CreateTripCollaboratorParams) (CreateTripCollaboratorRow, error) {
 	row := q.db.QueryRow(ctx, createTripCollaborator,
 		arg.ChatID,
 		arg.OwnerID,
 		arg.UserID,
 		arg.Role,
 	)
-	var role string
-	err := row.Scan(&role)
-	return role, err
+	var i CreateTripCollaboratorRow
+	err := row.Scan(&i.Role, &i.Inserted)
+	return i, err
 }
 
 const getEditableTripByID = `-- name: GetEditableTripByID :one

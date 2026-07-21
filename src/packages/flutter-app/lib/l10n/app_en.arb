@@ -1307,6 +1307,17 @@
       }
     }
   },
+  "notifFollowedTrip": "{who} is now following \"{trip}\"",
+  "@notifFollowedTrip": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      },
+      "trip": {
+        "type": "String"
+      }
+    }
+  },
   "notifEditedTrip": "{who} edited \"{trip}\"",
   "@notifEditedTrip": {
     "placeholders": {
