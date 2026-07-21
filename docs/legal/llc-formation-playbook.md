@@ -35,7 +35,7 @@ alternate name (DBA, $50).
 - [x] goldentempo.co registered (Cloudflare, auto-renew on)
 - [x] **EIN** — obtained 2026-07-21 (irs.gov online; digital CP 575 downloaded, not mailed — number & letter live in the password manager, not this repo)
 - [ ] **NJ-REG** tax registration — free, same portal, **due 2026-09-03** (60 days from formation); do EIN first
-- [ ] Verify Gov2Go's "annual report due 2026-07-31" event — believed to be a quirk (first report should be due July 2027); confirm via the annual-report portal with the Entity ID, or DORES 609-292-9292; if genuinely due, just file ($75)
+- [x] Gov2Go's "annual report due 2026-07-31" event **confirmed a false alarm** (2026-07-21) — the NJ annual-report portal (njportal.com/DOR/AnnualReports, Entity ID lookup) returns "No Annual Reports are due for GOLDEN TEMPO LLC at this time. Annual Reports are due for this company in July 2027." Trust the portal over Gov2Go reminders.
 - [ ] Sign & date the operating agreement; keep with records
 - [ ] Business bank account (Mercury or Relay — online-only, travel-friendly); needs certificate PDF + EIN letter (CP 575)
 - [ ] Privacy policy + Terms of Service under Golden Tempo LLC **before public launch** (app already stores emails/analytics; affiliate programs require a published privacy policy)
