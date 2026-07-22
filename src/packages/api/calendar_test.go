@@ -246,3 +246,29 @@ func TestBuildICSEmptyTripStillYieldsSpanEvent(t *testing.T) {
 		t.Fatalf("trip-span event dates wrong:\n%s", body)
 	}
 }
+
+// TestBuildICSExcludesDrafts pins the confirmedOnly gate: itinerary-seeded
+// drafts (auto=true) never render in the app, so they must not export as
+// phantom calendar events either. Same gate covers the print packet
+// (buildPrintView) via the shared confirmedOnly helper.
+func TestBuildICSExcludesDrafts(t *testing.T) {
+	d := exportData{
+		Trip: store.Trip{
+			ID: uuid.New(), Title: "Drafts", StartDate: pgDate(t, "2026-08-01"), EndDate: pgDate(t, "2026-08-05"),
+		},
+		Accommodations: []store.Accommodation{
+			{ID: uuid.New(), Name: "Confirmed Hotel", CheckIn: pgDate(t, "2026-08-01"), CheckOut: pgDate(t, "2026-08-03")},
+			{ID: uuid.New(), Name: "Draft Hotel", Auto: true, CheckIn: pgDate(t, "2026-08-03"), CheckOut: pgDate(t, "2026-08-05")},
+		},
+		Segments: []store.TripSegment{
+			{ID: uuid.New(), Mode: "flight", Origin: strp("AAA"), Destination: strp("BBB"), Auto: true, DepartDate: pgDate(t, "2026-08-03")},
+		},
+	}
+	body := buildICS("en", d)
+	if !strings.Contains(body, "Confirmed Hotel") {
+		t.Fatalf("confirmed stay missing:\n%s", body)
+	}
+	if strings.Contains(body, "Draft Hotel") || strings.Contains(body, "AAA") {
+		t.Fatalf("draft rows leaked into the export:\n%s", body)
+	}
+}

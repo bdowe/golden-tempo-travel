@@ -49,6 +49,29 @@ type exportData struct {
 // verified export token IS the authorization. Unlike buildSharedTripResponse it
 // loads ALL accommodations/segments (drafts included) plus booking todos and
 // the packing checklist. A missing trip returns ok=false so callers 404.
+// confirmedOnly narrows an export to confirmed (non-draft) accommodations
+// and segments, for the user-facing export surfaces (print packet, .ics).
+// The app stopped rendering itinerary-seeded drafts (auto=true), so exports
+// showing them would read as phantom bookings. Deliberately NOT applied in
+// loadExportData itself: the trip-review engine shares this loader and its
+// checks branch on Auto themselves.
+func confirmedOnly(d exportData) exportData {
+	confirmed := d
+	confirmed.Accommodations = nil
+	for _, a := range d.Accommodations {
+		if !a.Auto {
+			confirmed.Accommodations = append(confirmed.Accommodations, a)
+		}
+	}
+	confirmed.Segments = nil
+	for _, s := range d.Segments {
+		if !s.Auto {
+			confirmed.Segments = append(confirmed.Segments, s)
+		}
+	}
+	return confirmed
+}
+
 func loadExportData(ctx context.Context, tripID uuid.UUID) (exportData, bool) {
 	if dbPool == nil {
 		return exportData{}, false
