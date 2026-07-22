@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
+	"strings"
+	"unicode/utf8"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
@@ -112,6 +115,11 @@ var planToolRegistry = []planTool{
 	// No enabled gate: anonymous/unbound sessions record the mode on the
 	// session so the plan itself avoids the wrong transport.
 	{def: setTravelModeTool, run: runSetTravelModeTool},
+	// Meta-tool: renders one-tap reply chips client-side (suggest_replies SSE
+	// event, specs/chat-quick-replies). No gate — useful in every session
+	// shape, and gate-free keeps each shape's tools array a pure append
+	// (prompt-cache prefix rule).
+	{def: suggestRepliesTool, run: runSuggestRepliesTool},
 }
 
 // planToolByName dispatches tool_use blocks; derived from the registry so the
@@ -257,6 +265,25 @@ var suggestFerriesTool = anthropic.ToolParam{
 			"passengers":  map[string]any{"type": "integer", "description": "Optional passenger count"},
 		},
 		Required: []string{"origin", "destination"},
+	},
+}
+
+var suggestRepliesTool = anthropic.ToolParam{
+	Name: "suggest_replies",
+	Description: anthropic.String("Show the traveler 2-4 one-tap quick-reply buttons answering the question you just asked. " +
+		"Call this at the very END of a reply that asks the traveler a question or offers a choice, after your text is complete. " +
+		"Each reply is a short standalone answer in the traveler's voice, in the language of your reply."),
+	InputSchema: anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"replies": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"minItems":    2,
+				"maxItems":    4,
+				"description": "2-4 tappable answers, each under 60 characters, first-person from the traveler (e.g. 'Mid-range budget', 'More food, fewer museums', 'Yes, add it'). Each must make sense sent as a chat message on its own.",
+			},
+		},
+		Required: []string{"replies"},
 	},
 }
 
@@ -549,6 +576,44 @@ func runSuggestFerriesTool(s *planSession, input json.RawMessage) (string, bool)
 	})
 	b, _ := json.Marshal(options)
 	return "Provided ferry booking link(s): " + string(b), false
+}
+
+// runSuggestRepliesTool is a pure client-side emit (the suggest_stays
+// template): no DB, no gate — sanitize, stream the side event, and tell the
+// model to end its turn. The Flutter client stores the list and renders
+// tappable chips once the stream closes; older clients ignore the event.
+func runSuggestRepliesTool(s *planSession, input json.RawMessage) (string, bool) {
+	var in struct {
+		Replies []string `json:"replies"`
+	}
+	json.Unmarshal(input, &in)
+
+	replies := sanitizeQuickReplies(in.Replies)
+	if len(replies) == 0 {
+		return "No usable replies (2-4 short distinct strings required); none were shown.", true
+	}
+	sendSSE(s.w, "suggest_replies", map[string]any{"replies": replies})
+	return "Quick replies are now shown to the traveler as tap buttons. End your turn now — do not repeat the options in text.", false
+}
+
+// sanitizeQuickReplies trims, drops empties/duplicates/oversized entries, and
+// caps the list at 4. The 80-rune hard cap is looser than the schema's <60
+// guidance so mildly-long valid replies survive; oversized ones are dropped,
+// never truncated — a truncated reply sent verbatim would read as garbage in
+// the traveler's transcript.
+func sanitizeQuickReplies(raw []string) []string {
+	replies := make([]string, 0, 4)
+	for _, r := range raw {
+		r = strings.TrimSpace(r)
+		if r == "" || utf8.RuneCountInString(r) > 80 || slices.Contains(replies, r) {
+			continue
+		}
+		replies = append(replies, r)
+		if len(replies) == 4 {
+			break
+		}
+	}
+	return replies
 }
 
 func runSearchFlightsTool(s *planSession, input json.RawMessage) (string, bool) {

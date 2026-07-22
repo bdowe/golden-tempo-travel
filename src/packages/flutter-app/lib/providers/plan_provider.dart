@@ -53,6 +53,12 @@ class PlanState {
   /// sent. Always replaced whole, never mutated in place.
   final List<QueuedMessage> queuedMessages;
 
+  /// One-tap answers the agent attached to its last question (SSE
+  /// `suggest_replies`, specs/chat-quick-replies). Model-generated in the
+  /// conversation language; tapping sends the text verbatim. Empty = none.
+  /// Replaced whole, never mutated; cleared on every send and on error.
+  final List<String> suggestedReplies;
+
   /// Short excerpt of profile notes the agent just saved (server
   /// `profile_updated` event); shown as a transient "Noted" chip in the chat.
   final String? profileUpdateNote;
@@ -100,6 +106,7 @@ class PlanState {
     this.localRecsCity,
     this.error,
     this.queuedMessages = const [],
+    this.suggestedReplies = const [],
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
     this.tripUpdatedThisTurn = false,
@@ -128,6 +135,7 @@ class PlanState {
     Object? localRecsCity = _sentinel,
     Object? error = _sentinel,
     List<QueuedMessage>? queuedMessages,
+    List<String>? suggestedReplies,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
     bool? tripUpdatedThisTurn,
@@ -157,6 +165,7 @@ class PlanState {
       localRecsCity: localRecsCity == _sentinel ? this.localRecsCity : localRecsCity as String?,
       error: error == _sentinel ? this.error : error as String?,
       queuedMessages: queuedMessages ?? this.queuedMessages,
+      suggestedReplies: suggestedReplies ?? this.suggestedReplies,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
       tripUpdateCount: tripUpdateCount ?? this.tripUpdateCount,
@@ -318,6 +327,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
       localRecs: null,
       localRecsCity: null,
       error: null,
+      suggestedReplies: [],
       profileUpdateNote: null,
       tripUpdatedThisTurn: false,
     );
@@ -385,7 +395,11 @@ class PlanNotifier extends StateNotifier<PlanState> {
           case 'tool_call':
             if (textBuffer.isNotEmpty) needsSeparator = true;
             final name = event.data['name'] as String? ?? '';
-            state = state.copyWith(activeTools: [...state.activeTools, name]);
+            // The quick-replies meta-tool renders chips, not work worth a
+            // spinner chip; tool_result's list-remove is a harmless no-op.
+            if (name != 'suggest_replies') {
+              state = state.copyWith(activeTools: [...state.activeTools, name]);
+            }
 
           case 'tool_result':
             if (textBuffer.isNotEmpty) needsSeparator = true;
@@ -412,6 +426,14 @@ class PlanNotifier extends StateNotifier<PlanState> {
           case 'profile_updated':
             state = state.copyWith(
                 profileUpdateNote: event.data['notes_preview'] as String? ?? '');
+
+          case 'suggest_replies':
+            final raw = event.data['replies'] as List<dynamic>? ?? [];
+            // Replaced whole (record-select invariant); a later call in the
+            // same turn overwrites — last-write-wins. The chips widget stays
+            // hidden until the stream closes.
+            state = state.copyWith(
+                suggestedReplies: raw.whereType<String>().toList());
 
           case 'compacting':
             state = state.copyWith(isCompacting: true);
@@ -496,6 +518,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
               streamingText: null,
               activeTools: [],
               isCompacting: false,
+              // A turn that ends in an error must not leave reply chips
+              // competing with the error banner's Try again.
+              suggestedReplies: [],
               messages: partial.isEmpty
                   ? state.messages
                   : [
@@ -541,6 +566,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
         streamingText: null,
         activeTools: [],
         isCompacting: false,
+        suggestedReplies: [],
         error: e.toString(),
       );
     }

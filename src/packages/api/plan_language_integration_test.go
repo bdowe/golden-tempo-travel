@@ -64,7 +64,9 @@ func planWithLocale(t *testing.T, acceptLanguage string) string {
 
 // The load-bearing regression test: English behavior must be untouched by the
 // whole i18n feature. If this fails, English users' prompt-cache prefix and
-// model behavior have changed.
+// model behavior have changed. (basePrompt itself may still evolve — e.g. the
+// suggest_replies instruction, specs/chat-quick-replies, was a deliberate
+// one-time cache re-warm — but never via the locale path.)
 func TestSystemPromptEnglishUnchanged(t *testing.T) {
 	resetDB(t)
 	for _, header := range []string{"", "en", "en-US,en;q=0.9", "fr"} {
@@ -72,6 +74,11 @@ func TestSystemPromptEnglishUnchanged(t *testing.T) {
 		if strings.Contains(prompt, "Respond in") {
 			t.Errorf("Accept-Language %q: English prompt gained a language instruction:\n%s",
 				header, prompt)
+		}
+		// Positive pin: the quick-replies behavioral instruction is part of
+		// the English basePrompt for every locale header.
+		if !strings.Contains(prompt, "call suggest_replies") {
+			t.Errorf("Accept-Language %q: prompt lost the suggest_replies instruction", header)
 		}
 		// These requests are anonymous and not trip-bound, so the prompt is
 		// exactly basePrompt — it must still end on basePrompt's final

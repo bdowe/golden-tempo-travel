@@ -522,6 +522,7 @@ class _ChatTail extends StatelessWidget {
         _ProfileNoteChip(state: state),
         _ItineraryUpdatedChip(state: state),
         _ResultChips(state: state, notifier: notifier, onViewTrip: onViewTrip),
+        _QuickReplyChips(state: state, notifier: notifier),
         if (footerBuilder != null)
           _ChatFooter(state: state, footerBuilder: footerBuilder!),
         _ErrorBanner(state: state, notifier: notifier),
@@ -925,6 +926,49 @@ class _ResultChips extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: chips),
+    );
+  }
+}
+
+/// One-tap quick replies for the assistant's last question (SSE
+/// `suggest_replies`, specs/chat-quick-replies). Shown only once the turn has
+/// settled: hidden while streaming (the terminal agent-loop iteration is
+/// still running when the event arrives) and while a queued follow-up
+/// supersedes the question; cleared upstream on send, error, and reset. The
+/// chip text is BOTH what the traveler reads and what gets sent — the server
+/// generates it in the conversation language, matching the
+/// display-text==sent-text rule of the starter suggestion chips.
+class _QuickReplyChips extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+  final ProviderListenable<PlanNotifier> notifier;
+
+  const _QuickReplyChips({required this.state, required this.notifier});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Record select; list identity works because the provider replaces the
+    // list whole on every suggest_replies event — never mutates in place.
+    final r = ref.watch(state.select((s) => (
+          replies: s.suggestedReplies,
+          isStreaming: s.isStreaming,
+          hasQueue: s.queuedMessages.isNotEmpty,
+        )));
+    if (r.replies.isEmpty || r.isStreaming || r.hasQueue) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: [
+          for (final reply in r.replies)
+            ActionChip(
+              label: Text(reply),
+              onPressed: () => ref.read(notifier).sendMessage(reply),
+            ),
+        ],
+      ),
     );
   }
 }
