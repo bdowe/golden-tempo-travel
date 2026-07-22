@@ -1124,29 +1124,17 @@ abstract class AppLocalizations {
   /// **'Other'**
   String get bookingsOther;
 
-  /// No description provided for @bookingsSuggested.
+  /// No description provided for @bookingRowAddDetails.
   ///
   /// In en, this message translates to:
-  /// **'Suggested'**
-  String get bookingsSuggested;
+  /// **'Add details…'**
+  String get bookingRowAddDetails;
 
-  /// No description provided for @bookingsKeep.
+  /// No description provided for @bookingRowOptions.
   ///
   /// In en, this message translates to:
-  /// **'Keep'**
-  String get bookingsKeep;
-
-  /// No description provided for @bookingsEdit.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit'**
-  String get bookingsEdit;
-
-  /// No description provided for @bookingsDismissSuggestion.
-  ///
-  /// In en, this message translates to:
-  /// **'Dismiss suggestion'**
-  String get bookingsDismissSuggestion;
+  /// **'Booking options'**
+  String get bookingRowOptions;
 
   /// No description provided for @bookingsSummaryProgress.
   ///
@@ -1862,12 +1850,6 @@ abstract class AppLocalizations {
   /// **'Could not update stay: {error}'**
   String tripUpdateStayFailed(String error);
 
-  /// No description provided for @tripKeepStayFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not keep stay: {error}'**
-  String tripKeepStayFailed(String error);
-
   /// No description provided for @tripAddTransportFailed.
   ///
   /// In en, this message translates to:
@@ -1885,12 +1867,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not update transport: {error}'**
   String tripUpdateTransportFailed(String error);
-
-  /// No description provided for @tripKeepTransportFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not keep transport: {error}'**
-  String tripKeepTransportFailed(String error);
 
   /// No description provided for @tripShareLinkFailed.
   ///

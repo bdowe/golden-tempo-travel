@@ -6,7 +6,6 @@ import 'package:travel_route_planner/models/accommodation.dart';
 import 'package:travel_route_planner/models/trip.dart';
 import 'package:travel_route_planner/models/trip_segment.dart';
 import 'package:travel_route_planner/widgets/bookings_section.dart';
-import 'package:travel_route_planner/widgets/status_pill.dart';
 
 import 'support/l10n_test_app.dart';
 
@@ -36,6 +35,13 @@ const _confirmedStay = Accommodation(
   checkOut: '2026-09-06',
 );
 
+const _confirmedStay2 = Accommodation(
+  id: 'a3',
+  name: 'Porto Guesthouse',
+  checkIn: '2026-09-06',
+  checkOut: '2026-09-08',
+);
+
 const _draftLeg = TripSegment(
   id: 's1',
   mode: 'flight',
@@ -44,6 +50,14 @@ const _draftLeg = TripSegment(
   departDate: '2026-09-04',
   auto: true,
   autoKey: 'transport:lisbon>>porto',
+);
+
+const _confirmedLeg = TripSegment(
+  id: 's2',
+  mode: 'train',
+  origin: 'Porto',
+  destination: 'Coimbra',
+  departDate: '2026-09-06',
 );
 
 // ProviderScope is required, not incidental: confirmed booking rows render
@@ -62,7 +76,6 @@ BookingsSection _section({
   required List<Accommodation> stays,
   required List<TripSegment> segments,
   bool readOnly = false,
-  void Function(Accommodation)? onConfirmStay,
   void Function(Accommodation)? onEditStay,
   void Function(Accommodation)? onDeleteStay,
   void Function(int, int)? onReorderStays,
@@ -78,11 +91,9 @@ BookingsSection _section({
       onAddStay: () {},
       onDeleteStay: onDeleteStay ?? (_) {},
       onEditStay: onEditStay ?? (_) {},
-      onConfirmStay: onConfirmStay ?? (_) {},
       onAddSegment: () {},
       onDeleteSegment: (_) {},
       onEditSegment: (_) {},
-      onConfirmSegment: (_) {},
       onReorderStays: onReorderStays,
       onStayBookedChanged: onStayBookedChanged,
       otherBookings: otherBookings,
@@ -90,47 +101,32 @@ BookingsSection _section({
     );
 
 void main() {
-  testWidgets('drafts render a Suggested pill and keep/edit/dismiss actions',
-      (tester) async {
-    Accommodation? kept, edited, dismissed;
+  testWidgets('auto drafts never render, in any mode', (tester) async {
+    // Editor: drafts filtered, confirmed rows render with full affordances.
     await tester.pumpWidget(_wrap(_section(
       stays: const [_draftStay, _confirmedStay],
       segments: const [_draftLeg],
-      onConfirmStay: (a) => kept = a,
-      onEditStay: (a) => edited = a,
-      onDeleteStay: (a) => dismissed = a,
     )));
-
-    // One pill per draft (stay + segment); the confirmed stay has none.
-    expect(find.byType(StatusPill), findsNWidgets(2));
-    expect(find.text('Suggested'), findsNWidgets(2));
+    expect(find.text('Suggested'), findsNothing);
+    expect(find.text('Stay in Lisbon'), findsNothing);
+    expect(find.text('Lisbon → Porto'), findsNothing);
     expect(find.text('Casa do Brian'), findsOneWidget);
-    expect(find.text('Lisbon → Porto'), findsOneWidget);
+    expect(find.byTooltip('Remove stay'), findsOneWidget);
+    // A draft-only group renders no sub-header at all.
+    expect(find.text('Transport'), findsNothing);
 
-    await tester.tap(find.byTooltip('Keep').first);
-    expect(kept?.id, 'a1');
-    await tester.tap(find.byTooltip('Edit').first);
-    expect(edited?.id, 'a1');
-    await tester.tap(find.byTooltip('Dismiss suggestion').first);
-    expect(dismissed?.id, 'a1');
-  });
-
-  testWidgets('read-only mode hides drafts entirely', (tester) async {
+    // Viewer: same filter (belt-and-braces against stale cached copies).
     await tester.pumpWidget(_wrap(_section(
       stays: const [_draftStay, _confirmedStay],
       segments: const [_draftLeg],
       readOnly: true,
     )));
-
-    expect(find.text('Suggested'), findsNothing);
     expect(find.text('Stay in Lisbon'), findsNothing);
-    expect(find.text('Lisbon → Porto'), findsNothing);
-    // Confirmed rows still render, without edit/delete affordances.
     expect(find.text('Casa do Brian'), findsOneWidget);
     expect(find.byTooltip('Remove stay'), findsNothing);
   });
 
-  testWidgets('edit sheet prefills from the draft and pops a PATCH body',
+  testWidgets('edit sheet prefills from an existing stay and pops a body',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
       child: MaterialApp(
@@ -162,7 +158,7 @@ void main() {
     expect(find.text('2026-09-01 → 2026-09-04'), findsOneWidget);
   });
 
-  testWidgets('Booked checkbox: confirmed rows only, toggles, strikes title',
+  testWidgets('Booked checkbox toggles and strikes the title',
       (tester) async {
     Accommodation? toggled;
     bool? toggledTo;
@@ -175,7 +171,7 @@ void main() {
       },
     )));
 
-    // Only the confirmed stay has a checkbox — drafts keep keep/edit/dismiss.
+    // The draft is filtered, so the confirmed stay owns the only checkbox.
     expect(find.byType(Checkbox), findsOneWidget);
     await tester.tap(find.byType(Checkbox));
     expect(toggled?.id, 'a2');
@@ -210,14 +206,14 @@ void main() {
   testWidgets('drag handles render for editors but never in read-only mode',
       (tester) async {
     await tester.pumpWidget(_wrap(_section(
-      stays: const [_draftStay, _confirmedStay],
+      stays: const [_confirmedStay, _confirmedStay2],
       segments: const [],
       onReorderStays: (_, __) {},
     )));
     expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2));
 
     await tester.pumpWidget(_wrap(_section(
-      stays: const [_draftStay, _confirmedStay],
+      stays: const [_confirmedStay, _confirmedStay2],
       segments: const [],
       readOnly: true,
       onReorderStays: (_, __) {},
@@ -225,7 +221,8 @@ void main() {
     expect(find.byIcon(Icons.drag_indicator), findsNothing);
   });
 
-  testWidgets('sub-headers render only for non-empty groups', (tester) async {
+  testWidgets('sub-headers render only for non-empty confirmed groups',
+      (tester) async {
     await tester.pumpWidget(_wrap(_section(
       stays: const [_confirmedStay],
       segments: const [],
@@ -237,10 +234,11 @@ void main() {
 
     await tester.pumpWidget(_wrap(_section(
       stays: const [],
-      segments: const [_draftLeg],
+      segments: const [_confirmedLeg],
     )));
     expect(find.text('Stays'), findsNothing);
     expect(find.text('Transport'), findsOneWidget);
+    expect(find.text('Porto → Coimbra'), findsOneWidget);
   });
 
   testWidgets('otherBookings slot renders under an Other sub-header',

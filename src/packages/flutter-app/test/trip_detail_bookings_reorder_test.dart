@@ -127,28 +127,33 @@ void main() {
       _trip(
         [
           _stay('a', 'Hotel Alpha'),
-          _stay('b', 'Hotel Beta'),
+          // Interleaved legacy draft: never rendered, and drags on the rows
+          // around it must reorder the CONFIRMED subset (the visible list),
+          // not raw _stays indices — the draft would absorb the move.
           _stay('d', 'Suggested Stay', auto: true),
+          _stay('b', 'Hotel Beta'),
         ],
         [_segment('g1', 'JFK', 'LIS'), _segment('g2', 'LIS', 'JFK')],
       ),
     );
 
-    // A handle on every stay row (incl. the Suggested draft) and segment row.
-    expect(find.byIcon(Icons.drag_indicator), findsNWidgets(5));
+    // A handle on every rendered row: 2 confirmed stays + 2 segments; the
+    // draft renders nothing.
+    expect(find.text('Suggested Stay'), findsNothing);
+    expect(find.byIcon(Icons.drag_indicator), findsNWidgets(4));
 
     final rowHeight =
         _rowTop(tester, 'Hotel Beta') - _rowTop(tester, 'Hotel Alpha');
     await _dragRow(tester, 'Hotel Alpha', rowHeight + 20);
 
     expect(fake.reorderCalls.length, 1);
+    // Confirmed order first, hidden drafts re-appended at the tail.
     expect(fake.reorderCalls.single.stayIds, ['b', 'a', 'd']);
     expect(fake.reorderCalls.single.segmentIds, isNull);
-    // Optimistic order is visible.
+    // Optimistic order is visible; the draft still renders nowhere.
     expect(_rowTop(tester, 'Hotel Beta'),
         lessThan(_rowTop(tester, 'Hotel Alpha')));
-    expect(_rowTop(tester, 'Hotel Alpha'),
-        lessThan(_rowTop(tester, 'Suggested Stay')));
+    expect(find.text('Suggested Stay'), findsNothing);
   });
 
   testWidgets('segment drag sends segment_ids only',

@@ -152,12 +152,20 @@ class BookingTodoRow extends StatelessWidget {
   /// Same override as [BookingTodoCard.openLabelOverride].
   final String? openLabelOverride;
 
+  /// "Add details…": promotes this todo to a confirmed accommodation/segment
+  /// via a prefilled add-sheet. Confirmed records are what viewers see and
+  /// what calendar export / Tonight / map stay pins read, so this is the
+  /// one-tap replacement for the retired Suggested-draft "Keep" flow. Null
+  /// hides the menu (viewers, offline, custom todos).
+  final VoidCallback? onAddDetails;
+
   const BookingTodoRow({
     super.key,
     required this.todo,
     required this.onBookedChanged,
     this.onOpen,
     this.openLabelOverride,
+    this.onAddDetails,
   });
 
   @override
@@ -192,9 +200,27 @@ class BookingTodoRow extends StatelessWidget {
           TextButton.icon(
             onPressed: onOpen,
             icon: const Icon(Icons.open_in_new, size: 18),
+            // Booked rows recede: the link stays usable (re-check a price,
+            // find the confirmation email's provider) but stops competing
+            // with unbooked rows for attention.
+            style: todo.booked
+                ? TextButton.styleFrom(foregroundColor: muted)
+                : null,
             label: Text(_providerOpenLabel(
                 context.l10n, todo, openLabelOverride)),
           ),
+          if (onAddDetails != null)
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, size: 18, color: muted),
+              tooltip: context.l10n.bookingRowOptions,
+              onSelected: (_) => onAddDetails!(),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'details',
+                  child: Text(context.l10n.bookingRowAddDetails),
+                ),
+              ],
+            ),
           // Last so the fixed-width checkboxes stay flush right and aligned
           // across rows despite varying button-label widths.
           Checkbox(

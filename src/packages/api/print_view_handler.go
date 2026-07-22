@@ -554,6 +554,7 @@ func formatWeatherLine(locale string, wd WeatherDay, historical bool) string {
 // day-by-day packet sections plus unscheduled/reference/budget/checklist
 // sections. budget and weatherByDay are optional (nil ⇒ section/lines omitted).
 func buildPrintView(locale string, d exportData, budget *printBudget, weatherByDay []string) printViewData {
+	d = confirmedOnly(d)
 	view := printViewData{Lang: locale, T: newPrintLabels(locale), Title: strings.TrimSpace(d.Trip.Title)}
 	if view.Title == "" {
 		view.Title = tr(locale, "print.untitledTrip")

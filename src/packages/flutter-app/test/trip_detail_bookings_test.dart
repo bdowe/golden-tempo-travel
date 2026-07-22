@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:travel_route_planner/models/trip.dart';
 import 'package:travel_route_planner/models/itinerary_item.dart';
+import 'package:travel_route_planner/models/accommodation.dart';
 import 'package:travel_route_planner/models/booking_todo.dart';
+import 'package:travel_route_planner/services/accommodations_api_service.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/trips_api_service.dart';
+import 'package:travel_route_planner/providers/accommodations_provider.dart';
 import 'package:travel_route_planner/providers/trips_provider.dart';
 import 'package:travel_route_planner/screens/trip_detail_screen.dart';
 import 'package:travel_route_planner/widgets/booking_todo_card.dart';
@@ -39,8 +42,27 @@ ItineraryItem _item(int pos, String name, String address, String category,
       city: city,
     );
 
-BookingTodo _todo(String kind, String key, String title, {bool auto = true}) =>
-    BookingTodo(id: key, kind: kind, todoKey: key, title: title, auto: auto);
+BookingTodo _todo(String kind, String key, String title,
+        {bool auto = true, String? departDate, String? returnDate}) =>
+    BookingTodo(
+        id: key,
+        kind: kind,
+        todoKey: key,
+        title: title,
+        auto: auto,
+        departDate: departDate,
+        returnDate: returnDate);
+
+class _FakeAccommodationsApiService extends AccommodationsApiService {
+  final List<Map<String, dynamic>> added = [];
+  _FakeAccommodationsApiService() : super(ApiClient(baseUrl: 'http://test'));
+
+  @override
+  Future<Accommodation> add(String tripId, Map<String, dynamic> body) async {
+    added.add(body);
+    return const Accommodation(id: 'new', name: 'Stay');
+  }
+}
 
 /// The itinerary renders lazily (slivers), so widgets below the default
 /// 800x600 test viewport never get built. A tall viewport keeps the whole
@@ -173,5 +195,64 @@ void main() {
 
     expect(find.byType(BookingTodoRow), findsNothing);
     expect(find.text('Louvre'), findsNothing);
+  });
+
+  testWidgets(
+      'Add details… promotes a stay todo to a confirmed record, prefilled',
+      (WidgetTester tester) async {
+    _useTallViewport(tester);
+    final accommodations = _FakeAccommodationsApiService();
+    final trip = Trip(
+      id: 't3',
+      title: 'Weekend away',
+      status: 'planned',
+      startDate: '2026-06-10',
+      endDate: '2026-06-12',
+      createdAt: '2026-06-01',
+      updatedAt: '2026-06-01',
+      items: [
+        _item(0, 'Louvre', 'Paris, France', 'attraction',
+            day: 1, city: 'Paris'),
+      ],
+      bookingTodos: [
+        _todo('stay', 'stay:paris', 'Stay in Paris',
+            departDate: '2026-06-10', returnDate: '2026-06-12'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tripsApiServiceProvider.overrideWithValue(_FakeTripsApiService(trip)),
+          accommodationsApiServiceProvider.overrideWithValue(accommodations),
+        ],
+        child: MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            home: TripDetailScreen(tripId: 't3')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The inline row carries the promotion kebab; open it.
+    final kebab = find.descendant(
+        of: find.byType(BookingTodoRow), matching: find.byIcon(Icons.more_vert));
+    expect(kebab, findsOneWidget);
+    await tester.tap(kebab);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add details…'));
+    await tester.pumpAndSettle();
+
+    // The stay sheet opens in ADD mode, prefilled from the todo.
+    expect(find.text('Add a stay'), findsOneWidget);
+    expect(find.text('Stay in Paris'), findsWidgets); // row + prefilled field
+    expect(find.text('2026-06-10 → 2026-06-12'), findsWidgets);
+
+    // Saving POSTs a normal confirmed accommodation.
+    await tester.tap(find.widgetWithText(FilledButton, 'Add stay'));
+    await tester.pumpAndSettle();
+    expect(accommodations.added, hasLength(1));
+    expect(accommodations.added.single['name'], 'Stay in Paris');
+    expect(accommodations.added.single['check_in'], '2026-06-10');
+    expect(accommodations.added.single['check_out'], '2026-06-12');
   });
 }

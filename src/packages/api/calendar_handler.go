@@ -68,6 +68,7 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 // items are skipped; if nothing at all is datable the calendar still contains a
 // single trip-span all-day event so the download is never empty.
 func buildICS(locale string, d exportData) string {
+	d = confirmedOnly(d)
 	var b icsBuilder
 	b.line("BEGIN:VCALENDAR")
 	b.line("VERSION:2.0")

@@ -8,7 +8,6 @@ import '../utils/calendar_links.dart';
 import '../utils/tracked_launch.dart';
 import 'add_to_calendar_button.dart';
 import 'section_header.dart';
-import 'status_pill.dart';
 
 /// Transport modes are canonical API values ('flight', 'train', …) sent to the
 /// server, so they are never translated — only their display labels are
@@ -23,11 +22,13 @@ String _modeLabel(AppLocalizations l10n, String value) => switch (value) {
       _ => value,
     };
 
-/// The unified "Bookings" hub in trip detail: the stays and transport segments
-/// the user has actually saved, plus itinerary-seeded Suggested drafts
-/// (auto=true) the user can keep, edit, or dismiss — and, via the
-/// [otherBookings] slot, the residual booking-todos that didn't match a city
-/// group. Callbacks land in the screen, which persists via the
+/// The "Bookings" hub in trip detail: the confirmed stays and transport
+/// segments the user has actually saved, plus — via the [otherBookings]
+/// slot — the residual booking-todos that didn't match a city group.
+/// Itinerary-seeded drafts (auto=true) are never rendered: the inline
+/// itinerary rows are the primary book+track surface, and the drafts sync
+/// keeps running purely to keep the server rows fresh for old clients.
+/// Callbacks land in the screen, which persists via the
 /// accommodations/segments endpoints and reloads the trip.
 class BookingsSection extends StatelessWidget {
   final Trip trip;
@@ -40,16 +41,13 @@ class BookingsSection extends StatelessWidget {
   final VoidCallback onAddStay;
   final void Function(Accommodation) onDeleteStay;
   final void Function(Accommodation) onEditStay;
-  final void Function(Accommodation) onConfirmStay;
   final VoidCallback onAddSegment;
   final void Function(TripSegment) onDeleteSegment;
   final void Function(TripSegment) onEditSegment;
-  final void Function(TripSegment) onConfirmSegment;
 
-  /// "Booked" checkbox toggles on confirmed rows (drafts keep their
-  /// keep/edit/dismiss actions instead — checking a suggestion would silently
-  /// confirm it). Null disables the checkboxes (offline), like the reorder
-  /// callbacks; in read-only mode they render disabled but still show state.
+  /// "Booked" checkbox toggles. Null disables the checkboxes (offline), like
+  /// the reorder callbacks; in read-only mode they render disabled but still
+  /// show state.
   final void Function(Accommodation, bool)? onStayBookedChanged;
   final void Function(TripSegment, bool)? onSegmentBookedChanged;
 
@@ -95,11 +93,9 @@ class BookingsSection extends StatelessWidget {
     required this.onAddStay,
     required this.onDeleteStay,
     required this.onEditStay,
-    required this.onConfirmStay,
     required this.onAddSegment,
     required this.onDeleteSegment,
     required this.onEditSegment,
-    required this.onConfirmSegment,
     this.onStayBookedChanged,
     this.onSegmentBookedChanged,
     this.onReorderStays,
@@ -166,46 +162,6 @@ class BookingsSection extends StatelessWidget {
     );
   }
 
-  Widget _suggestedPill(ThemeData theme, AppLocalizations l10n) => Padding(
-        padding: const EdgeInsets.only(left: AppSpacing.sm),
-        child: StatusPill.custom(
-          label: l10n.bookingsSuggested,
-          background: theme.colorScheme.secondaryContainer,
-          foreground: theme.colorScheme.onSecondaryContainer,
-        ),
-      );
-
-  /// Trailing actions for a Suggested draft: keep (confirm as-is), edit
-  /// (prefilled sheet), dismiss (tombstoned server-side so it won't re-seed).
-  Widget _draftActions(
-      {required AppLocalizations l10n,
-      required VoidCallback onKeep,
-      required VoidCallback onEdit,
-      required VoidCallback onDismiss,
-      Widget? dragHandle}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.check, size: 18),
-          tooltip: l10n.bookingsKeep,
-          onPressed: onKeep,
-        ),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: l10n.bookingsEdit,
-          onPressed: onEdit,
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: l10n.bookingsDismissSuggestion,
-          onPressed: onDismiss,
-        ),
-        if (dragHandle != null) dragHandle,
-      ],
-    );
-  }
-
   /// Compact "Booked" checkbox for confirmed rows, shrunk to sit in the
   /// trailing icon row (same treatment as BookingTodoRow's). A null
   /// [onChanged] renders it disabled but still showing state.
@@ -250,14 +206,13 @@ class BookingsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = context.l10n;
-    // Belt and braces: the server withholds drafts from viewers, but a stale
-    // cached copy could still carry them.
-    final visibleStays = (readOnly ? stays.where((a) => !a.auto) : stays)
-        .toList(growable: false);
+    // Drafts (auto=true) never render, for anyone: legacy rows still arrive
+    // in editor payloads (and stale cached copies), but the inline itinerary
+    // rows own the suggested-booking flow now.
+    final visibleStays =
+        stays.where((a) => !a.auto).toList(growable: false);
     final visibleSegments =
-        (readOnly ? segments.where((s) => !s.auto) : segments)
-            .toList(growable: false);
-    final draftCardColor = theme.colorScheme.surfaceContainerLow;
+        segments.where((s) => !s.auto).toList(growable: false);
     final canDragStays =
         onReorderStays != null && !readOnly && visibleStays.length > 1;
     final canDragSegments =
@@ -319,18 +274,10 @@ class BookingsSection extends StatelessWidget {
               return Card(
                 key: ValueKey(a.id),
                 margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                color: a.auto ? draftCardColor : null,
                 child: ListTile(
                   leading: const Icon(Icons.hotel_outlined),
-                  title: Row(
-                    children: [
-                      Flexible(
-                        child: Text(a.name,
-                            style: _bookedTitleStyle(theme, a.booked)),
-                      ),
-                      if (a.auto) _suggestedPill(theme, l10n),
-                    ],
-                  ),
+                  title: Text(a.name,
+                      style: _bookedTitleStyle(theme, a.booked)),
                   subtitle: Text(
                     [
                       if (a.provider != null && a.provider!.isNotEmpty)
@@ -340,16 +287,7 @@ class BookingsSection extends StatelessWidget {
                       if (a.address != null && a.address!.isNotEmpty) a.address,
                     ].whereType<String>().join(' · '),
                   ),
-                  trailing: a.auto && !readOnly
-                      ? _draftActions(
-                          l10n: l10n,
-                          onKeep: () => onConfirmStay(a),
-                          onEdit: () => onEditStay(a),
-                          onDismiss: () => onDeleteStay(a),
-                          dragHandle:
-                              canDragStays ? _dragHandle(theme, i) : null,
-                        )
-                      : Row(
+                  trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (stayCalendarRange(a) case final range?)
@@ -416,21 +354,13 @@ class BookingsSection extends StatelessWidget {
               return Card(
                 key: ValueKey(s.id),
                 margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                color: s.auto ? draftCardColor : null,
                 child: ListTile(
                   leading: Icon(_modeIcon(s.mode)),
-                  title: Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          [s.origin, s.destination]
-                              .whereType<String>()
-                              .join(' → '),
-                          style: _bookedTitleStyle(theme, s.booked),
-                        ),
-                      ),
-                      if (s.auto) _suggestedPill(theme, l10n),
-                    ],
+                  title: Text(
+                    [s.origin, s.destination]
+                        .whereType<String>()
+                        .join(' → '),
+                    style: _bookedTitleStyle(theme, s.booked),
                   ),
                   subtitle: Text(
                     [
@@ -441,16 +371,7 @@ class BookingsSection extends StatelessWidget {
                       if (s.notes != null && s.notes!.isNotEmpty) s.notes,
                     ].whereType<String>().join(' · '),
                   ),
-                  trailing: s.auto && !readOnly
-                      ? _draftActions(
-                          l10n: l10n,
-                          onKeep: () => onConfirmSegment(s),
-                          onEdit: () => onEditSegment(s),
-                          onDismiss: () => onDeleteSegment(s),
-                          dragHandle:
-                              canDragSegments ? _dragHandle(theme, i) : null,
-                        )
-                      : Row(
+                  trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (segmentCalendarRange(s) case final range?)
