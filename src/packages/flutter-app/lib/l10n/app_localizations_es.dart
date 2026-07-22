@@ -1279,6 +1279,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get tripAddPlaceMapHint => 'Añade un lugar para verlo en el mapa.';
 
   @override
+  String get tripExpandMap => 'Ampliar mapa';
+
+  @override
   String tripDayN(int n) {
     return 'Día $n';
   }

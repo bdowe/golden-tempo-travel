@@ -379,6 +379,7 @@
   "tripNoMappedPlaces": "No hay lugares en el mapa",
   "tripNoPlacesOnDay": "No hay lugares marcados el día {day}",
   "tripAddPlaceMapHint": "Añade un lugar para verlo en el mapa.",
+  "tripExpandMap": "Ampliar mapa",
   "tripDayN": "Día {n}",
   "tripDayTripTo": "Excursión · {town}",
   "tripDayTripFallback": "Excursión",
