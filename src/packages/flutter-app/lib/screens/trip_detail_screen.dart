@@ -137,6 +137,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   // phone layout's scroll-away tap-to-expand card (false). Assigned each
   // build from the body width; also feeds the Today-scroll chrome math.
   bool _mapPinned = true;
+  // Body-width narrow flag (< kRailBreakpoint), assigned by the root
+  // LayoutBuilder in build so the APP BAR and the body agree — MediaQuery
+  // would report the window, which is ~81px wider than the body when the
+  // nav rail shows (window 800-880 = wide window, narrow body). Strictly
+  // < 800: the 800px test surface must stay on the desktop path.
+  bool _narrow = false;
   // Today mode (specs/today-mode): the itinerary auto-scrolls to today's day
   // header at most once per screen visit, and only from loud load paths.
   final ScrollController _scroll = ScrollController();
@@ -1117,6 +1123,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           _reorderResidual(residual, oldIndex, newIndex),
       itemBuilder: (context, i) {
         final todo = residual[i];
+        // Drag stays on all widths here: for residual custom bookings the
+        // handle is the ONLY reorder mechanism (no kebab move entries).
         final canDrag = !_readOnly && !_isOffline && residual.length > 1;
         return Padding(
           key: ValueKey(todo.id),
@@ -2200,6 +2208,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     Expanded(
                       child: Text(
                         _groupLabelText(l10n, group.label),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleSmall
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
@@ -2404,9 +2414,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                Text(context.l10n.tripFindingEvents(label),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
+                // Flexible, or a long city name overflows phones for the
+                // few frames this spinner row is on screen.
+                Flexible(
+                  child: Text(context.l10n.tripFindingEvents(label),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant)),
+                ),
               ],
             ),
           ),
@@ -2485,12 +2501,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         if (todo != null)
           BookingTodoRow(
             todo: todo,
+            compact: _narrow,
             onBookedChanged: (v) => _setBooked(todo, v),
             onOpen: _openCallbackFor(todo),
             openLabelOverride: _ferryLegs.containsKey(todo.todoKey)
-                ? l10n.tripFindFerries
+                ? (_narrow ? l10n.tripFindFerriesShort : l10n.tripFindFerries)
                 : _flightLegs.containsKey(todo.todoKey)
-                    ? l10n.tripFindFlights
+                    ? (_narrow
+                        ? l10n.tripFindFlightsShort
+                        : l10n.tripFindFlights)
                     : null,
             onAddDetails:
                 (_readOnly || _isOffline || todo.kind == 'other')
@@ -2550,7 +2569,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// indexes no longer map onto the trip's item order.
   Widget _batchReorderableSliver(
       List<ItineraryItem> batch, double indent, ThemeData theme) {
-    final canDrag = !_readOnly &&
+    // Narrow first: phones reorder via the kebab (Move up/down + Reorder
+    // section), so no handle is built at all — the same null-handle path
+    // filters/offline/singleton batches already take.
+    final canDrag = !_narrow &&
+        !_readOnly &&
         !_isOffline &&
         _itemFilter == 'all' &&
         batch.length > 1;
@@ -2771,6 +2794,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                       Flexible(
                         child: Text(
                           label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.labelLarge?.copyWith(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.w700,
@@ -2789,7 +2814,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                     ],
                   ),
                 ),
-                if (travelMin > 0) ...[
+                // Narrow drops the day travel-total: it is fixed-width (no
+                // ellipsis) and fights the date label, and the per-leg
+                // connectors below carry the same information.
+                if (travelMin > 0 && !_narrow) ...[
                   Icon(Icons.directions_car_outlined, size: 14, color: muted),
                   const SizedBox(width: 4),
                   Text(
@@ -2976,12 +3004,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           padding: EdgeInsets.only(left: indentLeft),
           child: ListTile(
           leading: _itemLeading(item.category, item.position),
-          title: Text(item.name),
+          title: Text(item.name,
+              maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: (item.address != null || item.localSourceName != null)
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (item.address != null) Text(item.address!),
+                    if (item.address != null)
+                      Text(item.address!,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                     // The local-source credit line: who vouched for this place
                     // (snapshot; shown for agent- and browse-added items alike).
                     if (item.localSourceName != null)
@@ -3012,17 +3043,24 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               if (item.timeOfDay != null)
-                _TimeOfDayChip(timeOfDay: item.timeOfDay!),
+                _TimeOfDayChip(
+                    timeOfDay: item.timeOfDay!, compact: _narrow),
               HoverRevealed(
                 revealed: revealed,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.map_outlined),
-                      tooltip: context.l10n.tripOpenInGoogleMaps,
-                      onPressed: () => _launch(_mapsUrl(item)),
-                    ),
+                    // On narrow, Maps lives in the kebab and this button
+                    // goes — EXCEPT for viewers, who have no kebab (gate
+                    // below) and would otherwise lose their only maps
+                    // access. Role-only on purpose: offline editors keep
+                    // the kebab, so they keep Maps through it.
+                    if (!_narrow || _readOnly)
+                      IconButton(
+                        icon: const Icon(Icons.map_outlined),
+                        tooltip: context.l10n.tripOpenInGoogleMaps,
+                        onPressed: () => _launch(_mapsUrl(item)),
+                      ),
                     if (!_readOnly) _itemMenu(item),
                     if (dragHandle != null) dragHandle,
                   ],
@@ -3056,6 +3094,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         switch (action) {
           case 'edit':
             _editItem(item);
+          case 'maps':
+            _launch(_mapsUrl(item));
           case 'up':
             _moveItem(item, -1);
           case 'down':
@@ -3076,6 +3116,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           child: ListTile(
             leading: const Icon(Icons.edit_outlined),
             title: Text(l10n.tripEdit),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        // All widths, not just narrow (where the standalone button is gone):
+        // one menu shape everywhere, and the desktop hover icon is invisible
+        // at rest, so a labeled entry helps discovery.
+        PopupMenuItem(
+          value: 'maps',
+          child: ListTile(
+            leading: const Icon(Icons.map_outlined),
+            title: Text(l10n.tripOpenInGoogleMaps),
             contentPadding: EdgeInsets.zero,
           ),
         ),
@@ -3975,8 +4026,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           children: [
             ActionChip(
               avatar: const Icon(Icons.event, size: 16),
+              // Narrow: humanized short range ("Jul 20 – Jul 27") — the raw
+              // ISO pair is ~200px and forces the meta row to wrap.
               label: Text(hasDates
-                  ? '${trip.startDate} → ${trip.endDate}'
+                  ? (_narrow
+                      ? (tripDateRange(trip.startDate, trip.endDate) ??
+                          '${trip.startDate} → ${trip.endDate}')
+                      : '${trip.startDate} → ${trip.endDate}')
                   : l10n.tripAddDates),
               onPressed: (_isOffline || !trip.canEdit) ? null : _editDates,
             ),
@@ -4033,8 +4089,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             // meta chips. Same canEdit gate as before, so editor
             // collaborators keep their spec-mandated entry point
             // (specs/collaborator-refine); the per-city/day sparkles and the
-            // chat FAB are unchanged.
-            if (trip.canEdit)
+            // chat FAB are unchanged. On narrow this moves to the app bar.
+            if (trip.canEdit && !_narrow)
               FilledButton.tonalIcon(
                 // Chat/refine needs the network — disabled while offline.
                 onPressed: _isOffline
@@ -4068,16 +4124,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                         size: 16,
                         color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 6),
-                    Text(
-                      trip.canEdit
-                          ? (trip.ownerName != null
-                              ? l10n.tripCoPlanningWith(trip.ownerName!)
-                              : l10n.tripCoPlanningShared)
-                          : (trip.ownerName != null
-                              ? l10n.tripSharedBy(trip.ownerName!)
-                              : l10n.tripSharedViewOnly),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                    // Flexible, or the Row hands the Text unbounded width
+                    // and a long owner name overflows the Wrap on phones.
+                    Flexible(
+                      child: Text(
+                        trip.canEdit
+                            ? (trip.ownerName != null
+                                ? l10n.tripCoPlanningWith(trip.ownerName!)
+                                : l10n.tripCoPlanningShared)
+                            : (trip.ownerName != null
+                                ? l10n.tripSharedBy(trip.ownerName!)
+                                : l10n.tripSharedViewOnly),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant),
+                      ),
                     ),
                   ],
                 ),
@@ -4246,7 +4308,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     final l10n = context.l10n;
     final trip = _trip;
 
-    return Scaffold(
+    return LayoutBuilder(builder: (context, constraints) {
+      // Same width the body LayoutBuilder sees (Scaffold adds no horizontal
+      // chrome), so this always agrees with _mapPinned. Plain assignment:
+      // we're in build, like _mapPinned's own write.
+      _narrow = constraints.maxWidth < kRailBreakpoint;
+      return Scaffold(
       // Always-reachable chat entry, mirroring the _openRefine guards so it's
       // never a dead button. Hidden while the panel is open: on wide layouts
       // the panel is docked (redundant), on narrow it would overlap the sheet.
@@ -4262,8 +4329,24 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             )
           : null,
       appBar: GradientAppBar(
-        title: Text(trip != null ? _displayTitle(trip) : l10n.tripTitleFallback),
+        title: Text(
+            trip != null ? _displayTitle(trip) : l10n.tripTitleFallback,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
         actions: [
+          // Narrow: the header card drops its Refine button (one clean chip
+          // row), so the trip-level refine entry moves up here — first, so
+          // share/delete/leave keep their outer-edge spots for every role.
+          // Same gates as the button it replaces: editors only
+          // (specs/collaborator-refine), disabled — not hidden — offline.
+          if (_narrow && trip != null && trip.canEdit)
+            IconButton(
+              icon: const Icon(Icons.auto_awesome),
+              tooltip: l10n.tripRefineWithAI,
+              onPressed: _isOffline
+                  ? null
+                  : () => _openRefine(trip, const RefineTarget.trip()),
+            ),
           // Sharing and deletion are owner-only surfaces; editors see
           // neither. Both mutate, so they're hidden while offline-serving.
           if (trip != null && trip.isOwner && !_isOffline)
@@ -4848,7 +4931,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                         ],
                       );
                     }),
-    );
+      );
+    });
   }
 
   /// The open action for a booking item: a transport item with a known flight
@@ -5235,7 +5319,12 @@ class _FilterMissNotice extends StatelessWidget {
 /// by time so a day's rhythm is scannable at a glance.
 class _TimeOfDayChip extends StatelessWidget {
   final String timeOfDay;
-  const _TimeOfDayChip({required this.timeOfDay});
+
+  /// Icon-only glyph for narrow layouts; the Tooltip carries the label (and
+  /// doubles as the semantics label for screen readers).
+  final bool compact;
+
+  const _TimeOfDayChip({required this.timeOfDay, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -5247,6 +5336,19 @@ class _TimeOfDayChip extends StatelessWidget {
     };
     final label = _timeOfDayLabel(context.l10n, timeOfDay);
     final scheme = Theme.of(context).colorScheme;
+    if (compact) {
+      return Tooltip(
+        message: label,
+        child: Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: scheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 14, color: scheme.onSecondaryContainer),
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

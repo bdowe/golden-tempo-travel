@@ -1052,6 +1052,12 @@ abstract class AppLocalizations {
   /// **'Open search'**
   String get bookingCardOpenSearch;
 
+  /// No description provided for @bookingCardOpenSearchShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get bookingCardOpenSearchShort;
+
   /// No description provided for @calendarAddTo.
   ///
   /// In en, this message translates to:
@@ -2216,11 +2222,23 @@ abstract class AppLocalizations {
   /// **'Find flights'**
   String get tripFindFlights;
 
+  /// No description provided for @tripFindFlightsShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Flights'**
+  String get tripFindFlightsShort;
+
   /// No description provided for @tripFindFerries.
   ///
   /// In en, this message translates to:
   /// **'Find ferries'**
   String get tripFindFerries;
+
+  /// No description provided for @tripFindFerriesShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Ferries'**
+  String get tripFindFerriesShort;
 
   /// No description provided for @tripAddBooking.
   ///

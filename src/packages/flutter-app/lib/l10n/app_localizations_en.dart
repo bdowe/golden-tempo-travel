@@ -513,6 +513,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bookingCardOpenSearch => 'Open search';
 
   @override
+  String get bookingCardOpenSearchShort => 'Search';
+
+  @override
   String get calendarAddTo => 'Add to calendar';
 
   @override
@@ -1205,7 +1208,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tripFindFlights => 'Find flights';
 
   @override
+  String get tripFindFlightsShort => 'Flights';
+
+  @override
   String get tripFindFerries => 'Find ferries';
+
+  @override
+  String get tripFindFerriesShort => 'Ferries';
 
   @override
   String get tripAddBooking => 'Add a booking';

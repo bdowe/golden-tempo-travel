@@ -22,9 +22,11 @@ itinerary.
 
 ## Acceptance Criteria
 
-- [ ] An editor collaborator sees the "Refine with AI" button, per-day and
-      per-city refine icons, and the trip-assistant chat button on a shared
-      trip, and can run a refinement end-to-end.
+- [ ] An editor collaborator sees the trip-level Refine entry (the header
+      "Refine with AI" button on wide layouts; an app-bar sparkle icon on
+      narrow layouts), per-day and per-city refine icons, and the
+      trip-assistant chat button on a shared trip, and can run a refinement
+      end-to-end.
 - [ ] A collaborator's refinement rewrites the owner's trip in place: no new
       trip version, no new trip under the collaborator's account; the owner
       sees the change on next load.
@@ -67,9 +69,13 @@ duration of the rewrite so concurrent writers serialize.
 ## UI Behavior
 
 - **Trip detail (shared, editor access):** the header shows the co-planning
-  banner *and* the "Refine with AI" button (previously banner only). Per-day
-  and per-city refine icons and the trip-assistant chat button appear as they
-  do for owners. All refine entry points stay hidden offline.
+  banner *and* the trip-level Refine entry — the "Refine with AI" button on
+  wide layouts, an app-bar sparkle icon on narrow (<800px body) layouts
+  (mobile declutter, 2026-07-22). Per-day and per-city refine icons and the
+  trip-assistant chat button appear as they do for owners. Per-day/city
+  icons and the chat button stay hidden offline; the trip-level entry
+  (button or sparkle) renders disabled offline instead of hidden, matching
+  the shipped header-button behavior.
 - **Happy path:** co-planner opens the shared trip → taps Refine → the refine
   panel streams the agent → the section updates in place → the banner's
   "your changes save for everyone" promise holds for AI edits too.
