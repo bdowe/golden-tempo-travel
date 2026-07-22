@@ -246,6 +246,25 @@
   "bookingsKeep": "Keep",
   "bookingsEdit": "Edit",
   "bookingsDismissSuggestion": "Dismiss suggestion",
+  "bookingsSummaryProgress": "{booked} of {total} booked",
+  "@bookingsSummaryProgress": {
+    "placeholders": {
+      "booked": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "bookingsSummarySaved": "{count, plural, =1{1 saved} other{{count} saved}}",
+  "@bookingsSummarySaved": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "bookingsOpenListing": "Open listing",
   "bookingsEditStay": "Edit stay",
   "bookingsRemoveStay": "Remove stay",
@@ -272,6 +291,16 @@
   "bookingsModeFerry": "ferry",
   "bookingsModeOther": "other",
   "budgetTitle": "Budget",
+  "budgetSummarySpent": "{amount} spent",
+  "@budgetSummarySpent": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetSummaryNoTarget": "no target",
+  "budgetSummaryEmpty": "Not tracked yet",
   "budgetEmptyTitle": "No budget yet",
   "budgetEmptyMessage": "Set a target above, or add expenses below to track your spending.",
   "budgetTargetSet": "Target: {amount} ({currency})",
@@ -309,6 +338,17 @@
   "budgetCategoryShopping": "Shopping",
   "budgetCategoryGeneral": "General",
   "checklistTitle": "Packing & prep",
+  "checklistSummary": "{total, plural, =0{No items yet} other{{checked} of {total} packed}}",
+  "@checklistSummary": {
+    "placeholders": {
+      "checked": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "checklistEmptyTitle": "Nothing packed yet",
   "checklistEmptyMessage": "Add items below, or ask the AI assistant to help build your list.",
   "checklistEditItemTitle": "Edit item",
@@ -738,6 +778,7 @@
   "tripTitleRequired": "Title is required",
   "tripClearDate": "Clear date",
   "tripItinerary": "Itinerary",
+  "tripFilterTooltip": "Filter places",
   "tripToday": "Today",
   "tripAddPlace": "Add place",
   "tripFilterAll": "All",

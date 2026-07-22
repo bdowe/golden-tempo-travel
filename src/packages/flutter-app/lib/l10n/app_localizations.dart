@@ -1148,6 +1148,18 @@ abstract class AppLocalizations {
   /// **'Dismiss suggestion'**
   String get bookingsDismissSuggestion;
 
+  /// No description provided for @bookingsSummaryProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'{booked} of {total} booked'**
+  String bookingsSummaryProgress(int booked, int total);
+
+  /// No description provided for @bookingsSummarySaved.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 saved} other{{count} saved}}'**
+  String bookingsSummarySaved(int count);
+
   /// No description provided for @bookingsOpenListing.
   ///
   /// In en, this message translates to:
@@ -1303,6 +1315,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Budget'**
   String get budgetTitle;
+
+  /// No description provided for @budgetSummarySpent.
+  ///
+  /// In en, this message translates to:
+  /// **'{amount} spent'**
+  String budgetSummarySpent(String amount);
+
+  /// No description provided for @budgetSummaryNoTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'no target'**
+  String get budgetSummaryNoTarget;
+
+  /// No description provided for @budgetSummaryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Not tracked yet'**
+  String get budgetSummaryEmpty;
 
   /// No description provided for @budgetEmptyTitle.
   ///
@@ -1465,6 +1495,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Packing & prep'**
   String get checklistTitle;
+
+  /// No description provided for @checklistSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{total, plural, =0{No items yet} other{{checked} of {total} packed}}'**
+  String checklistSummary(int checked, int total);
 
   /// No description provided for @checklistEmptyTitle.
   ///
@@ -2305,6 +2341,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Itinerary'**
   String get tripItinerary;
+
+  /// No description provided for @tripFilterTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter places'**
+  String get tripFilterTooltip;
 
   /// No description provided for @tripToday.
   ///

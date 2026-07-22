@@ -32,6 +32,10 @@ class TripReviewSection extends ConsumerStatefulWidget {
   /// refresh, so it supplies this; when null the fix button is hidden.
   final Future<void> Function(TripFinding finding)? onApplyFix;
 
+  /// False when a parent (trip detail's collapsed-section row) already
+  /// renders the divider/title/severity pill, so this widget is body-only.
+  final bool showHeader;
+
   const TripReviewSection({
     super.key,
     required this.tripId,
@@ -39,7 +43,44 @@ class TripReviewSection extends ConsumerStatefulWidget {
     this.onScrollToDay,
     this.dayForItem,
     this.onApplyFix,
+    this.showHeader = true,
   });
+
+  /// Severity → pill colors, shared with the collapsed-section row so the
+  /// collapsed count pill matches the expanded rows. Critical reads loud
+  /// (red), warn amber, info neutral.
+  static ({Color bg, Color fg}) severityColors(
+      ThemeData theme, String severity) {
+    switch (severity) {
+      case 'critical':
+        return (
+          bg: theme.colorScheme.errorContainer,
+          fg: theme.colorScheme.onErrorContainer,
+        );
+      case 'warn':
+        return (
+          bg: Colors.amber.withValues(alpha: 0.20),
+          fg: Colors.amber.shade900,
+        );
+      default:
+        return (
+          bg: theme.colorScheme.surfaceContainerHighest,
+          fg: theme.colorScheme.onSurfaceVariant,
+        );
+    }
+  }
+
+  /// Worst severity in [findings] ("critical" > "warn" > "info"), or null
+  /// when the list is empty. Shared with the collapsed-section row.
+  static String? worstSeverity(Iterable<TripFinding> findings) {
+    String? worst;
+    for (final f in findings) {
+      if (worst == null || _rankOf(f.severity) < _rankOf(worst)) {
+        worst = f.severity;
+      }
+    }
+    return worst;
+  }
 
   @override
   ConsumerState<TripReviewSection> createState() => _TripReviewSectionState();
@@ -81,26 +122,8 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
   TripReviewKey get _key =>
       TripReviewKey(widget.tripId, checkHours: _checkHours);
 
-  // Severity → chip colors. Critical reads loud (red), warn amber, info neutral.
-  ({Color bg, Color fg}) _severityColors(ThemeData theme, String severity) {
-    switch (severity) {
-      case 'critical':
-        return (
-          bg: theme.colorScheme.errorContainer,
-          fg: theme.colorScheme.onErrorContainer,
-        );
-      case 'warn':
-        return (
-          bg: Colors.amber.withValues(alpha: 0.20),
-          fg: Colors.amber.shade900,
-        );
-      default:
-        return (
-          bg: theme.colorScheme.surfaceContainerHighest,
-          fg: theme.colorScheme.onSurfaceVariant,
-        );
-    }
-  }
+  ({Color bg, Color fg}) _severityColors(ThemeData theme, String severity) =>
+      TripReviewSection.severityColors(theme, severity);
 
   void _onTapFinding(TripFinding finding) {
     final onScrollToDay = widget.onScrollToDay;
@@ -140,18 +163,20 @@ class _TripReviewSectionState extends ConsumerState<TripReviewSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Divider(height: 32),
-        SectionHeader(
-          title: l10n.reviewSectionTitle,
-          action: findings.isEmpty
-              ? null
-              : StatusPill.custom(
-                  label: l10n.reviewCountToReview(findings.length),
-                  background: _severityColors(theme, worst!).bg,
-                  foreground: _severityColors(theme, worst).fg,
-                ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+        if (widget.showHeader) ...[
+          const Divider(height: 32),
+          SectionHeader(
+            title: l10n.reviewSectionTitle,
+            action: findings.isEmpty
+                ? null
+                : StatusPill.custom(
+                    label: l10n.reviewCountToReview(findings.length),
+                    background: _severityColors(theme, worst!).bg,
+                    foreground: _severityColors(theme, worst).fg,
+                  ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (findings.isEmpty)
           EmptyState(
             compact: true,

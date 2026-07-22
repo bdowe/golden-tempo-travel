@@ -170,6 +170,11 @@ Future<void> _pumpScreen(
     ),
   );
   await tester.pumpAndSettle();
+  // Trip health renders behind a collapsed one-line row — expand it so the
+  // finding rows (and their fix buttons) are on screen.
+  await tester.ensureVisible(find.text('Trip health'));
+  await tester.tap(find.text('Trip health'));
+  await tester.pumpAndSettle();
 }
 
 TripFinding _finding(String category, String message, FindingFix fix) =>

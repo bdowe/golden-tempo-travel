@@ -570,6 +570,22 @@ class AppLocalizationsEs extends AppLocalizations {
   String get bookingsDismissSuggestion => 'Descartar sugerencia';
 
   @override
+  String bookingsSummaryProgress(int booked, int total) {
+    return '$booked de $total reservadas';
+  }
+
+  @override
+  String bookingsSummarySaved(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count guardadas',
+      one: '1 guardada',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get bookingsOpenListing => 'Abrir anuncio';
 
   @override
@@ -646,6 +662,17 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get budgetTitle => 'Presupuesto';
+
+  @override
+  String budgetSummarySpent(String amount) {
+    return '$amount gastado';
+  }
+
+  @override
+  String get budgetSummaryNoTarget => 'sin objetivo';
+
+  @override
+  String get budgetSummaryEmpty => 'Sin seguimiento todavía';
 
   @override
   String get budgetEmptyTitle => 'Aún no hay presupuesto';
@@ -731,6 +758,17 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get checklistTitle => 'Equipaje y preparativos';
+
+  @override
+  String checklistSummary(int checked, int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$checked de $total preparados',
+      zero: 'Aún no hay elementos',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get checklistEmptyTitle => 'Aún no has preparado nada';
@@ -1241,6 +1279,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get tripItinerary => 'Itinerario';
+
+  @override
+  String get tripFilterTooltip => 'Filtrar lugares';
 
   @override
   String get tripToday => 'Hoy';

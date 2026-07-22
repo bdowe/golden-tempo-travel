@@ -112,8 +112,13 @@ void main() {
         greaterThan(tester.getTopLeft(find.text('Trastevere')).dy));
 
     // Only the unmatched custom todo remains in the Bookings section's
-    // "Other" sub-group, as a card.
+    // "Other" sub-group, as a card — behind the collapsed Bookings row,
+    // which expands on tap.
     expect(find.text('Bookings'), findsOneWidget);
+    expect(find.text('Other'), findsNothing);
+    await tester.ensureVisible(find.text('Bookings'));
+    await tester.tap(find.text('Bookings'));
+    await tester.pumpAndSettle();
     expect(find.text('Other'), findsOneWidget);
     expect(find.byType(BookingTodoCard), findsOneWidget);
     expect(
@@ -155,10 +160,14 @@ void main() {
     expect(find.byType(BookingTodoRow), findsNWidgets(2));
 
     // No unmatched bookings -> no "Other" sub-group, just the section's
-    // "Add booking" footer.
+    // "Add booking" footer (behind the collapsed Bookings row).
+    await tester.ensureVisible(find.text('Bookings'));
+    await tester.tap(find.text('Bookings'));
+    await tester.pumpAndSettle();
     expect(find.text('Other'), findsNothing);
     expect(find.text('Add booking'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Paris'));
     await tester.tap(find.text('Paris'));
     await tester.pumpAndSettle();
 

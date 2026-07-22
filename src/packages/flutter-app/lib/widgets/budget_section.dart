@@ -23,11 +23,16 @@ class BudgetSection extends ConsumerStatefulWidget {
   final bool canEdit;
   final bool isOffline;
 
+  /// False when a parent (trip detail's collapsed-section row) already
+  /// renders the divider/title/spend pill, so this widget is body-only.
+  final bool showHeader;
+
   const BudgetSection({
     super.key,
     required this.tripId,
     required this.canEdit,
     required this.isOffline,
+    this.showHeader = true,
   });
 
   @override
@@ -339,18 +344,20 @@ class _BudgetSectionState extends ConsumerState<BudgetSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Divider(height: 32),
-        SectionHeader(
-          title: l10n.budgetTitle,
-          action: StatusPill.custom(
-            label: hasTarget
-                ? '${formatMoney(budget.spent, currency)} / ${formatMoney(budget.targetAmount!, currency)}'
-                : formatMoney(budget.spent, currency),
-            background: theme.colorScheme.surfaceContainerHighest,
-            foreground: theme.colorScheme.onSurfaceVariant,
+        if (widget.showHeader) ...[
+          const Divider(height: 32),
+          SectionHeader(
+            title: l10n.budgetTitle,
+            action: StatusPill.custom(
+              label: hasTarget
+                  ? '${formatMoney(budget.spent, currency)} / ${formatMoney(budget.targetAmount!, currency)}'
+                  : formatMoney(budget.spent, currency),
+              background: theme.colorScheme.surfaceContainerHighest,
+              foreground: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (widget.canEdit) _buildTargetControl(theme, budget),
         if (expenses.isEmpty && !hasTarget)
           EmptyState(

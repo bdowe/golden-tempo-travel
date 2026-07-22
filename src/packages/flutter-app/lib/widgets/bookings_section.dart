@@ -82,6 +82,11 @@ class BookingsSection extends StatelessWidget {
   /// offline; the Google entry is a pure URL and stays available regardless.
   final bool appleCalendarEnabled;
 
+  /// False when a parent (trip detail's collapsed-section row) already
+  /// renders the title; the Add stay / Add transport actions then move to a
+  /// right-aligned first body row so nothing is lost.
+  final bool showHeader;
+
   const BookingsSection({
     super.key,
     required this.trip,
@@ -103,6 +108,7 @@ class BookingsSection extends StatelessWidget {
     this.otherBookings,
     this.onAddBooking,
     this.appleCalendarEnabled = false,
+    this.showHeader = true,
   });
 
   /// Calendar-event title for a segment, mirroring the Go export's
@@ -257,31 +263,33 @@ class BookingsSection extends StatelessWidget {
     final canDragSegments =
         onReorderSegments != null && !readOnly && visibleSegments.length > 1;
 
+    // The button pair alone can outgrow a small phone's width, so it must be
+    // able to break into two lines itself (Wrap, not Row).
+    final addActions = readOnly
+        ? null
+        : Wrap(
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: onAddStay,
+                icon: const Icon(Icons.hotel_outlined, size: 18),
+                label: Text(l10n.bookingsAddStay),
+              ),
+              TextButton.icon(
+                onPressed: onAddSegment,
+                icon: const Icon(Icons.route_outlined, size: 18),
+                label: Text(l10n.bookingsAddTransport),
+              ),
+            ],
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(
-          title: l10n.bookingsTitle,
-          action: readOnly
-              ? null
-              : Wrap(
-                  // The button pair alone can outgrow a small phone's width,
-                  // so it must be able to break into two lines itself.
-                  alignment: WrapAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: onAddStay,
-                      icon: const Icon(Icons.hotel_outlined, size: 18),
-                      label: Text(l10n.bookingsAddStay),
-                    ),
-                    TextButton.icon(
-                      onPressed: onAddSegment,
-                      icon: const Icon(Icons.route_outlined, size: 18),
-                      label: Text(l10n.bookingsAddTransport),
-                    ),
-                  ],
-                ),
-        ),
+        if (showHeader)
+          SectionHeader(title: l10n.bookingsTitle, action: addActions)
+        else if (addActions != null)
+          Align(alignment: Alignment.centerRight, child: addActions),
         if (visibleStays.isEmpty &&
             visibleSegments.isEmpty &&
             otherBookings == null)
