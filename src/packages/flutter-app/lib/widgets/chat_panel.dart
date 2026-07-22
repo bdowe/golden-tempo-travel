@@ -14,6 +14,7 @@ import '../providers/plan_provider.dart';
 import '../services/dictation_controller.dart';
 import '../services/image_attachment_pipeline.dart';
 import '../theme/app_colors.dart';
+import '../theme/spacing.dart';
 import '../utils/clipboard_images_stub.dart'
     if (dart.library.js_interop) '../utils/clipboard_images_web.dart';
 import '../utils/tracked_launch.dart';
@@ -290,7 +291,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                   onNotification: _onScrollNotification,
                   child: ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.md),
                     itemCount: messages.length + 1,
                     itemBuilder: (context, i) {
                       if (i < messages.length) {
@@ -371,7 +373,8 @@ class _DropOverlay extends StatelessWidget {
         color: theme.colorScheme.surface.withValues(alpha: 0.85),
         child: Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl, vertical: 20),
             decoration: BoxDecoration(
               border: Border.all(color: theme.colorScheme.primary, width: 2),
               borderRadius: BorderRadius.circular(16),
@@ -381,7 +384,7 @@ class _DropOverlay extends StatelessWidget {
               children: [
                 Icon(Icons.add_photo_alternate_outlined,
                     size: 40, color: theme.colorScheme.primary),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   context.l10n.chatDropImages,
                   style: theme.textTheme.titleMedium
@@ -414,7 +417,8 @@ class _PendingAttachmentsRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       color: theme.colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0),
       child: SizedBox(
         height: 64,
         child: ListView(
@@ -422,7 +426,7 @@ class _PendingAttachmentsRow extends StatelessWidget {
           children: [
             for (var i = 0; i < pending.length; i++)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
                 child: Stack(
                   children: [
                     Padding(
@@ -600,8 +604,9 @@ class _TypingDotsBubbleState extends State<_TypingDotsBubble>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: AppSpacing.md),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: const BorderRadius.only(
@@ -674,9 +679,9 @@ class _ActiveToolChips extends ConsumerWidget {
     if (activeTools.isEmpty) return const SizedBox.shrink();
     final l10n = context.l10n;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Wrap(
-        spacing: 8,
+        spacing: AppSpacing.sm,
         children: activeTools.map((tool) {
           return Chip(
             avatar: const SizedBox(
@@ -728,7 +733,7 @@ class _CompactingChip extends ConsumerWidget {
     final compacting = ref.watch(state.select((s) => s.isCompacting));
     if (!compacting) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Chip(
@@ -755,7 +760,7 @@ class _ProfileNoteChip extends ConsumerWidget {
     if (note == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Tooltip(
@@ -786,7 +791,7 @@ class _ItineraryUpdatedChip extends ConsumerWidget {
     if (!updated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Chip(
@@ -811,7 +816,7 @@ class _SeedContextChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Center(
         child: Chip(
           avatar: Icon(Icons.auto_awesome,
@@ -918,7 +923,7 @@ class _ResultChips extends ConsumerWidget {
 
     if (chips.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: chips),
     );
   }
@@ -956,8 +961,8 @@ class _ErrorBanner extends ConsumerWidget {
         .select((s) => s.messages.any((m) => m.role == MessageRole.user)));
     final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(8),
@@ -1027,7 +1032,7 @@ class _QueuedBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
         constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
@@ -1049,7 +1054,7 @@ class _QueuedBubble extends StatelessWidget {
                 children: [
                   if (message.attachments.isNotEmpty) ...[
                     _BubbleAttachments(attachments: message.attachments),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                   ],
                   if (message.text.isNotEmpty || message.displayLabel != null)
                     Text(
@@ -1065,7 +1070,7 @@ class _QueuedBubble extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpacing.xs),
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: context.l10n.chatRemoveQueued,
@@ -1117,7 +1122,7 @@ class ChatMessageBubble extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
@@ -1295,7 +1300,8 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, AppSpacing.lg),
       child: Row(
         children: [
           IconButton(
@@ -1318,12 +1324,13 @@ class _InputBar extends StatelessWidget {
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg, vertical: 10),
               ),
             ),
           ),
           _MicButton(dictation: dictation),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           IconButton.filled(
             onPressed: onSend,
             icon: const Icon(Icons.send),
@@ -1351,7 +1358,7 @@ class _MicButton extends StatelessWidget {
         switch (dictation.status) {
           case DictationStatus.transcribing:
             return const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: SizedBox(
                 width: 20,
                 height: 20,
