@@ -1,6 +1,7 @@
 # Plan: Chat Polish
 
-> **HOW.** All Flutter-side; no Go changes. See `spec.md` for what/why.
+> **HOW.** Flutter-side plus one small Go change (the separator's
+> server-side half). See `spec.md` for what/why.
 
 ## Technical Approach
 
@@ -42,9 +43,21 @@ widgets/provider and works in both.
   both ARBs (only reference was the removed button). Regenerate with
   `flutter gen-l10n` (generated files are committed).
 
+## Go API Changes
+
+`src/packages/api/plan_handler.go`: the agent loop marks `turnNeedsSeparator`
+when an iteration ends in tool calls with text already streamed; the next
+text delta is prefixed with `\n\n` (same newline-skip rule as the client) in
+BOTH the SSE `text_delta` and the `turnText` accumulation that the deferred
+`plan_chat_sessions` upsert persists. Streamed == persisted == rendered; the
+client mirror rule sees the emitted newline and doesn't double it, and still
+covers older servers. Test harness: `fake_anthropic_test.go` gains
+`textThenToolTurn` (text block + tool_use block in one assistant turn);
+`plan_separator_integration_test.go` pins the streamed and persisted text.
+
 ## Contract Parity
 
-No API contract changes.
+No schema/contract changes (the `text_delta` payload shape is unchanged).
 
 ## Tests
 

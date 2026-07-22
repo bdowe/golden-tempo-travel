@@ -70,9 +70,11 @@ void main() {
   testWidgets('visible from the instant of send, gone at the first token',
       (WidgetTester tester) async {
     final gate = Completer<void>();
+    final afterFirstToken = Completer<void>();
     final service = _StagedPlanService([
       gate,
       const PlanEvent(type: 'text_delta', data: {'text': 'Hello there'}),
+      afterFirstToken,
     ]);
     await _pumpPanel(tester, service);
 
@@ -84,6 +86,15 @@ void main() {
     expect(find.byKey(_indicator), findsOneWidget);
 
     gate.complete();
+    // The stream parks again AFTER the first token, so the 48ms flush fires
+    // while isStreaming is still true: the indicator must yield to the live
+    // streaming bubble mid-stream, not merely at turn end.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.byKey(_indicator), findsNothing);
+    expect(find.text('Hello there'), findsOneWidget);
+
+    afterFirstToken.complete();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
     expect(find.byKey(_indicator), findsNothing);

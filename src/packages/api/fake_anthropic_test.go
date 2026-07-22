@@ -61,6 +61,13 @@ func toolTurn(name, inputJSON string) fakeTurn {
 	return fakeTurn{kind: "tool", toolName: name, toolInput: inputJSON}
 }
 
+// textThenToolTurn streams a text block then a tool_use block in one
+// assistant turn (the "Let me check…" + tool-call shape real turns take),
+// stopping with stop_reason tool_use.
+func textThenToolTurn(text, name, inputJSON string) fakeTurn {
+	return fakeTurn{kind: "textThenTool", text: text, toolName: name, toolInput: inputJSON}
+}
+
 // errorTurn starts a normal text answer, then kills the stream mid-turn with
 // an SSE `error` event (the shape a real overloaded_error takes on the wire),
 // so stream.Err() fires client-side.
@@ -211,13 +218,14 @@ func (f *fakeAnthropic) streamTurn(w http.ResponseWriter, idx int, turn fakeTurn
 		},
 	})
 
-	blockDelta := func(delta map[string]any) {
+	blockDelta := func(blockIdx int, delta map[string]any) {
 		f.sseFrame(w, "content_block_delta", map[string]any{
-			"type": "content_block_delta", "index": 0, "delta": delta,
+			"type": "content_block_delta", "index": blockIdx, "delta": delta,
 		})
 	}
 
 	stopReason := "end_turn"
+	lastBlock := 0
 	switch turn.kind {
 	case "text":
 		f.sseFrame(w, "content_block_start", map[string]any{
@@ -225,7 +233,7 @@ func (f *fakeAnthropic) streamTurn(w http.ResponseWriter, idx int, turn fakeTurn
 			"content_block": map[string]any{"type": "text", "text": ""},
 		})
 		for _, chunk := range splitForStreaming(turn.text) {
-			blockDelta(map[string]any{"type": "text_delta", "text": chunk})
+			blockDelta(0, map[string]any{"type": "text_delta", "text": chunk})
 		}
 
 	case "tool":
@@ -238,8 +246,30 @@ func (f *fakeAnthropic) streamTurn(w http.ResponseWriter, idx int, turn fakeTurn
 			},
 		})
 		for _, chunk := range splitForStreaming(turn.toolInput) {
-			blockDelta(map[string]any{"type": "input_json_delta", "partial_json": chunk})
+			blockDelta(0, map[string]any{"type": "input_json_delta", "partial_json": chunk})
 		}
+
+	case "textThenTool":
+		stopReason = "tool_use"
+		f.sseFrame(w, "content_block_start", map[string]any{
+			"type": "content_block_start", "index": 0,
+			"content_block": map[string]any{"type": "text", "text": ""},
+		})
+		for _, chunk := range splitForStreaming(turn.text) {
+			blockDelta(0, map[string]any{"type": "text_delta", "text": chunk})
+		}
+		f.sseFrame(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0})
+		f.sseFrame(w, "content_block_start", map[string]any{
+			"type": "content_block_start", "index": 1,
+			"content_block": map[string]any{
+				"type": "tool_use", "id": fmt.Sprintf("toolu_fake_%d", idx),
+				"name": turn.toolName, "input": map[string]any{},
+			},
+		})
+		for _, chunk := range splitForStreaming(turn.toolInput) {
+			blockDelta(1, map[string]any{"type": "input_json_delta", "partial_json": chunk})
+		}
+		lastBlock = 1
 
 	case "error":
 		// Start a real answer, then die mid-turn: the client sees the leading
@@ -248,7 +278,7 @@ func (f *fakeAnthropic) streamTurn(w http.ResponseWriter, idx int, turn fakeTurn
 			"type": "content_block_start", "index": 0,
 			"content_block": map[string]any{"type": "text", "text": ""},
 		})
-		blockDelta(map[string]any{"type": "text_delta", "text": "One moment"})
+		blockDelta(0, map[string]any{"type": "text_delta", "text": "One moment"})
 		f.sseFrame(w, "error", map[string]any{
 			"type":  "error",
 			"error": map[string]any{"type": "overloaded_error", "message": turn.errMsg},
@@ -260,7 +290,7 @@ func (f *fakeAnthropic) streamTurn(w http.ResponseWriter, idx int, turn fakeTurn
 		return
 	}
 
-	f.sseFrame(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0})
+	f.sseFrame(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": lastBlock})
 	f.sseFrame(w, "message_delta", map[string]any{
 		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil},

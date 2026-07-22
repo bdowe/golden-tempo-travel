@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,14 +82,23 @@ Future<void> _pumpAgentScreen(WidgetTester tester, PlanState seeded) async {
   await tester.pump();
 }
 
+Finder _bannerButtons() => find.descendant(
+      of: find.byKey(const ValueKey('itinerary-banner')),
+      matching: find.bySubtype<ButtonStyleButton>(),
+    );
+
 void main() {
   testWidgets('saved trip shows a single View trip CTA',
       (WidgetTester tester) async {
     await _pumpAgentScreen(tester, _completedState(tripId: 'trip-1'));
 
     expect(find.text('View trip'), findsOneWidget);
-    expect(find.text('Load into route planner'), findsNothing);
     expect(find.text('Load into Planner'), findsNothing);
+    // Structural, label-independent guard: exactly ONE action button inside
+    // the banner — a second CTA sneaking back under any other label fails
+    // here even though the label assertions above can't see it.
+    // (bySubtype, not byType: FilledButton.icon builds a private subclass.)
+    expect(_bannerButtons(), findsOneWidget);
   });
 
   testWidgets('anonymous completion keeps the route-planner fallback',
@@ -97,5 +107,6 @@ void main() {
 
     expect(find.text('Load into Planner'), findsOneWidget);
     expect(find.text('View trip'), findsNothing);
+    expect(_bannerButtons(), findsOneWidget);
   });
 }

@@ -155,6 +155,7 @@ class _ItineraryBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
+      key: const ValueKey('itinerary-banner'),
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
       // Tint fill (no border) separates this from the chat — spacing/tint over

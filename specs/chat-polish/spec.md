@@ -31,7 +31,8 @@ without changing any server behavior.
   tool/summarizing chip takes over) and returns during silent gaps after a
   tool finishes.
 - [ ] Assistant text that resumes after a tool call renders as a new
-  paragraph, never glued to the previous sentence.
+  paragraph, never glued to the previous sentence — including when the same
+  conversation is reopened later from "Continue where you left off".
 - [ ] When a trip was saved, the itinerary-ready banner shows a single
   "View trip" button. Anonymous sessions (no saved trip) still get their
   "Load into Planner" button.
@@ -42,7 +43,12 @@ without changing any server behavior.
 
 ## API Surface
 
-None. All changes are client-side; no endpoints or events change.
+No new endpoints or events. One behavioral refinement to the existing
+`POST /api/v1/plan` stream: when assistant text resumes after a tool call,
+the streamed text now carries a paragraph separator at the boundary (unless a
+newline is already there), and the persisted resumable transcript stores the
+same separated text — so the live rendering, a later resume, and older
+deployed clients all agree.
 
 ## Data Model
 

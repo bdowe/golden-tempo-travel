@@ -124,18 +124,31 @@ void main() {
   });
 
   test('separator survives real flush timing with no double insert', () async {
-    // 2ms-apart events against the 48ms flush interval: multiple flush
-    // windows elapse, and the separator (written once, at append time) must
-    // appear exactly once in the committed text.
-    final notifier = await _run([
+    // 6ms-apart events: the ten post-boundary deltas span ~60ms, so the 48ms
+    // flush timer provably fires while they are still streaming (delays never
+    // complete early) — the separator must already be in the timer-flushed
+    // streamingText, not only in the final commit.
+    final events = [
       for (var i = 0; i < 10; i++) _delta('a$i '),
       _toolCall,
       _toolResult,
       for (var i = 0; i < 10; i++) _delta('b$i '),
-    ], delay: const Duration(milliseconds: 2));
+    ];
+    final notifier = PlanNotifier(
+        _ScriptedPlanService(events, delay: const Duration(milliseconds: 6)),
+        ApiClient());
+    final midStream = <String>[];
+    notifier.addListener((state) {
+      final t = state.streamingText;
+      if (t != null && t.isNotEmpty) midStream.add(t);
+    });
+    await notifier.sendMessage('hi');
 
     final before = List.generate(10, (i) => 'a$i ').join();
     final after = List.generate(10, (i) => 'b$i ').join();
+    // A mid-stream timer flush saw the separated text, exactly once.
+    expect(midStream.where((t) => t.contains('\n\n')), isNotEmpty);
+    expect(midStream.any((t) => t.contains('\n\n\n')), isFalse);
     expect(notifier.state.messages.last.content, '$before\n\n$after');
     expect(notifier.state.isStreaming, isFalse);
     expect(notifier.state.streamingText, isNull);

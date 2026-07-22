@@ -320,6 +320,13 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 	persistSession := authed && dbPool != nil &&
 		strings.TrimSpace(req.ChatID) != "" && boundTripID == nil
 	var turnText strings.Builder
+	// Set when an iteration ended in tool calls with text already streamed:
+	// the next text delta opens a new paragraph, in the streamed bytes and
+	// the persisted transcript alike, so live, resumed, and stale-client
+	// renderings all agree. The client keeps a mirror of this rule
+	// (plan_provider.dart) that sees the emitted newline and doesn't double
+	// it, and still covers itself against older servers.
+	turnNeedsSeparator := false
 	if persistSession {
 		persistMsgs, persistSummary := rawMessages, rawSummary
 		if planCompacted {
@@ -444,8 +451,18 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 
 			if ev, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 				if delta, ok := ev.Delta.AsAny().(anthropic.TextDelta); ok {
-					turnText.WriteString(delta.Text)
-					sendSSE(w, "text_delta", map[string]string{"text": delta.Text})
+					text := delta.Text
+					if text != "" && turnNeedsSeparator {
+						// Skip only when a newline already sits on either
+						// side of the boundary; a plain space still gets
+						// the paragraph break.
+						if !strings.HasPrefix(text, "\n") && !strings.HasSuffix(turnText.String(), "\n") {
+							text = "\n\n" + text
+						}
+						turnNeedsSeparator = false
+					}
+					turnText.WriteString(text)
+					sendSSE(w, "text_delta", map[string]string{"text": text})
 				}
 			}
 		}
@@ -473,6 +490,9 @@ func planHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if resp.StopReason != anthropic.StopReasonToolUse {
 			break
+		}
+		if turnText.Len() > 0 {
+			turnNeedsSeparator = true
 		}
 
 		messages = append(messages, resp.ToParam())
