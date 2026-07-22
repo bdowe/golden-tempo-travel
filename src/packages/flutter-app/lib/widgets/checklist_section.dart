@@ -18,11 +18,16 @@ class ChecklistSection extends ConsumerStatefulWidget {
   final bool canEdit;
   final bool isOffline;
 
+  /// False when a parent (trip detail's collapsed-section row) already
+  /// renders the divider/title/count, so this widget is body-only.
+  final bool showHeader;
+
   const ChecklistSection({
     super.key,
     required this.tripId,
     required this.canEdit,
     required this.isOffline,
+    this.showHeader = true,
   });
 
   @override
@@ -169,18 +174,20 @@ class _ChecklistSectionState extends ConsumerState<ChecklistSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Divider(height: 32),
-        SectionHeader(
-          title: l10n.checklistTitle,
-          action: items.isEmpty
-              ? null
-              : StatusPill.custom(
-                  label: '$checked/${items.length}',
-                  background: theme.colorScheme.surfaceContainerHighest,
-                  foreground: theme.colorScheme.onSurfaceVariant,
-                ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+        if (widget.showHeader) ...[
+          const Divider(height: 32),
+          SectionHeader(
+            title: l10n.checklistTitle,
+            action: items.isEmpty
+                ? null
+                : StatusPill.custom(
+                    label: '$checked/${items.length}',
+                    background: theme.colorScheme.surfaceContainerHighest,
+                    foreground: theme.colorScheme.onSurfaceVariant,
+                  ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (items.isEmpty)
           EmptyState(
             compact: true,

@@ -82,6 +82,11 @@ Future<_FakeBookingTodosApiService> _pumpTrip(WidgetTester tester, Trip trip,
     ),
   );
   await tester.pumpAndSettle();
+  // The hub (with its residual "Other" cards) renders behind a collapsed
+  // one-line Bookings row — expand it first.
+  await tester.ensureVisible(find.text('Bookings'));
+  await tester.tap(find.text('Bookings'));
+  await tester.pumpAndSettle();
   return fake;
 }
 

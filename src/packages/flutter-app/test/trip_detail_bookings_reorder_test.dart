@@ -89,6 +89,11 @@ Future<_FakeBookingDraftsApiService> _pumpTrip(WidgetTester tester, Trip trip,
     ),
   );
   await tester.pumpAndSettle();
+  // The hub's stays/transport groups render behind a collapsed one-line
+  // Bookings row — expand it first.
+  await tester.ensureVisible(find.text('Bookings'));
+  await tester.tap(find.text('Bookings'));
+  await tester.pumpAndSettle();
   return fake;
 }
 

@@ -43,6 +43,7 @@ import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
 import '../utils/calendar_links.dart';
+import '../utils/money_format.dart';
 import '../utils/share_link.dart';
 import '../utils/tracked_launch.dart';
 import '../utils/trip_days.dart';
@@ -54,9 +55,11 @@ import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
 import '../widgets/budget_section.dart';
 import '../widgets/checklist_section.dart';
+import '../widgets/collapsible_section.dart';
 import '../widgets/trip_review_section.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/event_card.dart';
+import '../widgets/hover_reveal.dart';
 import '../widgets/local_rec_card.dart';
 import '../widgets/map_day_chips.dart';
 import '../widgets/offline_banner.dart';
@@ -160,6 +163,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   // keyed by "<city>#<day>" since day numbers repeat across cities.
   final Set<String> _collapsedCities = {};
   final Set<String> _collapsedDays = {};
+  // Trailing sections (Bookings/Packing/Budget/Trip health) render as
+  // collapsed one-line summaries; this holds the ones the user opened.
+  // Session-only, like the city/day sets, and held HERE (not in the section
+  // widgets) so expansion survives silent refreshes and the offline-banner
+  // reparent. Bookings is seeded open once for viewers (their only bookings
+  // surface — see _load).
+  final Set<String> _expandedSections = {};
   String?
       _homeAirport; // traveler's saved home airport (IATA), for outbound/return flights
   // todo_key -> flight leg, so a transport booking item can open Find Flights
@@ -340,6 +350,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           _stays = trip.accommodations ?? [];
           _segments = trip.segments ?? [];
           _offlineSince = null; // live data — leave offline mode if we were in it
+          // Viewers get no inline booking rows (the server withholds todos),
+          // so the collapsed Bookings row is their only bookings surface —
+          // seed it open on the first loud load when it has content (still
+          // collapsible by hand; silent refreshes never re-seed).
+          if (!silent &&
+              !trip.canEdit &&
+              (_stays.any((a) => !a.auto) || _segments.any((s) => !s.auto))) {
+            _expandedSections.add('bookings');
+          }
           // Today mode fires only from loud loads — never from a silent
           // refresh, which shares this success path (PR #51/#53 invariants).
           if (!silent) _maybeAutoScrollToday(trip);
@@ -460,6 +479,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   // ── Today mode (specs/today-mode) ─────────────────────────────────────
 
+  /// Content width cap on wide layouts. Applied as a computed symmetric
+  /// horizontal gutter substituted for the 16px sliver padding — never as a
+  /// wrapper OUTSIDE the body LayoutBuilder, whose maxWidth feeds the
+  /// map-pinning and refine-dock breakpoints (a constraining wrapper would
+  /// starve them and the map would never pin).
+  static const double _contentMaxWidth = 900;
+
   /// Pinned-header heights, shared by the build method and the Today scroll
   /// math so the two can never drift apart.
   static const double _mapHeaderHeight =
@@ -467,21 +493,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Map card height on phones, where the map scrolls away instead of
   /// pinning (a preview — the full-screen map is one tap away).
   static const double _mapHeightNarrow = 180;
-  // Itinerary title row (36) + gap (8) + filter chip row (48) + bottom
-  // padding (8); title-row-only when the trip has no items.
-  static const double _listHeaderHeight = 100;
-  static const double _listHeaderHeightEmpty = 48;
+  // Itinerary title row (36) + bottom padding (8) + breathing room (4); the
+  // category filter lives in a popup menu inside the title row, so the
+  // header is one fixed-height row whether or not the trip has items.
+  static const double _listHeaderHeight = 48;
 
   /// Combined height of the chrome pinned above the itinerary slivers: the
   /// map header (when it renders AND is pinned — on phones the map scrolls
   /// away, so it never rests above a target header) plus the itinerary
-  /// title/filter header.
+  /// title header.
   double _pinnedChrome(Trip trip) {
     final mapShown = _mapShown(trip);
-    final listH = (trip.items ?? const []).isNotEmpty
-        ? _listHeaderHeight
-        : _listHeaderHeightEmpty;
-    return ((_mapPinned && mapShown) ? _mapHeaderHeight : 0) + listH;
+    return ((_mapPinned && mapShown) ? _mapHeaderHeight : 0) +
+        _listHeaderHeight;
   }
 
   /// Measured height of the pinned city header above [dayKey]'s section
@@ -2109,67 +2133,74 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
       ThemeData theme) {
     final l10n = context.l10n;
     final cityCollapsed = _collapsedCities.contains(group.key);
-    return Material(
-      color: theme.scaffoldBackgroundColor,
-      child: InkWell(
-        onTap: () => setState(() {
-          if (cityCollapsed) {
-            _collapsedCities.remove(group.key);
-          } else {
-            _collapsedCities.add(group.key);
-          }
-        }),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.location_on,
-                      size: 18, color: theme.colorScheme.primary),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _groupLabelText(l10n, group.label),
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+    return HoverReveal(
+      builder: (context, revealed) => Material(
+        color: theme.scaffoldBackgroundColor,
+        child: InkWell(
+          onTap: () => setState(() {
+            if (cityCollapsed) {
+              _collapsedCities.remove(group.key);
+            } else {
+              _collapsedCities.add(group.key);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.location_on,
+                        size: 18, color: theme.colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _groupLabelText(l10n, group.label),
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
                     ),
-                  ),
-                  if (group.dateRange != null) ...[
-                    Icon(Icons.event,
-                        size: 14, color: theme.colorScheme.primary),
+                    if (group.dateRange != null) ...[
+                      Icon(Icons.event,
+                          size: 14, color: theme.colorScheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        group.dateRange!,
+                        style: theme.textTheme.labelMedium
+                            ?.copyWith(color: theme.colorScheme.primary),
+                      ),
+                    ],
+                    // 'Other places' has no hub the section tool can target;
+                    // refine also needs the network. Hover-revealed on
+                    // pointer devices (always visible on touch) to keep the
+                    // resting row quiet.
+                    if (group.label != _kOtherPlaces &&
+                        trip.canEdit &&
+                        !_isOffline)
+                      HoverRevealed(
+                        revealed: revealed,
+                        child: IconButton(
+                          icon: const Icon(Icons.auto_awesome, size: 16),
+                          tooltip: l10n.tripRefineCity(group.label),
+                          visualDensity: VisualDensity.compact,
+                          color: theme.colorScheme.primary,
+                          onPressed: () =>
+                              _openRefine(trip, RefineTarget.city(group.label)),
+                        ),
+                      ),
                     const SizedBox(width: 4),
-                    Text(
-                      group.dateRange!,
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: theme.colorScheme.primary),
+                    Icon(
+                      cityCollapsed ? Icons.chevron_right : Icons.expand_more,
+                      size: 20,
+                      color: theme.colorScheme.primary,
                     ),
                   ],
-                  // 'Other places' has no hub the section tool can target;
-                  // refine also needs the network.
-                  if (group.label != _kOtherPlaces &&
-                      trip.canEdit &&
-                      !_isOffline)
-                    IconButton(
-                      icon: const Icon(Icons.auto_awesome, size: 16),
-                      tooltip: l10n.tripRefineCity(group.label),
-                      visualDensity: VisualDensity.compact,
-                      color: theme.colorScheme.primary,
-                      onPressed: () =>
-                          _openRefine(trip, RefineTarget.city(group.label)),
-                    ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    cityCollapsed ? Icons.chevron_right : Icons.expand_more,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Divider(height: 1),
-            ],
+                ),
+                const SizedBox(height: 4),
+                const Divider(height: 1),
+              ],
+            ),
           ),
         ),
       ),
@@ -2671,67 +2702,75 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         ? _fmtDayHeader(tripStart.add(Duration(days: day - 1)))
         : l10n.tripDayN(day);
     final muted = theme.colorScheme.onSurfaceVariant;
-    return Material(
-      key: headerKey,
-      color: isToday
-          ? Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.06),
-              theme.scaffoldBackgroundColor)
-          : theme.scaffoldBackgroundColor,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-          child: Row(
-            children: [
-              Icon(Icons.today, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        label,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700,
+    return HoverReveal(
+      builder: (context, revealed) => Material(
+        key: headerKey,
+        color: isToday
+            ? Color.alphaBlend(
+                theme.colorScheme.primary.withValues(alpha: 0.06),
+                theme.scaffoldBackgroundColor)
+            : theme.scaffoldBackgroundColor,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Row(
+              children: [
+                Icon(Icons.today, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    if (isToday) ...[
-                      const SizedBox(width: 8),
-                      StatusPill.custom(
-                        label: l10n.tripToday,
-                        background:
-                            theme.colorScheme.primary.withValues(alpha: 0.15),
-                        foreground: theme.colorScheme.primary,
-                      ),
+                      if (isToday) ...[
+                        const SizedBox(width: 8),
+                        StatusPill.custom(
+                          label: l10n.tripToday,
+                          background: theme.colorScheme.primary
+                              .withValues(alpha: 0.15),
+                          foreground: theme.colorScheme.primary,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (travelMin > 0) ...[
-                Icon(Icons.directions_car_outlined, size: 14, color: muted),
-                const SizedBox(width: 4),
-                Text(
-                  l10n.tripTravelTotal(_fmtTravel(travelMin)),
-                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                ),
-                const SizedBox(width: 8),
-              ],
-              if (onRefine != null)
-                IconButton(
-                  icon: const Icon(Icons.auto_awesome, size: 16),
-                  tooltip: l10n.tripRefineThisDay,
-                  visualDensity: VisualDensity.compact,
+                if (travelMin > 0) ...[
+                  Icon(Icons.directions_car_outlined, size: 14, color: muted),
+                  const SizedBox(width: 4),
+                  Text(
+                    l10n.tripTravelTotal(_fmtTravel(travelMin)),
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                // Hover-revealed on pointer devices (always visible on
+                // touch) to keep the resting row quiet.
+                if (onRefine != null)
+                  HoverRevealed(
+                    revealed: revealed,
+                    child: IconButton(
+                      icon: const Icon(Icons.auto_awesome, size: 16),
+                      tooltip: l10n.tripRefineThisDay,
+                      visualDensity: VisualDensity.compact,
+                      color: theme.colorScheme.primary,
+                      onPressed: onRefine,
+                    ),
+                  ),
+                Icon(
+                  collapsed ? Icons.chevron_right : Icons.expand_more,
+                  size: 18,
                   color: theme.colorScheme.primary,
-                  onPressed: onRefine,
                 ),
-              Icon(
-                collapsed ? Icons.chevron_right : Icons.expand_more,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2880,9 +2919,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
 
   Widget _itemTile(ItineraryItem item, double indentLeft, ThemeData theme,
           {Widget? dragHandle}) =>
-      Padding(
-        padding: EdgeInsets.only(left: indentLeft),
-        child: ListTile(
+      // Secondary controls (maps link, kebab, drag handle) reveal on hover:
+      // opacity-only, so layout never shifts, drag geometry stays stable for
+      // the reorderable list, and touch devices (no mouse) keep them
+      // permanently visible. The time-of-day chip is content, not a control
+      // — it stays.
+      HoverReveal(
+        builder: (context, revealed) => Padding(
+          padding: EdgeInsets.only(left: indentLeft),
+          child: ListTile(
           leading: _itemLeading(item.category, item.position),
           title: Text(item.name),
           subtitle: (item.address != null || item.localSourceName != null)
@@ -2921,20 +2966,30 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
             children: [
               if (item.timeOfDay != null)
                 _TimeOfDayChip(timeOfDay: item.timeOfDay!),
-              IconButton(
-                icon: const Icon(Icons.map_outlined),
-                tooltip: context.l10n.tripOpenInGoogleMaps,
-                onPressed: () => _launch(_mapsUrl(item)),
+              HoverRevealed(
+                revealed: revealed,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.map_outlined),
+                      tooltip: context.l10n.tripOpenInGoogleMaps,
+                      onPressed: () => _launch(_mapsUrl(item)),
+                    ),
+                    if (!_readOnly) _itemMenu(item),
+                    if (dragHandle != null) dragHandle,
+                  ],
+                ),
               ),
-              if (!_readOnly) _itemMenu(item),
-              if (dragHandle != null) dragHandle,
             ],
           ),
           selected: _selectedPosition == item.position,
-          selectedTileColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+          selectedTileColor:
+              theme.colorScheme.primary.withValues(alpha: 0.08),
           // The map is pinned and always on screen, so tapping an item only
           // needs to update the selection; TripMap recenters on the new pin.
           onTap: () => setState(() => _selectedPosition = item.position),
+        ),
         ),
       );
 
@@ -3677,7 +3732,161 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// reorders to "mié, 15 jul" on its own.
   String _fmtDayHeader(DateTime d) => DateFormat.MMMEd().format(d);
 
+  // ── Trailing collapsed sections ─────────────────────────────────────────
+  // Bookings / Packing / Budget / Trip health end the page as one-line
+  // summary rows, closed by default. Summary data comes from watches HERE in
+  // the parent — the section widgets are only mounted while expanded, so a
+  // child-side watch could never feed a collapsed row's counts.
 
+  bool _sectionExpanded(String id) => _expandedSections.contains(id);
+
+  void _toggleSection(String id) => setState(() {
+        if (!_expandedSections.add(id)) _expandedSections.remove(id);
+      });
+
+  /// Lays out the trailing section rows in a settings-list rhythm: hairline
+  /// dividers between the rows that are present. Hidden rows are null, so a
+  /// divider never renders against a missing neighbor.
+  Widget _sectionCluster(List<Widget?> rows) {
+    final present = rows.whereType<Widget>().toList();
+    if (present.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: AppSpacing.md),
+        const Divider(height: 1),
+        for (final (i, row) in present.indexed) ...[
+          if (i > 0) const Divider(height: 1),
+          row,
+        ],
+      ],
+    );
+  }
+
+  Widget? _bookingsSectionRow(Trip trip, ThemeData theme,
+      {required List<BookingTodo> residual, required Widget child}) {
+    final l10n = context.l10n;
+    final bookedTodos = _bookingTodos.where((t) => t.booked).length;
+    final totalTodos = _bookingTodos.length;
+    final savedCount = _stays.where((a) => !a.auto).length +
+        _segments.where((s) => !s.auto).length;
+    // Viewers get no booking todos from the server; with no confirmed rows
+    // either, there is nothing to show or do — no row at all.
+    if (_readOnly && totalTodos == 0 && savedCount == 0 && residual.isEmpty) {
+      return null;
+    }
+    // "X of Y booked" counts todos; "N saved" counts confirmed records. The
+    // same stay can exist as both a todo and a confirmed accommodation, so
+    // the two numbers are labeled apart and never summed.
+    final parts = <String>[
+      if (totalTodos > 0) l10n.bookingsSummaryProgress(bookedTodos, totalTodos),
+      if (savedCount > 0) l10n.bookingsSummarySaved(savedCount),
+    ];
+    return CollapsibleSection(
+      title: l10n.bookingsTitle,
+      icon: Icons.confirmation_number_outlined,
+      summary: parts.isEmpty ? null : parts.join(' · '),
+      expanded: _sectionExpanded('bookings'),
+      onToggle: () => _toggleSection('bookings'),
+      child: child,
+    );
+  }
+
+  Widget? _packingSectionRow(Trip trip, ThemeData theme) {
+    // Mirrors ChecklistSection's own gates (nothing until loaded; viewers
+    // with an empty list get no section) so the collapsed row hides exactly
+    // when the expanded section would.
+    final items = ref.watch(checklistProvider(trip.id)).valueOrNull;
+    if (items == null || (items.isEmpty && _readOnly)) return null;
+    final checked = items.where((i) => i.checked).length;
+    return CollapsibleSection(
+      title: context.l10n.checklistTitle,
+      icon: Icons.luggage_outlined,
+      summary: context.l10n.checklistSummary(checked, items.length),
+      expanded: _sectionExpanded('packing'),
+      onToggle: () => _toggleSection('packing'),
+      child: ChecklistSection(
+        tripId: trip.id,
+        canEdit: !_readOnly,
+        isOffline: _isOffline,
+        showHeader: false,
+      ),
+    );
+  }
+
+  Widget? _budgetSectionRow(Trip trip, ThemeData theme) {
+    // Mirrors BudgetSection's own gates, like _packingSectionRow.
+    final budget = ref.watch(budgetProvider(trip.id)).valueOrNull;
+    final expenses = ref.watch(expensesProvider(trip.id)).valueOrNull;
+    if (budget == null || expenses == null) return null;
+    final hasTarget = budget.targetAmount != null;
+    if (expenses.isEmpty && !hasTarget && _readOnly) return null;
+    final l10n = context.l10n;
+    final String summary;
+    if (hasTarget) {
+      summary = '${formatMoney(budget.spent, budget.currency)}'
+          ' / ${formatMoney(budget.targetAmount!, budget.currency)}';
+    } else if (expenses.isNotEmpty) {
+      summary =
+          '${l10n.budgetSummarySpent(formatMoney(budget.spent, budget.currency))}'
+          ' · ${l10n.budgetSummaryNoTarget}';
+    } else {
+      summary = l10n.budgetSummaryEmpty;
+    }
+    return CollapsibleSection(
+      title: l10n.budgetTitle,
+      icon: Icons.account_balance_wallet_outlined,
+      summary: summary,
+      expanded: _sectionExpanded('budget'),
+      onToggle: () => _toggleSection('budget'),
+      child: BudgetSection(
+        tripId: trip.id,
+        canEdit: !_readOnly,
+        isOffline: _isOffline,
+        showHeader: false,
+      ),
+    );
+  }
+
+  Widget? _healthSectionRow(Trip trip, ThemeData theme) {
+    // Base provider key (checkHours: false): the section's internal opt-in
+    // hours check flips ITS key to the slower variant, so this collapsed
+    // count can briefly lag while that toggle is on — accepted.
+    final findings =
+        ref.watch(tripReviewProvider(TripReviewKey(trip.id))).valueOrNull;
+    if (findings == null) return null;
+    final l10n = context.l10n;
+    final worst = TripReviewSection.worstSeverity(findings);
+    final colors =
+        worst == null ? null : TripReviewSection.severityColors(theme, worst);
+    return CollapsibleSection(
+      title: l10n.reviewSectionTitle,
+      icon: Icons.fact_check_outlined,
+      summary: findings.isEmpty ? l10n.reviewEmptyTitle : null,
+      pill: findings.isEmpty
+          ? null
+          : StatusPill.custom(
+              label: l10n.reviewCountToReview(findings.length),
+              background: colors!.bg,
+              foreground: colors.fg,
+            ),
+      expanded: _sectionExpanded('health'),
+      onToggle: () => _toggleSection('health'),
+      child: TripReviewSection(
+        tripId: trip.id,
+        isOffline: _isOffline,
+        onScrollToDay: _scrollToDay,
+        dayForItem: (itemId) {
+          for (final item in trip.items ?? const <ItineraryItem>[]) {
+            if (item.id == itemId) return item.day;
+          }
+          return null;
+        },
+        onApplyFix: _readOnly ? null : _applyFix,
+        showHeader: false,
+      ),
+    );
+  }
 
   /// The trip's hero header: title (+ rename), date/status chips, a Refine
   /// button, and a collapsible overview.
@@ -3685,116 +3894,134 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     final l10n = context.l10n;
     final overview = _overviewText(trip);
     final hasDates = trip.startDate != null && trip.endDate != null;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    // Deliberately card-less: the app bar already carries the title, so this
+    // block is a compact anchor (rename affordance + meta chips + context
+    // line + clamped overview), not a hero panel.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    _displayTitle(trip),
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (trip.canEdit)
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20),
-                    tooltip: l10n.tripRename,
-                    onPressed: _isOffline ? null : _editTitle,
-                  ),
-              ],
+            Expanded(
+              child: Text(
+                _displayTitle(trip),
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.event, size: 16),
-                  label: Text(hasDates
-                      ? '${trip.startDate} → ${trip.endDate}'
-                      : l10n.tripAddDates),
-                  onPressed:
-                      (_isOffline || !trip.canEdit) ? null : _editDates,
-                ),
-                if (trip.canEdit)
-                  PopupMenuButton<String>(
-                    tooltip: l10n.tripChangeStatus,
-                    enabled: !_isOffline,
-                    onSelected: (v) => _patch(status: v),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                          value: 'draft', child: Text(l10n.tripStatusDraft)),
-                      PopupMenuItem(
-                          value: 'planned',
-                          child: Text(l10n.tripStatusPlanned)),
-                    ],
-                    child: StatusPill(
-                      status: trip.status,
-                      trailing: const Icon(Icons.arrow_drop_down),
-                    ),
-                  )
-                else
-                  StatusPill(status: trip.status),
-                if (trip.canEdit)
-                  PopupMenuButton<String>(
-                    tooltip: l10n.tripTravelModeTooltip,
-                    enabled: !_isOffline,
-                    onSelected: (v) => _patch(travelMode: v),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                          value: 'flight',
-                          child: Text(l10n.tripTravelModeFlying)),
-                      PopupMenuItem(
-                          value: 'car',
-                          child: Text(l10n.tripTravelModeDriving)),
-                      PopupMenuItem(
-                          value: 'train', child: Text(l10n.tripModeTrain)),
-                      PopupMenuItem(
-                          value: 'bus', child: Text(l10n.tripModeBus)),
-                      PopupMenuItem(
-                          value: 'ferry', child: Text(l10n.tripModeFerry)),
-                      PopupMenuItem(
-                          value: 'mixed',
-                          child: Text(l10n.tripTravelModeMixed)),
-                    ],
-                    child: Chip(
-                      avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
-                      label: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text(_travelModeLabel(l10n, trip.travelMode)),
-                        const Icon(Icons.arrow_drop_down, size: 18),
-                      ]),
-                    ),
-                  )
-                else if (trip.travelMode != null)
-                  Chip(
-                    avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
-                    label: Text(_travelModeLabel(l10n, trip.travelMode)),
-                  ),
-              ],
+            if (trip.canEdit)
+              IconButton(
+                icon: const Icon(Icons.edit, size: 20),
+                tooltip: l10n.tripRename,
+                onPressed: _isOffline ? null : _editTitle,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ActionChip(
+              avatar: const Icon(Icons.event, size: 16),
+              label: Text(hasDates
+                  ? '${trip.startDate} → ${trip.endDate}'
+                  : l10n.tripAddDates),
+              onPressed: (_isOffline || !trip.canEdit) ? null : _editDates,
             ),
-            const SizedBox(height: 12),
-            if (!trip.isOwner) ...[
-              Row(
-                children: [
-                  Icon(
-                      trip.canEdit
-                          ? Icons.group_outlined
-                          : Icons.visibility_outlined,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
+            if (trip.canEdit)
+              PopupMenuButton<String>(
+                tooltip: l10n.tripChangeStatus,
+                enabled: !_isOffline,
+                onSelected: (v) => _patch(status: v),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                      value: 'draft', child: Text(l10n.tripStatusDraft)),
+                  PopupMenuItem(
+                      value: 'planned', child: Text(l10n.tripStatusPlanned)),
+                ],
+                child: StatusPill(
+                  status: trip.status,
+                  trailing: const Icon(Icons.arrow_drop_down),
+                ),
+              )
+            else
+              StatusPill(status: trip.status),
+            if (trip.canEdit)
+              PopupMenuButton<String>(
+                tooltip: l10n.tripTravelModeTooltip,
+                enabled: !_isOffline,
+                onSelected: (v) => _patch(travelMode: v),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                      value: 'flight', child: Text(l10n.tripTravelModeFlying)),
+                  PopupMenuItem(
+                      value: 'car', child: Text(l10n.tripTravelModeDriving)),
+                  PopupMenuItem(
+                      value: 'train', child: Text(l10n.tripModeTrain)),
+                  PopupMenuItem(value: 'bus', child: Text(l10n.tripModeBus)),
+                  PopupMenuItem(
+                      value: 'ferry', child: Text(l10n.tripModeFerry)),
+                  PopupMenuItem(
+                      value: 'mixed', child: Text(l10n.tripTravelModeMixed)),
+                ],
+                child: Chip(
+                  avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
+                  label: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_travelModeLabel(l10n, trip.travelMode)),
+                    const Icon(Icons.arrow_drop_down, size: 18),
+                  ]),
+                ),
+              )
+            else if (trip.travelMode != null)
+              Chip(
+                avatar: Icon(_travelModeIcon(trip.travelMode), size: 16),
+                label: Text(_travelModeLabel(l10n, trip.travelMode)),
+              ),
+            // Refine entry, demoted from a full-width banner to a peer of the
+            // meta chips. Same canEdit gate as before, so editor
+            // collaborators keep their spec-mandated entry point
+            // (specs/collaborator-refine); the per-city/day sparkles and the
+            // chat FAB are unchanged.
+            if (trip.canEdit)
+              FilledButton.tonalIcon(
+                // Chat/refine needs the network — disabled while offline.
+                onPressed: _isOffline
+                    ? null
+                    : () => _openRefine(trip, const RefineTarget.trip()),
+                style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: Text(l10n.tripRefineWithAI),
+              ),
+          ],
+        ),
+        // Muted context line: collaborator standing and/or "Updated by
+        // Maria · 2m ago" (the server omits self-attribution). Either part
+        // can stand alone.
+        if (!trip.isOwner || trip.updatedByName != null) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (!trip.isOwner)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                        trip.canEdit
+                            ? Icons.group_outlined
+                            : Icons.visibility_outlined,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Text(
                       trip.canEdit
                           ? (trip.ownerName != null
                               ? l10n.tripCoPlanningWith(trip.ownerName!)
@@ -3805,71 +4032,45 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                       style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (trip.canEdit)
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonalIcon(
-                  // Chat/refine needs the network — disabled while offline.
-                  onPressed: _isOffline
-                      ? null
-                      : () => _openRefine(trip, const RefineTarget.trip()),
-                  icon: const Icon(Icons.auto_awesome),
-                  label: Text(l10n.tripRefineWithAI),
+                  ],
                 ),
-              ),
-            // "Updated by Maria · 2m ago" — only present when someone ELSE
-            // made the last edit (the server omits self-attribution).
-            if (trip.updatedByName != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                l10n.tripUpdatedBy(
-                    trip.updatedByName!, _relativeTime(trip.updatedAt)),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ],
-            if (overview != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                l10n.tripOverview,
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                overview,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                maxLines: _overviewExpanded ? null : 3,
-                overflow: _overviewExpanded
-                    ? TextOverflow.visible
-                    : TextOverflow.ellipsis,
-              ),
-              if (overview.length > 140)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () =>
-                        setState(() => _overviewExpanded = !_overviewExpanded),
-                    child: Text(_overviewExpanded
-                        ? l10n.tripShowLess
-                        : l10n.tripShowMore),
-                  ),
+              if (trip.updatedByName != null)
+                Text(
+                  l10n.tripUpdatedBy(
+                      trip.updatedByName!, _relativeTime(trip.updatedAt)),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
             ],
-          ],
-        ),
-      ),
+          ),
+        ],
+        if (overview != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            overview,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            maxLines: _overviewExpanded ? null : 2,
+            overflow:
+                _overviewExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          if (overview.length > 140)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () =>
+                    setState(() => _overviewExpanded = !_overviewExpanded),
+                child: Text(
+                    _overviewExpanded ? l10n.tripShowLess : l10n.tripShowMore),
+              ),
+            ),
+        ],
+      ],
     );
   }
 
@@ -4094,6 +4295,22 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                       // build, and the post-frame Today scroll reads it
                       // fresh.
                       _mapPinned = constraints.maxWidth >= kRailBreakpoint;
+                      // Hoisted dock decision (also used at the bottom of this
+                      // builder): the docked panel + divider eat 401px of this
+                      // width, so the gutter must be computed from what the
+                      // scroll view actually gets.
+                      final panelDocked = _panelOpen &&
+                          _refineTarget != null &&
+                          constraints.maxWidth >= 900;
+                      final bodyWidth = panelDocked
+                          ? constraints.maxWidth - 401
+                          : constraints.maxWidth;
+                      // Symmetric gutter capping content at _contentMaxWidth;
+                      // exactly the old 16px below the cap (+32 slack keeps
+                      // the transition seamless), so phones are bit-identical.
+                      final gutter = bodyWidth > _contentMaxWidth + 32
+                          ? (bodyWidth - _contentMaxWidth) / 2
+                          : 16.0;
                       // City-matched bookings render inside their city group;
                       // the rest fall through to the Bookings section's
                       // "Other" sub-group.
@@ -4181,15 +4398,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                       }
                       final scrollView = CustomScrollView(
                         controller: _scroll,
+                        // Always scrollable: with the trailing sections
+                        // collapsed to one-liners, a small trip fits inside
+                        // the viewport — without this, no overscroll means
+                        // pull-to-refresh could never arm.
+                        physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [
                           SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                            padding: EdgeInsets.fromLTRB(gutter, 16, gutter, 0),
                             sliver: SliverToBoxAdapter(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   _buildHeaderCard(trip, theme),
-                                  const Divider(height: 32),
+                                  const SizedBox(height: AppSpacing.lg),
                                 ],
                               ),
                             ),
@@ -4208,8 +4430,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   height: _mapHeaderHeight,
                                   backgroundColor:
                                       theme.scaffoldBackgroundColor,
-                                  padding: const EdgeInsets.fromLTRB(
-                                      16, 12, 16, 12),
+                                  padding: EdgeInsets.fromLTRB(
+                                      gutter, 12, gutter, 12),
                                   child: _mapCard(
                                       trip, l10n, mapDayCount, mappedDays,
                                       expandable: false),
@@ -4218,8 +4440,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                             else
                               SliverToBoxAdapter(
                                 child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      16, 12, 16, 12),
+                                  padding: EdgeInsets.fromLTRB(
+                                      gutter, 12, gutter, 12),
                                   child: SizedBox(
                                     height: _mapHeightNarrow,
                                     child: _mapCard(
@@ -4228,127 +4450,132 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   ),
                                 ),
                               ),
-                          // Itinerary title + category filter; pins beneath the
-                          // map so the filter stays reachable while scrolling.
+                          // Itinerary title row; pins beneath the map so the
+                          // Today jump, category filter, and Add place stay
+                          // reachable while scrolling. The filter is a popup
+                          // menu, not a chip row — one fixed-height row keeps
+                          // the pinned chrome (and the Today scroll math)
+                          // constant.
                           SliverPersistentHeader(
                             pinned: true,
                             delegate: _PinnedHeaderDelegate(
-                              // title row + filter chip row; title-row-only
-                              // when there are no items (see the constants).
-                              height: (trip.items ?? const []).isNotEmpty
-                                  ? _listHeaderHeight
-                                  : _listHeaderHeightEmpty,
+                              height: _listHeaderHeight,
                               backgroundColor: theme.scaffoldBackgroundColor,
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 8),
                               // Align fills the header's full extent so the child's
                               // measured height matches maxExtent (a min-sized
                               // Column would be shorter, yielding an invalid sliver
                               // geometry: layoutExtent > paintExtent).
                               child: Align(
                                 alignment: Alignment.topLeft,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SizedBox(
-                                      height: 36,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(l10n.tripItinerary,
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: theme
-                                                    .textTheme.titleMedium),
-                                          ),
-                                          if (hasTodayTarget) ...[
-                                            ActionChip(
-                                              avatar: Icon(Icons.today,
-                                                  size: 16,
-                                                  color: theme
-                                                      .colorScheme.primary),
-                                              label: Text(l10n.tripToday),
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              materialTapTargetSize:
-                                                  MaterialTapTargetSize
-                                                      .shrinkWrap,
-                                              // Pure view work (select +
-                                              // expand + scroll): allowed
-                                              // offline and while the refine
-                                              // panel is open.
-                                              onPressed: () {
-                                                setState(() =>
-                                                    _selectedDay = todayDay);
-                                                _scrollToDay(todayDay);
-                                              },
-                                            ),
-                                            const SizedBox(width: 4),
-                                          ],
-                                          if (!_readOnly)
-                                            TextButton.icon(
-                                              onPressed: _isOffline
-                                                  ? null
-                                                  : _addPlace,
-                                              style: TextButton.styleFrom(
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                              ),
-                                              icon: const Icon(Icons.add,
-                                                  size: 18),
-                                              label: Text(l10n.tripAddPlace),
-                                            ),
-                                        ],
+                                child: SizedBox(
+                                  height: 36,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(l10n.tripItinerary,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style:
+                                                theme.textTheme.titleMedium),
                                       ),
-                                    ),
-                                    if ((trip.items ?? const [])
-                                        .isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      // One horizontally scrollable row, not
-                                      // a Wrap: the header's extent is fixed
-                                      // (_listHeaderHeight), so a second
-                                      // chip line on narrow screens (longer
-                                      // Spanish labels, small phones) would
-                                      // overflow it, not grow it.
-                                      SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            for (final f in _itemFilters) ...[
-                                              ChoiceChip(
-                                                label: Text(
-                                                    _filterLabel(l10n, f)),
-                                                selected: _itemFilter == f,
-                                                onSelected: (_) => setState(
-                                                    () => _itemFilter = f),
-                                              ),
-                                              if (f != _itemFilters.last)
-                                                const SizedBox(width: 8),
-                                            ],
-                                          ],
+                                      if (hasTodayTarget) ...[
+                                        ActionChip(
+                                          avatar: Icon(Icons.today,
+                                              size: 16,
+                                              color:
+                                                  theme.colorScheme.primary),
+                                          label: Text(l10n.tripToday),
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize
+                                                  .shrinkWrap,
+                                          // Pure view work (select +
+                                          // expand + scroll): allowed
+                                          // offline and while the refine
+                                          // panel is open.
+                                          onPressed: () {
+                                            setState(() =>
+                                                _selectedDay = todayDay);
+                                            _scrollToDay(todayDay);
+                                          },
                                         ),
-                                      ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      // Category filter (pure view work, so
+                                      // never offline-gated). Tinted when a
+                                      // filter is active — the only signal
+                                      // the menu is narrowing the list.
+                                      if ((trip.items ?? const [])
+                                          .isNotEmpty)
+                                        SizedBox(
+                                          width: 36,
+                                          height: 36,
+                                          child: PopupMenuButton<String>(
+                                            tooltip: l10n.tripFilterTooltip,
+                                            padding: EdgeInsets.zero,
+                                            icon: Icon(Icons.filter_list,
+                                                size: 20,
+                                                color: _itemFilter != 'all'
+                                                    ? theme
+                                                        .colorScheme.primary
+                                                    : theme.colorScheme
+                                                        .onSurfaceVariant),
+                                            onSelected: (f) => setState(
+                                                () => _itemFilter = f),
+                                            itemBuilder: (_) => [
+                                              for (final f in _itemFilters)
+                                                CheckedPopupMenuItem(
+                                                  value: f,
+                                                  checked: _itemFilter == f,
+                                                  child: Text(
+                                                      _filterLabel(l10n, f)),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (!_readOnly)
+                                        TextButton.icon(
+                                          onPressed: _isOffline
+                                              ? null
+                                              : _addPlace,
+                                          style: TextButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                          icon: const Icon(Icons.add,
+                                              size: 18),
+                                          label: Text(l10n.tripAddPlace),
+                                        ),
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                           if ((trip.items ?? []).isEmpty)
-                            SliverToBoxAdapter(
-                              child: SizedBox(
-                                height: 260,
-                                child: EmptyState(
-                                  icon: Icons.place_outlined,
-                                  title: l10n.tripNoPlacesYet,
-                                  message: l10n.tripNoPlacesYetMessage,
+                            SliverPadding(
+                              padding:
+                                  EdgeInsets.symmetric(horizontal: gutter),
+                              sliver: SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: 260,
+                                  child: EmptyState(
+                                    icon: Icons.place_outlined,
+                                    title: l10n.tripNoPlacesYet,
+                                    message: l10n.tripNoPlacesYetMessage,
+                                  ),
                                 ),
                               ),
                             )
                           else if (filtered.isEmpty)
-                            SliverToBoxAdapter(
-                              child: _FilterMissNotice(theme: theme),
+                            SliverPadding(
+                              padding:
+                                  EdgeInsets.symmetric(horizontal: gutter),
+                              sliver: SliverToBoxAdapter(
+                                child: _FilterMissNotice(theme: theme),
+                              ),
                             )
                           else
                             // Each city is a MultiSliver whose header pins
@@ -4356,7 +4583,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                             // scroll past, then is pushed off by the next city;
                             // day headers nest the same way within each city.
                             SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                              padding:
+                                  EdgeInsets.fromLTRB(gutter, 4, gutter, 0),
                               sliver: MultiSliver(children: [
                                 for (final (gi, group) in groups.indexed)
                                   MultiSliver(
@@ -4417,105 +4645,69 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                   ),
                               ]),
                             ),
+                          // Trailing sections, collapsed to one-line summary
+                          // rows (settings-list rhythm: hairline dividers).
+                          // One sliver for all four; the 96px bottom padding
+                          // keeps the chat FAB off the last row. Each _xxx
+                          // SectionRow hides itself exactly when its expanded
+                          // section would (see the builders).
                           SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            padding: EdgeInsets.fromLTRB(
+                                gutter, AppSpacing.sm, gutter, 96),
                             sliver: SliverToBoxAdapter(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const Divider(height: 32),
-                                  // Saved stays & transport: what the user has
-                                  // actually booked, distinct from the derived
-                                  // checklist above — plus Suggested drafts
-                                  // seeded from the itinerary by the sync.
-                                  BookingsSection(
-                                    trip: trip,
-                                    stays: _stays,
-                                    segments: _segments,
-                                    readOnly: _readOnly,
-                                    onAddStay: _addStay,
-                                    onDeleteStay: _deleteStay,
-                                    onEditStay: _editStay,
-                                    onConfirmStay: _confirmStay,
-                                    onAddSegment: _addSegment,
-                                    onDeleteSegment: _deleteSegment,
-                                    onEditSegment: _editSegment,
-                                    onConfirmSegment: _confirmSegment,
-                                    onStayBookedChanged: _setStayBooked,
-                                    onSegmentBookedChanged: _setSegmentBooked,
-                                    onReorderStays: (_readOnly || _isOffline)
-                                        ? null
-                                        : _reorderStays,
-                                    onReorderSegments: (_readOnly || _isOffline)
-                                        ? null
-                                        : _reorderSegments,
-                                    // Residual booking-todos only: city-matched
-                                    // todos render embedded in their city
-                                    // groups above, so the Other sub-group
-                                    // appears only when something didn't match
-                                    // a city (custom or stale todos). Viewers
-                                    // get no checklist at all (the server
-                                    // withholds todos from them).
-                                    otherBookings: grouped.residual.isEmpty
-                                        ? null
-                                        : _residualBookingsList(
-                                            grouped.residual, theme),
-                                    onAddBooking:
-                                        _isOffline ? null : _addBooking,
-                                    appleCalendarEnabled:
-                                        !_readOnly && !_isOffline,
+                              child: _sectionCluster([
+                                _bookingsSectionRow(
+                                    trip,
+                                    theme,
+                                    residual: grouped.residual,
+                                    // Saved stays & transport plus custom
+                                    // bookings; only mounted while expanded.
+                                    child: BookingsSection(
+                                      trip: trip,
+                                      stays: _stays,
+                                      segments: _segments,
+                                      readOnly: _readOnly,
+                                      onAddStay: _addStay,
+                                      onDeleteStay: _deleteStay,
+                                      onEditStay: _editStay,
+                                      onConfirmStay: _confirmStay,
+                                      onAddSegment: _addSegment,
+                                      onDeleteSegment: _deleteSegment,
+                                      onEditSegment: _editSegment,
+                                      onConfirmSegment: _confirmSegment,
+                                      onStayBookedChanged: _setStayBooked,
+                                      onSegmentBookedChanged:
+                                          _setSegmentBooked,
+                                      onReorderStays: (_readOnly || _isOffline)
+                                          ? null
+                                          : _reorderStays,
+                                      onReorderSegments:
+                                          (_readOnly || _isOffline)
+                                              ? null
+                                              : _reorderSegments,
+                                      // Residual booking-todos only:
+                                      // city-matched todos render embedded in
+                                      // their city groups above, so the Other
+                                      // sub-group appears only when something
+                                      // didn't match a city (custom or stale
+                                      // todos). Viewers get no checklist at
+                                      // all (the server withholds todos from
+                                      // them).
+                                      otherBookings: grouped.residual.isEmpty
+                                          ? null
+                                          : _residualBookingsList(
+                                              grouped.residual, theme),
+                                      onAddBooking:
+                                          _isOffline ? null : _addBooking,
+                                      appleCalendarEnabled:
+                                          !_readOnly && !_isOffline,
+                                      showHeader: false,
+                                    ),
                                   ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Packing & prep: a lightweight per-trip checklist,
-                          // seeded by the AI assistant and freely editable. Its
-                          // own endpoint/provider (not part of the trip payload),
-                          // so it's a self-contained peer section here.
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            sliver: SliverToBoxAdapter(
-                              child: ChecklistSection(
-                                tripId: trip.id,
-                                canEdit: !_readOnly,
-                                isOffline: _isOffline,
-                              ),
-                            ),
-                          ),
-                          // Budget & expenses: a self-contained per-trip budget
-                          // tracker (own endpoint/provider, not part of the trip
-                          // payload) — a trailing peer section beside Packing.
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            sliver: SliverToBoxAdapter(
-                              child: BudgetSection(
-                                tripId: trip.id,
-                                canEdit: !_readOnly,
-                                isOffline: _isOffline,
-                              ),
-                            ),
-                          ),
-                          // Trip health: read-only review (own endpoint/
-                          // provider, not part of the trip payload) — a trailing
-                          // peer section. Tapping a finding deep-links to its
-                          // day via the shared _scrollToDay; item-only findings
-                          // resolve to a day through the trip's items.
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            sliver: SliverToBoxAdapter(
-                              child: TripReviewSection(
-                                tripId: trip.id,
-                                isOffline: _isOffline,
-                                onScrollToDay: _scrollToDay,
-                                dayForItem: (itemId) {
-                                  for (final item in trip.items ?? const []) {
-                                    if (item.id == itemId) return item.day;
-                                  }
-                                  return null;
-                                },
-                                onApplyFix: _readOnly ? null : _applyFix,
-                              ),
+                                  _packingSectionRow(trip, theme),
+                                  _budgetSectionRow(trip, theme),
+                                  _healthSectionRow(trip, theme),
+                                ]),
                             ),
                           ),
                         ],
@@ -4551,7 +4743,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                         onClose: () => setState(() => _panelOpen = false),
                         onTripUpdated: _refresh,
                       );
-                      if (constraints.maxWidth >= 900) {
+                      if (panelDocked) {
                         // Wide: dock the chat beside the itinerary.
                         return Row(
                           children: [

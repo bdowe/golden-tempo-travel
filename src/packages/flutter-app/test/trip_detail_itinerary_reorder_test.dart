@@ -199,6 +199,9 @@ void main() {
     );
     expect(find.byIcon(Icons.drag_indicator), findsNWidgets(3));
 
+    // The category filter lives in a popup menu in the itinerary header.
+    await tester.tap(find.byIcon(Icons.filter_list));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Attractions'));
     await tester.pumpAndSettle();
 
