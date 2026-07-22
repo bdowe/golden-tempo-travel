@@ -135,6 +135,59 @@ func TestPlanSuggestRepliesDuplicateCallsEmitBoth(t *testing.T) {
 	}
 }
 
+func TestPlanSuggestRepliesCollapseToOneRejected(t *testing.T) {
+	resetDB(t)
+	// Two raw items pass the schema's minItems, but dedupe collapses them to
+	// one — a lone chip would read as the app pre-answering, so nothing shows.
+	fa := newFakeAnthropic(t,
+		toolTurn("suggest_replies", `{"replies":["Yes, add it","Yes, add it "]}`),
+		textTurn("Shall I add it?"))
+
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{
+		ChatID:   "chat-qr-one",
+		Messages: []PlanChatMessage{{Role: "user", Content: "add the museum?"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d: %s", rec.Code, rec.Body.String())
+	}
+	if evs := suggestRepliesEvents(t, rec.Body.String()); len(evs) != 0 {
+		t.Fatalf("suggest_replies events = %v, want none when sanitization leaves <2", evs)
+	}
+	reqs := fa.requestBodies()
+	if len(reqs) < 2 || !strings.Contains(string(reqs[1]), `"is_error":true`) {
+		t.Fatal("follow-up request carries no is_error tool_result")
+	}
+}
+
+func TestPlanSuggestRepliesRefusedAfterItinerary(t *testing.T) {
+	resetDB(t)
+	// The itinerary banner owns a turn that streamed `done` — a late
+	// suggest_replies in the same turn is refused with no SSE event.
+	fa := newFakeAnthropic(t,
+		toolTurn("create_itinerary", `{"locations":[{"name":"Acropolis","latitude":37.97,"longitude":23.72,"day":1}],"summary":"A day in Athens"}`),
+		toolTurn("suggest_replies", `{"replies":["Looks great","Change it"]}`),
+		textTurn(""))
+
+	rec := doJSON(t, "POST", "/api/v1/plan", "", PlanRequest{
+		ChatID:   "chat-qr-after-itinerary",
+		Messages: []PlanChatMessage{{Role: "user", Content: "plan athens"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/plan = %d: %s", rec.Code, rec.Body.String())
+	}
+	events := planEvents(t, rec.Body.String())
+	if dones := eventsOfType(events, "done"); len(dones) != 1 {
+		t.Fatalf("done events = %d, want 1", len(dones))
+	}
+	if evs := suggestRepliesEvents(t, rec.Body.String()); len(evs) != 0 {
+		t.Fatalf("suggest_replies events = %v, want none after an itinerary", evs)
+	}
+	reqs := fa.requestBodies()
+	if len(reqs) < 3 || !strings.Contains(string(reqs[2]), `"is_error":true`) {
+		t.Fatal("suggest_replies after create_itinerary was not answered with is_error")
+	}
+}
+
 func TestSanitizeQuickReplies(t *testing.T) {
 	long := strings.Repeat("x", 81)
 	got := sanitizeQuickReplies([]string{

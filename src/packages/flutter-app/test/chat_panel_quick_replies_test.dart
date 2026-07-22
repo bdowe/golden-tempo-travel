@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,12 +17,15 @@ import 'support/l10n_test_app.dart';
 /// last-write-wins), tap sends the chip text verbatim, and the chips row
 /// hides while streaming or while a queued follow-up supersedes the question.
 
-/// Captures the history payload and replays a canned event list.
+/// Captures the history payload and replays a canned event list; optionally
+/// throws after the events (a mid-stream transport failure).
 class _ScriptedPlanService extends PlanService {
   final List<PlanEvent> events;
+  final Object? throwAfterEvents;
   List<Map<String, dynamic>>? lastHistory;
 
-  _ScriptedPlanService(this.events) : super('http://unused');
+  _ScriptedPlanService(this.events, {this.throwAfterEvents})
+      : super('http://unused');
 
   @override
   Stream<PlanEvent> streamPlan(
@@ -33,6 +38,32 @@ class _ScriptedPlanService extends PlanService {
     lastHistory = messages;
     for (final e in events) {
       yield e;
+    }
+    if (throwAfterEvents != null) throw throwAfterEvents!;
+  }
+}
+
+/// Plays [script] in order: [PlanEvent]s are yielded, [Completer]s awaited —
+/// so a test can park the stream mid-turn (e.g. to reset() underneath it).
+class _ParkablePlanService extends PlanService {
+  final List<Object> script;
+
+  _ParkablePlanService(this.script) : super('http://unused');
+
+  @override
+  Stream<PlanEvent> streamPlan(
+    List<Map<String, dynamic>> messages, {
+    String? bearerToken,
+    String? chatId,
+    String? tripId,
+    String? summary,
+  }) async* {
+    for (final step in script) {
+      if (step is Completer<void>) {
+        await step.future;
+      } else {
+        yield step as PlanEvent;
+      }
     }
   }
 }
@@ -129,6 +160,61 @@ void main() {
       await notifier.sendMessage('hi');
       expect(notifier.state.error, 'stream died');
       expect(notifier.state.suggestedReplies, isEmpty);
+    });
+
+    test('a transport error (stream throws) clears the replies', () async {
+      final notifier = PlanNotifier(
+          _ScriptedPlanService([
+            _replies(const ['Yes', 'No']),
+          ], throwAfterEvents: Exception('connection dropped')),
+          ApiClient());
+      await notifier.sendMessage('hi');
+      expect(notifier.state.error, isNotNull);
+      expect(notifier.state.suggestedReplies, isEmpty);
+    });
+
+    test('an itinerary turn drops the chips — either event order', () async {
+      const done =
+          PlanEvent(type: 'done', data: {'locations': [], 'summary': 's'});
+      for (final events in [
+        [_replies(const ['Yes', 'No']), done],
+        [done, _replies(const ['Yes', 'No'])],
+      ]) {
+        final notifier =
+            PlanNotifier(_ScriptedPlanService(events), ApiClient());
+        await notifier.sendMessage('hi');
+        expect(notifier.state.suggestedReplies, isEmpty,
+            reason: 'the itinerary banner owns the turn');
+      }
+    });
+
+    test('a refine (trip_updated) turn drops the chips', () async {
+      final notifier = PlanNotifier(
+          _ScriptedPlanService([
+            const PlanEvent(type: 'trip_updated', data: {}),
+            _replies(const ['Yes', 'No']),
+          ]),
+          ApiClient(),
+          tripId: 't1');
+      await notifier.sendMessage('hi');
+      expect(notifier.state.suggestedReplies, isEmpty);
+    });
+
+    test('reset() mid-stream discards the stale turn — no chip leak',
+        () async {
+      final gate = Completer<void>();
+      final notifier = PlanNotifier(
+          _ParkablePlanService([gate, _replies(const ['Yes', 'No'])]),
+          ApiClient());
+      final send = notifier.sendMessage('hi');
+      await Future<void>.delayed(Duration.zero); // let the stream start
+      notifier.reset();
+      gate.complete();
+      await send; // the superseded loop self-terminates
+
+      expect(notifier.state.messages, isEmpty);
+      expect(notifier.state.suggestedReplies, isEmpty);
+      expect(notifier.state.isStreaming, isFalse);
     });
 
     test('suggest_replies never appears as an active tool chip', () async {

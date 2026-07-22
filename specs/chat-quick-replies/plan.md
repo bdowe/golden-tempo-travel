@@ -24,8 +24,10 @@ per suggesting turn; degrades to nothing if the model skips the call.
   (prompt-cache append-only rule; ungated so all three session shapes stay
   pure appends); `runSuggestRepliesTool` dispatcher +
   `sanitizeQuickReplies` (trim, drop empty/oversized(>80 runes)/duplicate,
-  cap 4; drop, never truncate). All-invalid input → `is_error` tool_result,
-  no SSE. `noResultEvent` stays false: `tool_call` is emitted
+  cap 4; drop, never truncate). Fewer than 2 usable replies → `is_error`
+  tool_result, no SSE. `planSession.itineraryEmitted` (set beside the `done`
+  and `trip_updated` emits) makes `suggest_replies` refuse after an
+  itinerary in the same turn. `noResultEvent` stays false: `tool_call` is emitted
   unconditionally, so suppressing only `tool_result` would strand a stale
   client's spinner chip; back-to-back call/result is invisible.
 - **`plan_handler.go`** — basePrompt gains the behavioral instruction
@@ -48,9 +50,14 @@ per suggesting turn; degrades to nothing if the model skips the call.
 - **`providers/plan_provider.dart`** — `PlanState.suggestedReplies`
   (`List<String>`, default `const []`, mirrors `activeTools`); cleared in the
   `_sendNow` reset (covers typed send, chip tap, queue drain, retry,
-  refinement seeds), the `error` case, and the transport `catch`; new
-  `suggest_replies` case replaces the list whole (last-write-wins); the
-  `tool_call` case skips `suggest_replies` for `activeTools` (no spinner).
+  refinement seeds), the `error` case, the transport `catch`, and the
+  `done`/`trip_updated` cases (a turn-local `itineraryThisTurn` flag also
+  drops a later `suggest_replies` in the same turn — the banner owns
+  itinerary turns in either event order); new `suggest_replies` case
+  replaces the list whole (last-write-wins); the `tool_call` case skips
+  `suggest_replies` for `activeTools` (no spinner). A `_turn` generation
+  counter makes a stream loop superseded by `reset()` self-terminate, so
+  late events never leak into a fresh conversation.
 - **`widgets/chat_panel.dart`** — `_QuickReplyChips` leaf in `_ChatTail`
   between `_ResultChips` and `_ChatFooter`; narrow record select
   `(replies, isStreaming, hasQueue)`; hidden when empty/streaming/queued;

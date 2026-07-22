@@ -56,6 +56,11 @@ type planSession struct {
 	// travelMode is the traveler's stated mode for this trip (set_travel_mode);
 	// create_itinerary persists it onto the trip. Empty = never stated.
 	travelMode string
+	// itineraryEmitted is set once this turn streamed `done` or
+	// `trip_updated`; suggest_replies refuses after it (the itinerary banner
+	// owns the turn — specs/chat-quick-replies). Not s.tripID: that stays nil
+	// for anonymous create_itinerary, which still streams `done`.
+	itineraryEmitted bool
 }
 
 // planTool is one registry entry.
@@ -433,6 +438,7 @@ func runCreateItineraryTool(s *planSession, input json.RawMessage) (string, bool
 		}
 	}
 	sendSSE(s.w, "done", donePayload)
+	s.itineraryEmitted = true
 	return "Itinerary created successfully.", false
 }
 
@@ -454,6 +460,7 @@ func runUpdateItinerarySectionTool(s *planSession, input json.RawMessage) (strin
 		return fmt.Sprintf("Could not update the section: %v", err), true
 	}
 	sendSSE(s.w, "trip_updated", map[string]string{"trip_id": s.boundTripID.String()})
+	s.itineraryEmitted = true
 	s.tripID = s.boundTripID
 	safeGo("recordEvent", func() {
 		recordEvent(s.uid, "trip_refined", s.boundTripID, map[string]any{
@@ -583,14 +590,19 @@ func runSuggestFerriesTool(s *planSession, input json.RawMessage) (string, bool)
 // model to end its turn. The Flutter client stores the list and renders
 // tappable chips once the stream closes; older clients ignore the event.
 func runSuggestRepliesTool(s *planSession, input json.RawMessage) (string, bool) {
+	if s.itineraryEmitted {
+		return "This turn produced an itinerary — the itinerary banner owns the turn; quick replies were not shown.", true
+	}
 	var in struct {
 		Replies []string `json:"replies"`
 	}
 	json.Unmarshal(input, &in)
 
+	// A single surviving chip would read as the app pre-answering the
+	// question, so fewer than two usable replies shows nothing.
 	replies := sanitizeQuickReplies(in.Replies)
-	if len(replies) == 0 {
-		return "No usable replies (2-4 short distinct strings required); none were shown.", true
+	if len(replies) < 2 {
+		return "Fewer than 2 usable replies (2-4 short distinct strings required); none were shown.", true
 	}
 	sendSSE(s.w, "suggest_replies", map[string]any{"replies": replies})
 	return "Quick replies are now shown to the traveler as tap buttons. End your turn now — do not repeat the options in text.", false

@@ -68,10 +68,17 @@ persisted (no migration).
   the stream closes, then show under the finished reply.
 - Model calls it twice in one turn: last call wins.
 - Model sends empty/oversized/duplicate strings: sanitized server-side;
-  an all-invalid call shows nothing and the model is told why.
+  fewer than two usable replies shows nothing (a lone chip would read as
+  the app pre-answering) and the model is told why.
+- Model calls it in a turn that also produces an itinerary: enforced both
+  ways — the server refuses the call after an itinerary event, and the
+  client drops chips in an itinerary turn regardless of event order. The
+  banner owns the turn.
 - Model violates the prompt and calls it in a text-less turn: chips may
   render under the previous assistant bubble — accepted; revisit if seen.
 - Stream errors after the event: the error clears the chips.
+- Start over pressed mid-stream: the superseded turn's late suggestions
+  never leak into the fresh conversation.
 
 ## Out of Scope
 
