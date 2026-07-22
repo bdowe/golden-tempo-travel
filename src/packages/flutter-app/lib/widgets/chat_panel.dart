@@ -1,3 +1,4 @@
+import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
@@ -13,6 +14,7 @@ import '../providers/plan_provider.dart';
 import '../services/dictation_controller.dart';
 import '../services/image_attachment_pipeline.dart';
 import '../theme/app_colors.dart';
+import '../theme/spacing.dart';
 import '../utils/clipboard_images_stub.dart'
     if (dart.library.js_interop) '../utils/clipboard_images_web.dart';
 import '../utils/tracked_launch.dart';
@@ -289,7 +291,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                   onNotification: _onScrollNotification,
                   child: ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.md),
                     itemCount: messages.length + 1,
                     itemBuilder: (context, i) {
                       if (i < messages.length) {
@@ -370,7 +373,8 @@ class _DropOverlay extends StatelessWidget {
         color: theme.colorScheme.surface.withValues(alpha: 0.85),
         child: Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl, vertical: 20),
             decoration: BoxDecoration(
               border: Border.all(color: theme.colorScheme.primary, width: 2),
               borderRadius: BorderRadius.circular(16),
@@ -380,7 +384,7 @@ class _DropOverlay extends StatelessWidget {
               children: [
                 Icon(Icons.add_photo_alternate_outlined,
                     size: 40, color: theme.colorScheme.primary),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   context.l10n.chatDropImages,
                   style: theme.textTheme.titleMedium
@@ -413,7 +417,8 @@ class _PendingAttachmentsRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       color: theme.colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0),
       child: SizedBox(
         height: 64,
         child: ListView(
@@ -421,7 +426,7 @@ class _PendingAttachmentsRow extends StatelessWidget {
           children: [
             for (var i = 0; i < pending.length; i++)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
                 child: Stack(
                   children: [
                     Padding(
@@ -511,6 +516,7 @@ class _ChatTail extends StatelessWidget {
       children: [
         // Compaction runs before the model call, so its chip leads the tail.
         _CompactingChip(state: state),
+        _TypingIndicatorBubble(state: state),
         _StreamingBubble(state: state),
         _ActiveToolChips(state: state),
         _ProfileNoteChip(state: state),
@@ -543,6 +549,125 @@ class _StreamingBubble extends ConsumerWidget {
   }
 }
 
+/// Immediate "assistant is working" cue: an animated three-dot bubble shown
+/// from the instant a turn starts (isStreaming flips synchronously on send,
+/// before any SSE event arrives) until streamed text, a tool chip, or the
+/// compacting chip takes over. Also covers the silent gap after a tool_result
+/// while the model composes its next text. Its own leaf watching one derived
+/// bool, so token flushes never rebuild it.
+class _TypingIndicatorBubble extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+
+  const _TypingIndicatorBubble({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // streamingText is '' while a turn starts and null when idle; either way
+    // no streaming bubble is visible yet.
+    final visible = ref.watch(state.select((s) =>
+        s.isStreaming &&
+        (s.streamingText == null || s.streamingText!.isEmpty) &&
+        s.activeTools.isEmpty &&
+        !s.isCompacting));
+    if (!visible) return const SizedBox.shrink();
+    return const _TypingDotsBubble(key: ValueKey('typing-indicator'));
+  }
+}
+
+/// Assistant-styled bubble with three staggered rising/fading dots — the
+/// familiar "typing" affordance, louder than the streaming caret.
+class _TypingDotsBubble extends StatefulWidget {
+  const _TypingDotsBubble({super.key});
+
+  @override
+  State<_TypingDotsBubble> createState() => _TypingDotsBubbleState();
+}
+
+class _TypingDotsBubbleState extends State<_TypingDotsBubble>
+    with SingleTickerProviderStateMixin {
+  // In the tree only while visible, so the controller's lifetime tracks
+  // visibility for free (same pattern as _StreamingCursor).
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 5),
+              _Dot(controller: _controller, index: i),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final AnimationController controller;
+  final int index;
+
+  const _Dot({required this.controller, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: Interval(index * 0.2, index * 0.2 + 0.6, curve: Curves.easeInOut),
+    );
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        // Rise-and-settle arc per cycle: 0→1→0 across the dot's interval.
+        final t = animation.value;
+        final wave = t < 0.5 ? t * 2 : (1 - t) * 2;
+        return Transform.translate(
+          offset: Offset(0, -3 * wave),
+          child: Opacity(
+            opacity: 0.25 + 0.65 * wave,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ActiveToolChips extends ConsumerWidget {
   final ProviderListenable<PlanState> state;
 
@@ -554,9 +679,9 @@ class _ActiveToolChips extends ConsumerWidget {
     if (activeTools.isEmpty) return const SizedBox.shrink();
     final l10n = context.l10n;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Wrap(
-        spacing: 8,
+        spacing: AppSpacing.sm,
         children: activeTools.map((tool) {
           return Chip(
             avatar: const SizedBox(
@@ -608,7 +733,7 @@ class _CompactingChip extends ConsumerWidget {
     final compacting = ref.watch(state.select((s) => s.isCompacting));
     if (!compacting) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Chip(
@@ -635,7 +760,7 @@ class _ProfileNoteChip extends ConsumerWidget {
     if (note == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Tooltip(
@@ -666,7 +791,7 @@ class _ItineraryUpdatedChip extends ConsumerWidget {
     if (!updated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Chip(
@@ -691,7 +816,7 @@ class _SeedContextChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Center(
         child: Chip(
           avatar: Icon(Icons.auto_awesome,
@@ -798,7 +923,7 @@ class _ResultChips extends ConsumerWidget {
 
     if (chips.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: chips),
     );
   }
@@ -836,8 +961,8 @@ class _ErrorBanner extends ConsumerWidget {
         .select((s) => s.messages.any((m) => m.role == MessageRole.user)));
     final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(8),
@@ -907,11 +1032,9 @@ class _QueuedBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
           color: theme.colorScheme.primary.withValues(alpha: 0.45),
           borderRadius: const BorderRadius.only(
@@ -931,7 +1054,7 @@ class _QueuedBubble extends StatelessWidget {
                 children: [
                   if (message.attachments.isNotEmpty) ...[
                     _BubbleAttachments(attachments: message.attachments),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                   ],
                   if (message.text.isNotEmpty || message.displayLabel != null)
                     Text(
@@ -947,7 +1070,7 @@ class _QueuedBubble extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpacing.xs),
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: context.l10n.chatRemoveQueued,
@@ -964,6 +1087,13 @@ class _QueuedBubble extends StatelessWidget {
     );
   }
 }
+
+/// Bubbles span 78% of the window on phones but cap at a readable measure on
+/// wide desktop windows.
+const double _kBubbleMaxWidth = 720;
+
+double _bubbleMaxWidth(BuildContext context) =>
+    min(MediaQuery.of(context).size.width * 0.78, _kBubbleMaxWidth);
 
 class ChatMessageBubble extends StatelessWidget {
   final PlanMessage message;
@@ -992,11 +1122,9 @@ class ChatMessageBubble extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
           color: isUser
               ? theme.colorScheme.primary
@@ -1172,7 +1300,8 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, AppSpacing.lg),
       child: Row(
         children: [
           IconButton(
@@ -1195,12 +1324,13 @@ class _InputBar extends StatelessWidget {
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg, vertical: 10),
               ),
             ),
           ),
           _MicButton(dictation: dictation),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           IconButton.filled(
             onPressed: onSend,
             icon: const Icon(Icons.send),
@@ -1228,7 +1358,7 @@ class _MicButton extends StatelessWidget {
         switch (dictation.status) {
           case DictationStatus.transcribing:
             return const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: SizedBox(
                 width: 20,
                 height: 20,

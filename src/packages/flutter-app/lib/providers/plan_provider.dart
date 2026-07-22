@@ -342,6 +342,12 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
     final textBuffer = StringBuffer();
     _streamBuffer = textBuffer;
+    // Assistant text blocks on either side of a tool call stream into the same
+    // buffer; without a separator they render run together
+    // ("…committing.Great news…"). Set at tool boundaries, consumed by the
+    // next delta — at APPEND time, so the flush timer and both commit paths
+    // (mid-turn error, final) all see already-separated text.
+    var needsSeparator = false;
 
     try {
       await for (final event in _service.streamPlan(history,
@@ -361,14 +367,28 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
         switch (event.type) {
           case 'text_delta':
-            textBuffer.write(event.data['text'] as String? ?? '');
+            final delta = event.data['text'] as String? ?? '';
+            if (delta.isNotEmpty) {
+              // Skip only when a NEWLINE already sits on either side of the
+              // boundary; a plain space still gets the paragraph break (the
+              // two beats are separate thoughts, not one sentence).
+              if (needsSeparator &&
+                  !delta.startsWith('\n') &&
+                  !textBuffer.toString().endsWith('\n')) {
+                textBuffer.write('\n\n');
+              }
+              needsSeparator = false;
+              textBuffer.write(delta);
+            }
             _scheduleStreamFlush();
 
           case 'tool_call':
+            if (textBuffer.isNotEmpty) needsSeparator = true;
             final name = event.data['name'] as String? ?? '';
             state = state.copyWith(activeTools: [...state.activeTools, name]);
 
           case 'tool_result':
+            if (textBuffer.isNotEmpty) needsSeparator = true;
             final name = event.data['name'] as String? ?? '';
             final tools = state.activeTools.toList()..remove(name);
             state = state.copyWith(activeTools: tools);

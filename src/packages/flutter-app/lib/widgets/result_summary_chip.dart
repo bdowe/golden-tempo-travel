@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 /// A quiet one-line summary of a result set the agent found (flights, events,
 /// local picks, ferries) — replaces inline card stacks in the chat. The full
@@ -50,7 +51,7 @@ class ResultSummaryChip extends StatelessWidget {
                   if (onTap != null) ...[
                     const SizedBox(width: 8),
                     Text(
-                      'View in trip',
+                      context.l10n.resultChipViewInTrip,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w600,
