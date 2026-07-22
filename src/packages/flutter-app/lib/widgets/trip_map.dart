@@ -57,6 +57,10 @@ class TripMap extends StatefulWidget {
   /// The default keeps existing call sites unchanged.
   final double topOverlayInset;
 
+  /// False renders a static preview: no gestures and no zoom/reset buttons.
+  /// Callers overlay their own tap handler (e.g. tap-to-expand on phones).
+  final bool interactive;
+
   const TripMap({
     super.key,
     required this.items,
@@ -69,6 +73,7 @@ class TripMap extends StatefulWidget {
     this.emptyMessage,
     this.emptyAction,
     this.topOverlayInset = 0,
+    this.interactive = true,
   });
 
   /// Whether [a] would render as a stay pin: geocoded (null means "not
@@ -166,7 +171,8 @@ class _TripMapState extends State<TripMap> {
     return points;
   }
 
-  List<LatLng> _fitPoints() => _fitPointsOf(widget.items, widget.accommodations);
+  List<LatLng> _fitPoints() =>
+      _fitPointsOf(widget.items, widget.accommodations);
 
   @override
   void didUpdateWidget(covariant TripMap oldWidget) {
@@ -295,9 +301,11 @@ class _TripMapState extends State<TripMap> {
 
     // Wheel scroll stays with the page (the map lives inside a ListView);
     // zooming is done via the on-map buttons or touch pinch.
-    const interaction = InteractionOptions(
-      flags: InteractiveFlag.all & ~InteractiveFlag.scrollWheelZoom,
-    );
+    final interaction = widget.interactive
+        ? const InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.scrollWheelZoom,
+          )
+        : const InteractionOptions(flags: InteractiveFlag.none);
 
     // Center on the selected place when one is set (e.g. the map was just
     // (re)built after a list tap); otherwise fit the whole trip.
@@ -363,8 +371,7 @@ class _TripMapState extends State<TripMap> {
                       height: 26,
                       child: _StayPin(
                         name: s.stay.name,
-                        dates: tripDateRange(
-                            s.stay.checkIn, s.stay.checkOut),
+                        dates: tripDateRange(s.stay.checkIn, s.stay.checkOut),
                       ),
                     ),
                 ],
@@ -382,12 +389,10 @@ class _TripMapState extends State<TripMap> {
                   for (final (k, m) in mapped.indexed)
                     Marker(
                       point: m.point,
-                      width: widget.selectedPosition == m.item.position
-                          ? 28
-                          : 24,
-                      height: widget.selectedPosition == m.item.position
-                          ? 28
-                          : 24,
+                      width:
+                          widget.selectedPosition == m.item.position ? 28 : 24,
+                      height:
+                          widget.selectedPosition == m.item.position ? 28 : 24,
                       child: _Pin(
                         label: '${k + 1}',
                         category: m.item.category,
@@ -405,32 +410,33 @@ class _TripMapState extends State<TripMap> {
             appMapAttribution(),
           ],
         ),
-        Positioned(
-          right: 8,
-          bottom: 8,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              MapControlButton(
-                icon: Icons.add,
-                tooltip: l10n.mapZoomIn,
-                onTap: () => _zoomBy(1),
-              ),
-              const SizedBox(height: 8),
-              MapControlButton(
-                icon: Icons.remove,
-                tooltip: l10n.mapZoomOut,
-                onTap: () => _zoomBy(-1),
-              ),
-              const SizedBox(height: 8),
-              MapControlButton(
-                icon: Icons.center_focus_strong,
-                tooltip: l10n.mapResetMap,
-                onTap: () => _fitToTrip(fitPoints),
-              ),
-            ],
+        if (widget.interactive)
+          Positioned(
+            right: 8,
+            bottom: 8,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MapControlButton(
+                  icon: Icons.add,
+                  tooltip: l10n.mapZoomIn,
+                  onTap: () => _zoomBy(1),
+                ),
+                const SizedBox(height: 8),
+                MapControlButton(
+                  icon: Icons.remove,
+                  tooltip: l10n.mapZoomOut,
+                  onTap: () => _zoomBy(-1),
+                ),
+                const SizedBox(height: 8),
+                MapControlButton(
+                  icon: Icons.center_focus_strong,
+                  tooltip: l10n.mapResetMap,
+                  onTap: () => _fitToTrip(fitPoints),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

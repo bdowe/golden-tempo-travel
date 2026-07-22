@@ -298,9 +298,8 @@ void main() {
     await tester.pump();
 
     // Topmost point (Louvre) must clear the 48px chip band at the fit.
-    final dy = _camera(tester)
-        .latLngToScreenOffset(const LatLng(48.8606, 2.3376))
-        .dy;
+    final dy =
+        _camera(tester).latLngToScreenOffset(const LatLng(48.8606, 2.3376)).dy;
     expect(dy, greaterThanOrEqualTo(48));
   });
 
@@ -319,6 +318,26 @@ void main() {
     expect(find.text('2'), findsOneWidget);
     expect(find.text('6'), findsNothing);
     expect(find.text('7'), findsNothing);
+  });
+
+  testWidgets('interactive: false hides the zoom/reset controls',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(_host(TripMap(items: items, interactive: false)));
+    await tester.pump();
+
+    expect(find.byIcon(Icons.add), findsNothing);
+    expect(find.byIcon(Icons.remove), findsNothing);
+    expect(find.byIcon(Icons.center_focus_strong), findsNothing);
+  });
+
+  testWidgets('default (interactive) keeps the zoom/reset controls',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(_host(TripMap(items: items)));
+    await tester.pump();
+
+    expect(find.byIcon(Icons.add), findsOneWidget);
+    expect(find.byIcon(Icons.remove), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_strong), findsOneWidget);
   });
 
   testWidgets('stays alone (no mapped items) still render a map',

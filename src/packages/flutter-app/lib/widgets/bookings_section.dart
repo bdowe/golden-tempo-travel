@@ -117,8 +117,7 @@ class BookingsSection extends StatelessWidget {
   /// returning the mode alone, matching Go's `segmentRouteIn`.
   static String _segmentCalendarTitle(AppLocalizations l10n, TripSegment s) {
     final mode = _calendarModeLabel(l10n, s.mode);
-    final route =
-        [s.origin, s.destination].whereType<String>().join(' → ');
+    final route = [s.origin, s.destination].whereType<String>().join(' → ');
     return l10n.calendarSegmentTitle(mode, route.isEmpty ? mode : route);
   }
 
@@ -265,8 +264,10 @@ class BookingsSection extends StatelessWidget {
           title: l10n.bookingsTitle,
           action: readOnly
               ? null
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
+              : Wrap(
+                  // The button pair alone can outgrow a small phone's width,
+                  // so it must be able to break into two lines itself.
+                  alignment: WrapAlignment.end,
                   children: [
                     TextButton.icon(
                       onPressed: onAddStay,
@@ -693,8 +694,7 @@ class _AddStaySheetState extends State<AddStaySheet> {
                 const SizedBox(width: AppSpacing.sm),
                 FilledButton(
                   onPressed: _save,
-                  child:
-                      Text(editing ? l10n.commonSave : l10n.bookingsAddStay),
+                  child: Text(editing ? l10n.commonSave : l10n.bookingsAddStay),
                 ),
               ],
             ),

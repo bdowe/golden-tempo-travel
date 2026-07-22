@@ -2372,6 +2372,12 @@ abstract class AppLocalizations {
   /// **'Add a place to see it on the map.'**
   String get tripAddPlaceMapHint;
 
+  /// Tooltip/semantics label for the tap-to-expand trip map preview on phones
+  ///
+  /// In en, this message translates to:
+  /// **'Expand map'**
+  String get tripExpandMap;
+
   /// No description provided for @tripDayN.
   ///
   /// In en, this message translates to:

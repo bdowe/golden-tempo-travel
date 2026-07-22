@@ -756,6 +756,10 @@
     }
   },
   "tripAddPlaceMapHint": "Add a place to see it on the map.",
+  "tripExpandMap": "Expand map",
+  "@tripExpandMap": {
+    "description": "Tooltip/semantics label for the tap-to-expand trip map preview on phones"
+  },
   "tripDayN": "Day {n}",
   "@tripDayN": {
     "placeholders": {

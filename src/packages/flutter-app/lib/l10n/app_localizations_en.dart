@@ -1270,6 +1270,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tripAddPlaceMapHint => 'Add a place to see it on the map.';
 
   @override
+  String get tripExpandMap => 'Expand map';
+
+  @override
   String tripDayN(int n) {
     return 'Day $n';
   }

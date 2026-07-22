@@ -38,6 +38,7 @@ import '../providers/checklist_provider.dart';
 import '../providers/budget_provider.dart';
 import '../models/trip_finding.dart';
 import '../models/budget.dart';
+import '../navigation/app_nav.dart';
 import '../services/trip_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/spacing.dart';
@@ -48,6 +49,7 @@ import '../utils/trip_days.dart';
 import '../utils/trip_format.dart';
 import '../widgets/add_itinerary_item_dialog.dart';
 import '../widgets/add_to_trip_sheet.dart';
+import '../widgets/app_map.dart';
 import '../widgets/booking_todo_card.dart';
 import '../widgets/bookings_section.dart';
 import '../widgets/budget_section.dart';
@@ -64,6 +66,7 @@ import '../widgets/trip_map.dart';
 import '../widgets/trip_refine_panel.dart';
 import 'flight_search_screen.dart';
 import 'local_guide_detail_screen.dart';
+import 'trip_map_screen.dart';
 import '../utils/snack.dart';
 
 /// A geographic coordinate used to resolve an itinerary place to its nearest
@@ -127,6 +130,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   RefineTarget? _refineTarget;
   String _itemFilter = 'all'; // 'all' | 'attraction' | 'restaurant'
   int? _selectedDay; // map day-chip selection; null = All (specs/today-mode)
+  // Whether the map renders as the wide layout's pinned header (true) or the
+  // phone layout's scroll-away tap-to-expand card (false). Assigned each
+  // build from the body width; also feeds the Today-scroll chrome math.
+  bool _mapPinned = true;
   // Today mode (specs/today-mode): the itinerary auto-scrolls to today's day
   // header at most once per screen visit, and only from loud load paths.
   final ScrollController _scroll = ScrollController();
@@ -185,13 +192,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
         : items.where((i) => i.category == _itemFilter).toList();
   }
 
-  /// [_filtered] further narrowed to the selected map day chip. The map is
-  /// the only consumer — the itinerary list never day-filters. Untagged
-  /// items (day == null) show only under All.
-  List<ItineraryItem> _dayFiltered(Trip trip) {
-    return _filtered(trip)
-        .where((i) => _selectedDay == null || i.day == _selectedDay)
-        .toList();
+  /// [_filtered] further narrowed to a map day chip selection (null = All).
+  /// The maps are the only consumers — the itinerary list never day-filters.
+  /// Untagged items (day == null) show only under All.
+  List<ItineraryItem> _dayFiltered(Trip trip, int? day) {
+    return _filtered(trip).where((i) => day == null || i.day == day).toList();
   }
 
   /// The trip's user-confirmed stays. Suggested drafts (auto=true) are working
@@ -203,12 +208,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
           .where((a) => !a.auto)
           .toList();
 
-  /// Stays the map should plot for the selected day chip: under All, every
-  /// stay; under Day N, only stays covering that night (checkout-exclusive).
-  /// A trip without a parseable start date can't map Day N to a calendar
-  /// date, so no stay matches (they all still show under All).
-  List<Accommodation> _dayFilteredStays(Trip trip) {
-    final day = _selectedDay;
+  /// Stays the map should plot for a day chip selection: under All (null),
+  /// every stay; under Day N, only stays covering that night
+  /// (checkout-exclusive). A trip without a parseable start date can't map
+  /// Day N to a calendar date, so no stay matches (they all still show under
+  /// All).
+  List<Accommodation> _dayFilteredStays(Trip trip, int? day) {
     if (day == null) return _confirmedStays(trip);
     return _staysOnNight(trip, day);
   }
@@ -459,20 +464,24 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// math so the two can never drift apart.
   static const double _mapHeaderHeight =
       12 + 240 + 12; // top gap + map + bottom gap
+  /// Map card height on phones, where the map scrolls away instead of
+  /// pinning (a preview — the full-screen map is one tap away).
+  static const double _mapHeightNarrow = 180;
   // Itinerary title row (36) + gap (8) + filter chip row (48) + bottom
   // padding (8); title-row-only when the trip has no items.
   static const double _listHeaderHeight = 100;
   static const double _listHeaderHeightEmpty = 48;
 
   /// Combined height of the chrome pinned above the itinerary slivers: the
-  /// map header (shown when a filtered item or a stay is mappable — same
-  /// [_mapShown] gate as the build) plus the itinerary title/filter header.
+  /// map header (when it renders AND is pinned — on phones the map scrolls
+  /// away, so it never rests above a target header) plus the itinerary
+  /// title/filter header.
   double _pinnedChrome(Trip trip) {
     final mapShown = _mapShown(trip);
     final listH = (trip.items ?? const []).isNotEmpty
         ? _listHeaderHeight
         : _listHeaderHeightEmpty;
-    return (mapShown ? _mapHeaderHeight : 0) + listH;
+    return ((_mapPinned && mapShown) ? _mapHeaderHeight : 0) + listH;
   }
 
   /// Measured height of the pinned city header above [dayKey]'s section
@@ -3864,6 +3873,125 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     );
   }
 
+  /// The rounded map card shared by the wide (pinned header) and phone
+  /// (scroll-away) layouts. When [expandable], the map is a static preview:
+  /// an [AbsorbPointer] swallows the pin/stay gesture detectors so the whole
+  /// card is one tap target opening [TripMapScreen], and — because the tap
+  /// [GestureDetector] claims only taps — vertical drags fall through to the
+  /// page scroll. The day chips sit above the gesture layer either way, so
+  /// they stay tappable inline.
+  Widget _mapCard(
+    Trip trip,
+    AppLocalizations l10n,
+    int mapDayCount,
+    Set<int> mappedDays, {
+    required bool expandable,
+  }) {
+    Widget map = TripMap(
+      items: _dayFiltered(trip, _selectedDay),
+      accommodations: _dayFilteredStays(trip, _selectedDay),
+      selectedPosition: _selectedPosition,
+      // Unfiltered by day: TripMap's position+1 adjacency guard drops labels
+      // across the gaps a day filter creates, and the category filter
+      // already empties this map.
+      segmentLabels: _segmentLabels(),
+      fitSignature: _selectedDay,
+      // Keep fitted markers clear of the chip row overlaid below.
+      topOverlayInset: mapDayCount > 0 ? MapDayChips.mapTopInset : 0,
+      interactive: !expandable,
+      emptyLabel: _selectedDay == null
+          ? l10n.tripNoMappedPlaces
+          : l10n.tripNoPlacesOnDay(_selectedDay!),
+      emptyMessage: _isOffline ? null : l10n.tripAddPlaceMapHint,
+      // The preview absorbs pointers, so its empty-state CTA could never be
+      // tapped; the pinned "+ Add place" button sits right below anyway.
+      emptyAction: (expandable || _isOffline || _readOnly)
+          ? null
+          : FilledButton.tonalIcon(
+              onPressed: () => _addPlace(day: _selectedDay),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(l10n.tripAddPlace),
+            ),
+      onPinTap: expandable
+          ? null
+          : (pos) {
+              setState(() => _selectedPosition = pos);
+              final it = trip.items!.firstWhere((i) => i.position == pos);
+              _showSnack(it.name);
+            },
+    );
+    if (expandable) {
+      map = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openFullMap(trip, mapDayCount, mappedDays),
+        child: AbsorbPointer(child: map),
+      );
+    }
+    return ClipRRect(
+      borderRadius: AppRadius.lgAll,
+      child: Stack(
+        children: [
+          Positioned.fill(child: map),
+          // Above the map's gesture layer, so chip taps and row scrolls
+          // never pan the map.
+          Positioned(
+            top: 8,
+            left: 8,
+            right: 8,
+            child: MapDayChips(
+              dayCount: mapDayCount,
+              selected: _selectedDay,
+              mappedDays: mappedDays,
+              onSelected: (d) => setState(() => _selectedDay = d),
+            ),
+          ),
+          if (expandable)
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: MapControlButton(
+                icon: Icons.fullscreen,
+                tooltip: l10n.tripExpandMap,
+                onTap: () => _openFullMap(trip, mapDayCount, mappedDays),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Pushes the full-screen interactive map. Root navigator so the map
+  /// covers the bottom navigation bar; the closures read the live [_trip] so
+  /// a silent refresh propagates on the next chip tap.
+  void _openFullMap(Trip trip, int mapDayCount, Set<int> mappedDays) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => TripMapScreen(
+          title: _displayTitle(trip),
+          itemsForDay: (d) {
+            final t = _trip;
+            return t == null ? const <ItineraryItem>[] : _dayFiltered(t, d);
+          },
+          staysForDay: (d) {
+            final t = _trip;
+            return t == null
+                ? const <Accommodation>[]
+                : _dayFilteredStays(t, d);
+          },
+          segmentLabels: _segmentLabels(),
+          dayCount: mapDayCount,
+          mappedDays: mappedDays,
+          initialDay: _selectedDay,
+          onDaySelected: (d) => setState(() => _selectedDay = d),
+          onAddPlace: (_isOffline || _readOnly)
+              ? null
+              : (day) => _addPlace(day: day),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3959,6 +4087,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
               : trip == null
                   ? const SizedBox.shrink()
                   : LayoutBuilder(builder: (context, constraints) {
+                      // Phones get the scroll-away tap-to-expand map; wide
+                      // layouts keep the pinned header. Keyed to the width
+                      // the body actually gets (like the refine-dock check
+                      // below), not the window. Plain assignment: we're in
+                      // build, and the post-frame Today scroll reads it
+                      // fresh.
+                      _mapPinned = constraints.maxWidth >= kRailBreakpoint;
                       // City-matched bookings render inside their city group;
                       // the rest fall through to the Bookings section's
                       // "Other" sub-group.
@@ -4059,85 +4194,40 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                               ),
                             ),
                           ),
-                          // The map scrolls with the page until it reaches the top,
-                          // then stays pinned while the itinerary scrolls beneath it.
+                          // Wide: the map scrolls with the page until it
+                          // reaches the top, then stays pinned while the
+                          // itinerary scrolls beneath it. Phones have no room
+                          // to pin — a shorter static preview scrolls away
+                          // with the page, and tapping it opens the
+                          // full-screen map (TripMapScreen).
                           if (_mapShown(trip))
-                            SliverPersistentHeader(
-                              pinned: true,
-                              delegate: _PinnedHeaderDelegate(
-                                height: _mapHeaderHeight,
-                                backgroundColor: theme.scaffoldBackgroundColor,
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                                child: ClipRRect(
-                                  borderRadius: AppRadius.lgAll,
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: TripMap(
-                                          items: _dayFiltered(trip),
-                                          accommodations:
-                                              _dayFilteredStays(trip),
-                                          selectedPosition: _selectedPosition,
-                                          // Unfiltered by day: TripMap's
-                                          // position+1 adjacency guard drops
-                                          // labels across the gaps a day
-                                          // filter creates, and the category
-                                          // filter already empties this map.
-                                          segmentLabels: _segmentLabels(),
-                                          fitSignature: _selectedDay,
-                                          // Keep fitted markers clear of the
-                                          // chip row overlaid below.
-                                          topOverlayInset: mapDayCount > 0
-                                              ? MapDayChips.mapTopInset
-                                              : 0,
-                                          emptyLabel: _selectedDay == null
-                                              ? l10n.tripNoMappedPlaces
-                                              : l10n.tripNoPlacesOnDay(
-                                                  _selectedDay!),
-                                          emptyMessage: _isOffline
-                                              ? null
-                                              : l10n.tripAddPlaceMapHint,
-                                          emptyAction: (_isOffline ||
-                                                  _readOnly)
-                                              ? null
-                                              : FilledButton.tonalIcon(
-                                                  onPressed: () => _addPlace(
-                                                      day: _selectedDay),
-                                                  icon: const Icon(Icons.add,
-                                                      size: 18),
-                                                  label:
-                                                      Text(l10n.tripAddPlace),
-                                                ),
-                                          onPinTap: (pos) {
-                                            setState(
-                                                () => _selectedPosition = pos);
-                                            final it = trip.items!.firstWhere(
-                                                (i) => i.position == pos);
-                                            _showSnack(it.name);
-                                          },
-                                        ),
-                                      ),
-                                      // Above the map's gesture layer, so
-                                      // chip taps and row scrolls never pan
-                                      // the map.
-                                      Positioned(
-                                        top: 8,
-                                        left: 8,
-                                        right: 8,
-                                        child: MapDayChips(
-                                          dayCount: mapDayCount,
-                                          selected: _selectedDay,
-                                          mappedDays: mappedDays,
-                                          onSelected: (d) => setState(
-                                              () => _selectedDay = d),
-                                        ),
-                                      ),
-                                    ],
+                            if (_mapPinned)
+                              SliverPersistentHeader(
+                                pinned: true,
+                                delegate: _PinnedHeaderDelegate(
+                                  height: _mapHeaderHeight,
+                                  backgroundColor:
+                                      theme.scaffoldBackgroundColor,
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 12, 16, 12),
+                                  child: _mapCard(
+                                      trip, l10n, mapDayCount, mappedDays,
+                                      expandable: false),
+                                ),
+                              )
+                            else
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 12, 16, 12),
+                                  child: SizedBox(
+                                    height: _mapHeightNarrow,
+                                    child: _mapCard(
+                                        trip, l10n, mapDayCount, mappedDays,
+                                        expandable: true),
                                   ),
                                 ),
                               ),
-                            ),
                           // Itinerary title + category filter; pins beneath the
                           // map so the filter stays reachable while scrolling.
                           SliverPersistentHeader(
@@ -4166,6 +4256,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                         children: [
                                           Expanded(
                                             child: Text(l10n.tripItinerary,
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
                                                 style: theme
                                                     .textTheme.titleMedium),
                                           ),
@@ -4212,18 +4305,29 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                     if ((trip.items ?? const [])
                                         .isNotEmpty) ...[
                                       const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 8,
-                                        children: [
-                                          for (final f in _itemFilters)
-                                            ChoiceChip(
-                                              label:
-                                                  Text(_filterLabel(l10n, f)),
-                                              selected: _itemFilter == f,
-                                              onSelected: (_) => setState(
-                                                  () => _itemFilter = f),
-                                            ),
-                                        ],
+                                      // One horizontally scrollable row, not
+                                      // a Wrap: the header's extent is fixed
+                                      // (_listHeaderHeight), so a second
+                                      // chip line on narrow screens (longer
+                                      // Spanish labels, small phones) would
+                                      // overflow it, not grow it.
+                                      SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            for (final f in _itemFilters) ...[
+                                              ChoiceChip(
+                                                label: Text(
+                                                    _filterLabel(l10n, f)),
+                                                selected: _itemFilter == f,
+                                                onSelected: (_) => setState(
+                                                    () => _itemFilter = f),
+                                              ),
+                                              if (f != _itemFilters.last)
+                                                const SizedBox(width: 8),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ],
