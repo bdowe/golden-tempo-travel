@@ -242,10 +242,8 @@
   "bookingsStays": "Stays",
   "bookingsTransport": "Transport",
   "bookingsOther": "Other",
-  "bookingsSuggested": "Suggested",
-  "bookingsKeep": "Keep",
-  "bookingsEdit": "Edit",
-  "bookingsDismissSuggestion": "Dismiss suggestion",
+  "bookingRowAddDetails": "Add details…",
+  "bookingRowOptions": "Booking options",
   "bookingsSummaryProgress": "{booked} of {total} booked",
   "@bookingsSummaryProgress": {
     "placeholders": {
@@ -479,14 +477,6 @@
       }
     }
   },
-  "tripKeepStayFailed": "Could not keep stay: {error}",
-  "@tripKeepStayFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
   "tripAddTransportFailed": "Could not add transport: {error}",
   "@tripAddTransportFailed": {
     "placeholders": {
@@ -505,14 +495,6 @@
   },
   "tripUpdateTransportFailed": "Could not update transport: {error}",
   "@tripUpdateTransportFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "tripKeepTransportFailed": "Could not keep transport: {error}",
-  "@tripKeepTransportFailed": {
     "placeholders": {
       "error": {
         "type": "String"

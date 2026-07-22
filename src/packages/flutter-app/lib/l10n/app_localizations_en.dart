@@ -552,16 +552,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bookingsOther => 'Other';
 
   @override
-  String get bookingsSuggested => 'Suggested';
+  String get bookingRowAddDetails => 'Add details…';
 
   @override
-  String get bookingsKeep => 'Keep';
-
-  @override
-  String get bookingsEdit => 'Edit';
-
-  @override
-  String get bookingsDismissSuggestion => 'Dismiss suggestion';
+  String get bookingRowOptions => 'Booking options';
 
   @override
   String bookingsSummaryProgress(int booked, int total) {
@@ -968,11 +962,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String tripKeepStayFailed(String error) {
-    return 'Could not keep stay: $error';
-  }
-
-  @override
   String tripAddTransportFailed(String error) {
     return 'Could not add transport: $error';
   }
@@ -985,11 +974,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String tripUpdateTransportFailed(String error) {
     return 'Could not update transport: $error';
-  }
-
-  @override
-  String tripKeepTransportFailed(String error) {
-    return 'Could not keep transport: $error';
   }
 
   @override

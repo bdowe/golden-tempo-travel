@@ -123,11 +123,9 @@ Future<(_FakeTripsApiService, _FakeUrlLauncher)> _pump(
               onAddStay: () {},
               onDeleteStay: (_) {},
               onEditStay: (_) {},
-              onConfirmStay: (_) {},
               onAddSegment: () {},
               onDeleteSegment: (_) {},
               onEditSegment: (_) {},
-              onConfirmSegment: (_) {},
               appleCalendarEnabled: appleCalendarEnabled,
             ),
           ),
@@ -142,10 +140,13 @@ Future<(_FakeTripsApiService, _FakeUrlLauncher)> _pump(
 Finder _calendarButton() => find.byTooltip('Add to calendar');
 
 void main() {
-  testWidgets('dated stay shows the menu; undated and draft stays do not',
+  testWidgets(
+      'dated stay shows the menu; undated stays do not, drafts never render',
       (tester) async {
     await _pump(tester, stays: [_datedStay, _undatedStay, _draftStay]);
     expect(_calendarButton(), findsOneWidget);
+    // The auto draft is filtered out entirely, calendar button and all.
+    expect(find.text(_draftStay.name), findsNothing);
   });
 
   testWidgets('Google entry launches a prefilled calendar.google.com link',

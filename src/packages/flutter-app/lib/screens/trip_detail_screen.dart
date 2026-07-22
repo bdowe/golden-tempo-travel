@@ -1148,14 +1148,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
   /// Persists a drag-reorder of the saved-stays list in the bookings hub.
   /// Optimistic: display order is _stays list order; the drafts sync never
   /// rewrites positions, so the order set here sticks across reloads.
+  ///
+  /// The hub renders CONFIRMED rows only, so the incoming indices are
+  /// confirmed-list indices — reorder within the confirmed subset and
+  /// reassemble with any legacy hidden drafts kept at the tail, or a drag
+  /// over interleaved drafts would move the wrong stay.
   Future<void> _reorderStays(int oldIndex, int newIndex) async {
     if (_guardOffline()) return;
     final l10n = context.l10n;
     if (newIndex > oldIndex) newIndex--;
     if (newIndex == oldIndex) return;
     final prev = _stays;
-    final newOrder = List.of(_stays);
-    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    final confirmed = [for (final a in _stays) if (!a.auto) a];
+    final autos = [for (final a in _stays) if (a.auto) a];
+    confirmed.insert(newIndex, confirmed.removeAt(oldIndex));
+    final newOrder = [...confirmed, ...autos];
     setState(() => _stays = newOrder);
     try {
       await ref.read(bookingDraftsApiServiceProvider).reorderBookings(
@@ -1174,8 +1181,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     if (newIndex > oldIndex) newIndex--;
     if (newIndex == oldIndex) return;
     final prev = _segments;
-    final newOrder = List.of(_segments);
-    newOrder.insert(newIndex, newOrder.removeAt(oldIndex));
+    final confirmed = [for (final s in _segments) if (!s.auto) s];
+    final autos = [for (final s in _segments) if (s.auto) s];
+    confirmed.insert(newIndex, confirmed.removeAt(oldIndex));
+    final newOrder = [...confirmed, ...autos];
     setState(() => _segments = newOrder);
     try {
       await ref.read(bookingDraftsApiServiceProvider).reorderBookings(
@@ -1184,6 +1193,68 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     } catch (e) {
       if (mounted) setState(() => _segments = prev);
       _showSnack(l10n.tripReorderFailed('$e'));
+    }
+  }
+
+  /// "Add details…" on an inline booking row: promotes the todo to a
+  /// confirmed accommodation/segment via the existing add-sheets, prefilled
+  /// from the todo. Confirmed records are what viewers see and what calendar
+  /// export, the Tonight caption, and map stay pins read — this is the
+  /// one-tap replacement for the retired Suggested-draft "Keep" flow. The
+  /// next drafts sync sees the leg covered by a confirmed row and prunes its
+  /// shadow draft server-side. Deliberately does NOT mark the todo booked —
+  /// booking state stays a separate, explicit action.
+  Future<void> _addDetailsFromTodo(BookingTodo todo) async {
+    if (_guardOffline()) return;
+    final l10n = context.l10n;
+    if (todo.kind == 'stay') {
+      final body = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => AddStaySheet(
+          initialName: todo.title,
+          initialCheckIn: todo.departDate,
+          initialCheckOut: todo.returnDate,
+        ),
+      );
+      if (body == null) return;
+      try {
+        await ref
+            .read(accommodationsApiServiceProvider)
+            .add(widget.tripId, body);
+        await _load();
+      } catch (e) {
+        _showSnack(l10n.tripAddStayFailed('$e'));
+      }
+      return;
+    }
+    // Transport: the todo model carries no origin/destination fields, but
+    // _deriveTodos always titles a leg 'A → B' — split it back apart. Mode
+    // follows the provider the leg was derived with.
+    final parts = todo.title.split(' → ');
+    final trip = _trip;
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AddSegmentSheet(
+        initialOrigin: parts.isNotEmpty ? parts.first : null,
+        initialDestination: parts.length > 1 ? parts[1] : null,
+        initialMode: switch (todo.provider) {
+          'ferry' => 'ferry',
+          'rome2rio' => trip == null ? null : _groundModeOf(trip),
+          _ => 'flight',
+        },
+        initialDepartDate: todo.departDate,
+      ),
+    );
+    if (body == null) return;
+    try {
+      await ref
+          .read(transportApiServiceProvider)
+          .addSegment(widget.tripId, body);
+      await _load();
+    } catch (e) {
+      _showSnack(l10n.tripAddTransportFailed('$e'));
     }
   }
 
@@ -1578,20 +1649,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     }
   }
 
-  /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
-  Future<void> _confirmStay(Accommodation a) async {
-    if (_guardOffline()) return;
-    final l10n = context.l10n;
-    try {
-      await ref
-          .read(accommodationsApiServiceProvider)
-          .update(widget.tripId, a.id, const {});
-      await _load();
-    } catch (e) {
-      _showSnack(l10n.tripKeepStayFailed('$e'));
-    }
-  }
-
   Future<void> _addSegment() async {
     if (_guardOffline()) return;
     final l10n = context.l10n;
@@ -1665,20 +1722,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
     } catch (e) {
       if (mounted) setState(() => _segments = prev);
       _showSnack(l10n.tripUpdateFailed('$e'));
-    }
-  }
-
-  /// "Keep" on a Suggested draft: an empty PATCH confirms it as-is.
-  Future<void> _confirmSegment(TripSegment s) async {
-    if (_guardOffline()) return;
-    final l10n = context.l10n;
-    try {
-      await ref
-          .read(transportApiServiceProvider)
-          .updateSegment(widget.tripId, s.id, const {});
-      await _load();
-    } catch (e) {
-      _showSnack(l10n.tripKeepTransportFailed('$e'));
     }
   }
 
@@ -2449,6 +2492,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                 : _flightLegs.containsKey(todo.todoKey)
                     ? l10n.tripFindFlights
                     : null,
+            onAddDetails:
+                (_readOnly || _isOffline || todo.kind == 'other')
+                    ? null
+                    : () => _addDetailsFromTodo(todo),
           ),
     ];
   }
@@ -4670,11 +4717,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen>
                                       onAddStay: _addStay,
                                       onDeleteStay: _deleteStay,
                                       onEditStay: _editStay,
-                                      onConfirmStay: _confirmStay,
                                       onAddSegment: _addSegment,
                                       onDeleteSegment: _deleteSegment,
                                       onEditSegment: _editSegment,
-                                      onConfirmSegment: _confirmSegment,
                                       onStayBookedChanged: _setStayBooked,
                                       onSegmentBookedChanged:
                                           _setSegmentBooked,
