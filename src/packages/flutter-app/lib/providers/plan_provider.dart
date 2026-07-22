@@ -53,6 +53,12 @@ class PlanState {
   /// sent. Always replaced whole, never mutated in place.
   final List<QueuedMessage> queuedMessages;
 
+  /// One-tap answers the agent attached to its last question (SSE
+  /// `suggest_replies`, specs/chat-quick-replies). Model-generated in the
+  /// conversation language; tapping sends the text verbatim. Empty = none.
+  /// Replaced whole, never mutated; cleared on every send and on error.
+  final List<String> suggestedReplies;
+
   /// Short excerpt of profile notes the agent just saved (server
   /// `profile_updated` event); shown as a transient "Noted" chip in the chat.
   final String? profileUpdateNote;
@@ -100,6 +106,7 @@ class PlanState {
     this.localRecsCity,
     this.error,
     this.queuedMessages = const [],
+    this.suggestedReplies = const [],
     this.profileUpdateNote,
     this.tripUpdateCount = 0,
     this.tripUpdatedThisTurn = false,
@@ -128,6 +135,7 @@ class PlanState {
     Object? localRecsCity = _sentinel,
     Object? error = _sentinel,
     List<QueuedMessage>? queuedMessages,
+    List<String>? suggestedReplies,
     Object? profileUpdateNote = _sentinel,
     int? tripUpdateCount,
     bool? tripUpdatedThisTurn,
@@ -157,6 +165,7 @@ class PlanState {
       localRecsCity: localRecsCity == _sentinel ? this.localRecsCity : localRecsCity as String?,
       error: error == _sentinel ? this.error : error as String?,
       queuedMessages: queuedMessages ?? this.queuedMessages,
+      suggestedReplies: suggestedReplies ?? this.suggestedReplies,
       profileUpdateNote:
           profileUpdateNote == _sentinel ? this.profileUpdateNote : profileUpdateNote as String?,
       tripUpdateCount: tripUpdateCount ?? this.tripUpdateCount,
@@ -186,6 +195,12 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
   // Identity source for QueuedMessage.id.
   int _nextQueuedId = 0;
+
+  // Turn generation: bumped by reset() and every _sendNow, checked by the
+  // in-flight stream loop so a superseded turn self-terminates instead of
+  // writing its events (or its stream-teardown) into the fresh conversation
+  // — e.g. a late suggest_replies leaking chips after Start over.
+  int _turn = 0;
 
   PlanNotifier(this._service, this._apiClient, {this.tripId}) : super(const PlanState());
 
@@ -293,6 +308,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
 
   Future<void> _sendNow(String text,
       {String? displayLabel, List<PlanAttachment> attachments = const []}) async {
+    final turn = ++_turn;
     _chatId ??= _newChatId();
 
     final userMessage = PlanMessage(
@@ -318,6 +334,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
       localRecs: null,
       localRecsCity: null,
       error: null,
+      suggestedReplies: [],
       profileUpdateNote: null,
       tripUpdatedThisTurn: false,
     );
@@ -348,6 +365,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
     // next delta — at APPEND time, so the flush timer and both commit paths
     // (mid-turn error, final) all see already-separated text.
     var needsSeparator = false;
+    // Whether this turn streamed `done` or `trip_updated`: the itinerary
+    // banner owns such a turn, so reply chips are dropped in either event
+    // order (specs/chat-quick-replies).
+    var itineraryThisTurn = false;
 
     try {
       await for (final event in _service.streamPlan(history,
@@ -355,6 +376,10 @@ class PlanNotifier extends StateNotifier<PlanState> {
           chatId: _chatId,
           tripId: tripId,
           summary: state.compactedSummary)) {
+        // Superseded by reset()/Start over: stop consuming and touch nothing
+        // — the successor turn owns the state and the stream buffer now.
+        if (turn != _turn) return;
+
         // Keep buffered text ahead of any other state transition so tool chips
         // and results never appear before the text that introduced them.
         if (event.type != 'text_delta') _flushStreamText();
@@ -385,7 +410,11 @@ class PlanNotifier extends StateNotifier<PlanState> {
           case 'tool_call':
             if (textBuffer.isNotEmpty) needsSeparator = true;
             final name = event.data['name'] as String? ?? '';
-            state = state.copyWith(activeTools: [...state.activeTools, name]);
+            // The quick-replies meta-tool renders chips, not work worth a
+            // spinner chip; tool_result's list-remove is a harmless no-op.
+            if (name != 'suggest_replies') {
+              state = state.copyWith(activeTools: [...state.activeTools, name]);
+            }
 
           case 'tool_result':
             if (textBuffer.isNotEmpty) needsSeparator = true;
@@ -394,6 +423,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
             state = state.copyWith(activeTools: tools);
 
           case 'done':
+            itineraryThisTurn = true;
             final rawLocs = event.data['locations'] as List<dynamic>? ?? [];
             final locations = rawLocs.cast<Map<String, dynamic>>();
             final summary = event.data['summary'] as String?;
@@ -401,17 +431,32 @@ class PlanNotifier extends StateNotifier<PlanState> {
               completedLocations: locations,
               completedSummary: summary,
               savedTripId: event.data['trip_id'] as String?,
+              suggestedReplies: [],
             );
 
           case 'trip_updated':
+            itineraryThisTurn = true;
             state = state.copyWith(
               tripUpdateCount: state.tripUpdateCount + 1,
               tripUpdatedThisTurn: true,
+              suggestedReplies: [],
             );
 
           case 'profile_updated':
             state = state.copyWith(
                 profileUpdateNote: event.data['notes_preview'] as String? ?? '');
+
+          case 'suggest_replies':
+            // An itinerary turn's banner owns the tail — drop the chips
+            // (covers the suggest-then-create order; the server refuses the
+            // create-then-suggest order outright).
+            if (itineraryThisTurn) break;
+            final raw = event.data['replies'] as List<dynamic>? ?? [];
+            // Replaced whole (record-select invariant); a later call in the
+            // same turn overwrites — last-write-wins. The chips widget stays
+            // hidden until the stream closes.
+            state = state.copyWith(
+                suggestedReplies: raw.whereType<String>().toList());
 
           case 'compacting':
             state = state.copyWith(isCompacting: true);
@@ -496,6 +541,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
               streamingText: null,
               activeTools: [],
               isCompacting: false,
+              // A turn that ends in an error must not leave reply chips
+              // competing with the error banner's Try again.
+              suggestedReplies: [],
               messages: partial.isEmpty
                   ? state.messages
                   : [
@@ -509,6 +557,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
         }
       }
 
+      if (turn != _turn) return;
       _endStreamBuffer();
       if (!mounted) return;
 
@@ -534,6 +583,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
       // (visible next to the error banner) until the user retries or resends.
       await _drainQueue();
     } catch (e) {
+      if (turn != _turn) return;
       _endStreamBuffer();
       if (!mounted) return;
       state = state.copyWith(
@@ -541,6 +591,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
         streamingText: null,
         activeTools: [],
         isCompacting: false,
+        suggestedReplies: [],
         error: e.toString(),
       );
     }
@@ -574,6 +625,7 @@ class PlanNotifier extends StateNotifier<PlanState> {
   }
 
   void reset() {
+    _turn++; // any in-flight stream loop self-terminates without touching state
     _chatId = null;
     _endStreamBuffer();
     state = const PlanState();

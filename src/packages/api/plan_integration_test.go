@@ -242,7 +242,7 @@ func TestPlanSetTravelModePersistsWithItinerary(t *testing.T) {
 	}
 
 	// Registry-tail guard: the tools array offered to the model must end with
-	// set_travel_mode — new tools may only append (prompt-cache prefix rule).
+	// suggest_replies — new tools may only append (prompt-cache prefix rule).
 	reqs := fa.requestBodies()
 	if len(reqs) == 0 {
 		t.Fatal("no model requests recorded")
@@ -255,8 +255,8 @@ func TestPlanSetTravelModePersistsWithItinerary(t *testing.T) {
 	if err := json.Unmarshal(reqs[0], &body); err != nil {
 		t.Fatalf("unmarshal request body: %v", err)
 	}
-	if n := len(body.Tools); n == 0 || body.Tools[n-1].Name != "set_travel_mode" {
-		t.Fatalf("tools tail = %+v, want set_travel_mode last", body.Tools)
+	if n := len(body.Tools); n == 0 || body.Tools[n-1].Name != "suggest_replies" {
+		t.Fatalf("tools tail = %+v, want suggest_replies last", body.Tools)
 	}
 
 	waitForEventCount(t, user.ID, "trip_created", 1)
