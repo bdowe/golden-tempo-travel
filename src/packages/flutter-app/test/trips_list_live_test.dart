@@ -188,4 +188,28 @@ void main() {
     expect(find.byType(LiveTripCard), findsOneWidget);
     expect(find.text('Day 2 of 3'), findsOneWidget);
   });
+
+  testWidgets('wide layouts cap the list content at 700px, phones fill',
+      (WidgetTester tester) async {
+    final service = _QueuedTripsApiService([
+      [_trip('t1', 'Lisbon Trip', start: _rel(30), end: _rel(33))],
+    ]);
+
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpList(tester, service);
+    await tester.pumpAndSettle();
+
+    final wideCard = tester.getSize(find.byType(Card).first);
+    expect(wideCard.width, lessThanOrEqualTo(700));
+    // Centered: symmetric gutters.
+    final left = tester.getTopLeft(find.byType(Card).first).dx;
+    final right = 1200 - tester.getTopRight(find.byType(Card).first).dx;
+    expect((left - right).abs(), lessThan(2));
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pumpAndSettle();
+    final phoneCard = tester.getSize(find.byType(Card).first);
+    expect(phoneCard.width, greaterThan(340)); // full width minus padding
+  });
 }
