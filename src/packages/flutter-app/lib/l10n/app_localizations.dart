@@ -4058,17 +4058,17 @@ abstract class AppLocalizations {
   /// **'View trip'**
   String get agentScreenViewTrip;
 
-  /// No description provided for @agentScreenLoadIntoRoutePlanner.
-  ///
-  /// In en, this message translates to:
-  /// **'Load into route planner'**
-  String get agentScreenLoadIntoRoutePlanner;
-
   /// No description provided for @agentScreenLoadIntoPlanner.
   ///
   /// In en, this message translates to:
   /// **'Load into Planner'**
   String get agentScreenLoadIntoPlanner;
+
+  /// No description provided for @resultChipViewInTrip.
+  ///
+  /// In en, this message translates to:
+  /// **'View in trip'**
+  String get resultChipViewInTrip;
 
   /// No description provided for @refineTargetDay.
   ///

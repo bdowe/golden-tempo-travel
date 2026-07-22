@@ -2334,11 +2334,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get agentScreenViewTrip => 'Ver viaje';
 
   @override
-  String get agentScreenLoadIntoRoutePlanner =>
-      'Cargar en el planificador de rutas';
+  String get agentScreenLoadIntoPlanner => 'Cargar en el planificador';
 
   @override
-  String get agentScreenLoadIntoPlanner => 'Cargar en el planificador';
+  String get resultChipViewInTrip => 'Ver en el viaje';
 
   @override
   String refineTargetDay(int day) {

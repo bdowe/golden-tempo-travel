@@ -191,11 +191,10 @@ class _ItineraryBanner extends StatelessWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
-          // When the trip was saved, opening it is the primary action (it has the
-          // full itinerary, bookings, etc.); loading into the route planner stays
-          // available as a secondary option. Anonymous sessions have no saved
-          // trip, so the planner is their only action.
-          if (onViewTrip != null) ...[
+          // When the trip was saved, opening it is the one action — the full
+          // itinerary, bookings, and map all live there. Anonymous sessions
+          // have no saved trip, so the route planner is their only action.
+          if (onViewTrip != null)
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -206,17 +205,8 @@ class _ItineraryBanner extends StatelessWidget {
                   backgroundColor: AppColors.brandLight,
                 ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onLoad,
-                icon: const Icon(Icons.map),
-                label: Text(context.l10n.agentScreenLoadIntoRoutePlanner),
-              ),
-            ),
-          ] else
+            )
+          else
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(

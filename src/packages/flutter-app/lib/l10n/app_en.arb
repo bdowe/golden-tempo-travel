@@ -1534,8 +1534,8 @@
     }
   },
   "agentScreenViewTrip": "View trip",
-  "agentScreenLoadIntoRoutePlanner": "Load into route planner",
   "agentScreenLoadIntoPlanner": "Load into Planner",
+  "resultChipViewInTrip": "View in trip",
   "refineTargetDay": "Day {day}",
   "@refineTargetDay": {
     "placeholders": {

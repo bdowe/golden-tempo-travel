@@ -2322,10 +2322,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentScreenViewTrip => 'View trip';
 
   @override
-  String get agentScreenLoadIntoRoutePlanner => 'Load into route planner';
+  String get agentScreenLoadIntoPlanner => 'Load into Planner';
 
   @override
-  String get agentScreenLoadIntoPlanner => 'Load into Planner';
+  String get resultChipViewInTrip => 'View in trip';
 
   @override
   String refineTargetDay(int day) {

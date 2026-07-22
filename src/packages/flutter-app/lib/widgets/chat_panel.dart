@@ -1,3 +1,4 @@
+import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
@@ -511,6 +512,7 @@ class _ChatTail extends StatelessWidget {
       children: [
         // Compaction runs before the model call, so its chip leads the tail.
         _CompactingChip(state: state),
+        _TypingIndicatorBubble(state: state),
         _StreamingBubble(state: state),
         _ActiveToolChips(state: state),
         _ProfileNoteChip(state: state),
@@ -539,6 +541,124 @@ class _StreamingBubble extends ConsumerWidget {
     return ChatMessageBubble(
       message: PlanMessage(role: MessageRole.assistant, content: text),
       isStreaming: true,
+    );
+  }
+}
+
+/// Immediate "assistant is working" cue: an animated three-dot bubble shown
+/// from the instant a turn starts (isStreaming flips synchronously on send,
+/// before any SSE event arrives) until streamed text, a tool chip, or the
+/// compacting chip takes over. Also covers the silent gap after a tool_result
+/// while the model composes its next text. Its own leaf watching one derived
+/// bool, so token flushes never rebuild it.
+class _TypingIndicatorBubble extends ConsumerWidget {
+  final ProviderListenable<PlanState> state;
+
+  const _TypingIndicatorBubble({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // streamingText is '' while a turn starts and null when idle; either way
+    // no streaming bubble is visible yet.
+    final visible = ref.watch(state.select((s) =>
+        s.isStreaming &&
+        (s.streamingText == null || s.streamingText!.isEmpty) &&
+        s.activeTools.isEmpty &&
+        !s.isCompacting));
+    if (!visible) return const SizedBox.shrink();
+    return const _TypingDotsBubble(key: ValueKey('typing-indicator'));
+  }
+}
+
+/// Assistant-styled bubble with three staggered rising/fading dots — the
+/// familiar "typing" affordance, louder than the streaming caret.
+class _TypingDotsBubble extends StatefulWidget {
+  const _TypingDotsBubble({super.key});
+
+  @override
+  State<_TypingDotsBubble> createState() => _TypingDotsBubbleState();
+}
+
+class _TypingDotsBubbleState extends State<_TypingDotsBubble>
+    with SingleTickerProviderStateMixin {
+  // In the tree only while visible, so the controller's lifetime tracks
+  // visibility for free (same pattern as _StreamingCursor).
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 5),
+              _Dot(controller: _controller, index: i),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final AnimationController controller;
+  final int index;
+
+  const _Dot({required this.controller, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: Interval(index * 0.2, index * 0.2 + 0.6, curve: Curves.easeInOut),
+    );
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        // Rise-and-settle arc per cycle: 0→1→0 across the dot's interval.
+        final t = animation.value;
+        final wave = t < 0.5 ? t * 2 : (1 - t) * 2;
+        return Transform.translate(
+          offset: Offset(0, -3 * wave),
+          child: Opacity(
+            opacity: 0.25 + 0.65 * wave,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -909,9 +1029,7 @@ class _QueuedBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
           color: theme.colorScheme.primary.withValues(alpha: 0.45),
           borderRadius: const BorderRadius.only(
@@ -965,6 +1083,13 @@ class _QueuedBubble extends StatelessWidget {
   }
 }
 
+/// Bubbles span 78% of the window on phones but cap at a readable measure on
+/// wide desktop windows.
+const double _kBubbleMaxWidth = 720;
+
+double _bubbleMaxWidth(BuildContext context) =>
+    min(MediaQuery.of(context).size.width * 0.78, _kBubbleMaxWidth);
+
 class ChatMessageBubble extends StatelessWidget {
   final PlanMessage message;
   final bool isStreaming;
@@ -994,9 +1119,7 @@ class ChatMessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth(context)),
         decoration: BoxDecoration(
           color: isUser
               ? theme.colorScheme.primary
