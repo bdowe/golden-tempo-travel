@@ -223,6 +223,7 @@
     }
   },
   "bookingCardOpenSearch": "Open search",
+  "bookingCardOpenSearchShort": "Search",
   "calendarAddTo": "Add to calendar",
   "calendarGoogle": "Google Calendar",
   "calendarApple": "Apple Calendar (.ics)",
@@ -743,7 +744,9 @@
     }
   },
   "tripFindFlights": "Find flights",
+  "tripFindFlightsShort": "Flights",
   "tripFindFerries": "Find ferries",
+  "tripFindFerriesShort": "Ferries",
   "tripAddBooking": "Add a booking",
   "tripEditBooking": "Edit booking",
   "tripFieldType": "Type",

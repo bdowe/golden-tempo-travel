@@ -33,9 +33,15 @@ String? _providerBrand(String? provider) => switch (provider) {
     };
 
 String _providerOpenLabel(
-    AppLocalizations l10n, BookingTodo todo, String? override) {
+    AppLocalizations l10n, BookingTodo todo, String? override,
+    {bool compact = false}) {
   if (override != null) return override;
   final brand = _providerBrand(todo.provider);
+  if (compact) {
+    // Narrow rows: the brand alone ("Airbnb") — brands are never translated,
+    // so no extra keys beyond the generic short fallback.
+    return brand ?? l10n.bookingCardOpenSearchShort;
+  }
   return brand == null
       ? l10n.bookingCardOpenSearch
       : l10n.bookingCardOpenIn(brand);
@@ -159,6 +165,10 @@ class BookingTodoRow extends StatelessWidget {
   /// hides the menu (viewers, offline, custom todos).
   final VoidCallback? onAddDetails;
 
+  /// Narrow layouts: short open-label (brand alone / "Search") so the title
+  /// keeps the width. The caller pairs this with short label overrides.
+  final bool compact;
+
   const BookingTodoRow({
     super.key,
     required this.todo,
@@ -166,6 +176,7 @@ class BookingTodoRow extends StatelessWidget {
     this.onOpen,
     this.openLabelOverride,
     this.onAddDetails,
+    this.compact = false,
   });
 
   @override
@@ -184,6 +195,8 @@ class BookingTodoRow extends StatelessWidget {
               children: [
                 Text(
                   todo.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: todo.booked ? muted : null,
                     decoration: todo.booked ? TextDecoration.lineThrough : null,
@@ -192,6 +205,8 @@ class BookingTodoRow extends StatelessWidget {
                 if (todo.subtitle != null && todo.subtitle!.isNotEmpty)
                   Text(
                     todo.subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(color: muted),
                   ),
               ],
@@ -207,7 +222,8 @@ class BookingTodoRow extends StatelessWidget {
                 ? TextButton.styleFrom(foregroundColor: muted)
                 : null,
             label: Text(_providerOpenLabel(
-                context.l10n, todo, openLabelOverride)),
+                context.l10n, todo, openLabelOverride,
+                compact: compact)),
           ),
           if (onAddDetails != null)
             PopupMenuButton<String>(
