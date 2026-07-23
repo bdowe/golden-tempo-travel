@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/plan_message.dart';
-import '../models/location.dart';
 import '../models/flight_offer.dart';
 import '../models/event.dart';
 import '../models/ferry_option.dart';
@@ -243,25 +242,6 @@ class PlanNotifier extends StateNotifier<PlanState> {
   static String _newChatId() =>
       'chat-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}-${Random.secure().nextInt(0x7fffffff).toRadixString(16)}';
 
-  List<Location> get completedAsLocations {
-    final locs = state.completedLocations;
-    if (locs == null) return [];
-    return locs.asMap().entries.map((entry) {
-      final i = entry.key;
-      final loc = entry.value;
-      final lat = (loc['latitude'] as num?)?.toDouble();
-      final lng = (loc['longitude'] as num?)?.toDouble();
-      final placeId = loc['place_id'] as String?;
-      return Location(
-        id: placeId ?? 'agent-loc-$i',
-        name: loc['name'] as String? ?? 'Location ${i + 1}',
-        placeId: placeId,
-        latitude: lat,
-        longitude: lng,
-        address: loc['address'] as String?,
-      );
-    }).toList();
-  }
 
   /// Sends [text], or queues it if a turn is already streaming (or a backlog
   /// exists post-error). Queued messages drain FIFO as each turn completes

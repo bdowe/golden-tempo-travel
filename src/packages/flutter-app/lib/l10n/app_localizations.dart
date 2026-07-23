@@ -4043,7 +4043,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentScreenEmptyMessage.
   ///
   /// In en, this message translates to:
-  /// **'I\'ll search for places and build an itinerary you can load into the route planner.'**
+  /// **'I\'ll search for places and build a day-by-day itinerary for your trip.'**
   String get agentScreenEmptyMessage;
 
   /// No description provided for @agentScreenSuggestionParis.
@@ -4076,11 +4076,11 @@ abstract class AppLocalizations {
   /// **'View trip'**
   String get agentScreenViewTrip;
 
-  /// No description provided for @agentScreenLoadIntoPlanner.
+  /// No description provided for @agentScreenSignInToSave.
   ///
   /// In en, this message translates to:
-  /// **'Load into Planner'**
-  String get agentScreenLoadIntoPlanner;
+  /// **'Sign in to save your trips'**
+  String get agentScreenSignInToSave;
 
   /// No description provided for @resultChipViewInTrip.
   ///
@@ -4351,138 +4351,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Day {day}'**
   String addToTripDay(int day);
-
-  /// No description provided for @routeOptTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Route Optimizer'**
-  String get routeOptTitle;
-
-  /// No description provided for @routeOptClearAllTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear all locations'**
-  String get routeOptClearAllTooltip;
-
-  /// No description provided for @routeOptLocationsCount.
-  ///
-  /// In en, this message translates to:
-  /// **'Locations ({count})'**
-  String routeOptLocationsCount(int count);
-
-  /// No description provided for @routeOptAddLocation.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Location'**
-  String get routeOptAddLocation;
-
-  /// No description provided for @routeOptEmptyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No locations added yet'**
-  String get routeOptEmptyTitle;
-
-  /// No description provided for @routeOptEmptyMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Add locations to optimize your route'**
-  String get routeOptEmptyMessage;
-
-  /// No description provided for @routeOptAddFirstLocation.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Your First Location'**
-  String get routeOptAddFirstLocation;
-
-  /// No description provided for @routeOptOptimizing.
-  ///
-  /// In en, this message translates to:
-  /// **'Optimizing...'**
-  String get routeOptOptimizing;
-
-  /// No description provided for @routeOptOptimize.
-  ///
-  /// In en, this message translates to:
-  /// **'Optimize Route'**
-  String get routeOptOptimize;
-
-  /// No description provided for @routeOptClearAllTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear All Locations'**
-  String get routeOptClearAllTitle;
-
-  /// No description provided for @routeOptClearAllBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to clear all locations? This action cannot be undone.'**
-  String get routeOptClearAllBody;
-
-  /// No description provided for @routeOptClearAllConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear All'**
-  String get routeOptClearAllConfirm;
-
-  /// No description provided for @routeOptEditLocationTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit location'**
-  String get routeOptEditLocationTooltip;
-
-  /// No description provided for @routeOptDeleteLocationTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete location'**
-  String get routeOptDeleteLocationTooltip;
-
-  /// No description provided for @optParamsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Optimization Parameters'**
-  String get optParamsTitle;
-
-  /// No description provided for @optParamsStartDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Start Date'**
-  String get optParamsStartDate;
-
-  /// No description provided for @optParamsSelectDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Select date'**
-  String get optParamsSelectDate;
-
-  /// No description provided for @optParamsStartTime.
-  ///
-  /// In en, this message translates to:
-  /// **'Start Time'**
-  String get optParamsStartTime;
-
-  /// No description provided for @optParamsSelectTime.
-  ///
-  /// In en, this message translates to:
-  /// **'Select time'**
-  String get optParamsSelectTime;
-
-  /// No description provided for @optParamsReturnToStart.
-  ///
-  /// In en, this message translates to:
-  /// **'Return to Starting Point'**
-  String get optParamsReturnToStart;
-
-  /// No description provided for @optParamsClearDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear Date'**
-  String get optParamsClearDate;
-
-  /// No description provided for @optParamsClearTime.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear Time'**
-  String get optParamsClearTime;
 
   /// No description provided for @flightSearchTitle.
   ///

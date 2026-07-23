@@ -2323,7 +2323,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get agentScreenEmptyMessage =>
-      'Buscaré lugares y crearé un itinerario que puedes cargar en el planificador de rutas.';
+      'Buscaré lugares y crearé un itinerario día a día para tu viaje.';
 
   @override
   String get agentScreenSuggestionParis => '2 días en París';
@@ -2343,7 +2343,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get agentScreenViewTrip => 'Ver viaje';
 
   @override
-  String get agentScreenLoadIntoPlanner => 'Cargar en el planificador';
+  String get agentScreenSignInToSave => 'Inicia sesión para guardar tus viajes';
 
   @override
   String get resultChipViewInTrip => 'Ver en el viaje';
@@ -2509,75 +2509,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String addToTripDay(int day) {
     return 'Día $day';
   }
-
-  @override
-  String get routeOptTitle => 'Optimizador de rutas';
-
-  @override
-  String get routeOptClearAllTooltip => 'Borrar todas las ubicaciones';
-
-  @override
-  String routeOptLocationsCount(int count) {
-    return 'Ubicaciones ($count)';
-  }
-
-  @override
-  String get routeOptAddLocation => 'Añadir ubicación';
-
-  @override
-  String get routeOptEmptyTitle => 'Aún no has añadido ubicaciones';
-
-  @override
-  String get routeOptEmptyMessage => 'Añade ubicaciones para optimizar tu ruta';
-
-  @override
-  String get routeOptAddFirstLocation => 'Añade tu primera ubicación';
-
-  @override
-  String get routeOptOptimizing => 'Optimizando...';
-
-  @override
-  String get routeOptOptimize => 'Optimizar ruta';
-
-  @override
-  String get routeOptClearAllTitle => 'Borrar todas las ubicaciones';
-
-  @override
-  String get routeOptClearAllBody =>
-      '¿Seguro que quieres borrar todas las ubicaciones? Esta acción no se puede deshacer.';
-
-  @override
-  String get routeOptClearAllConfirm => 'Borrar todo';
-
-  @override
-  String get routeOptEditLocationTooltip => 'Editar ubicación';
-
-  @override
-  String get routeOptDeleteLocationTooltip => 'Eliminar ubicación';
-
-  @override
-  String get optParamsTitle => 'Parámetros de optimización';
-
-  @override
-  String get optParamsStartDate => 'Fecha de inicio';
-
-  @override
-  String get optParamsSelectDate => 'Selecciona una fecha';
-
-  @override
-  String get optParamsStartTime => 'Hora de inicio';
-
-  @override
-  String get optParamsSelectTime => 'Selecciona una hora';
-
-  @override
-  String get optParamsReturnToStart => 'Volver al punto de partida';
-
-  @override
-  String get optParamsClearDate => 'Borrar fecha';
-
-  @override
-  String get optParamsClearTime => 'Borrar hora';
 
   @override
   String get flightSearchTitle => 'Buscar vuelos';

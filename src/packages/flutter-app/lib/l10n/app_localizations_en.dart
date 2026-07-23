@@ -2311,7 +2311,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentScreenEmptyMessage =>
-      'I\'ll search for places and build an itinerary you can load into the route planner.';
+      'I\'ll search for places and build a day-by-day itinerary for your trip.';
 
   @override
   String get agentScreenSuggestionParis => '2 days in Paris';
@@ -2331,7 +2331,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentScreenViewTrip => 'View trip';
 
   @override
-  String get agentScreenLoadIntoPlanner => 'Load into Planner';
+  String get agentScreenSignInToSave => 'Sign in to save your trips';
 
   @override
   String get resultChipViewInTrip => 'View in trip';
@@ -2494,75 +2494,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String addToTripDay(int day) {
     return 'Day $day';
   }
-
-  @override
-  String get routeOptTitle => 'Route Optimizer';
-
-  @override
-  String get routeOptClearAllTooltip => 'Clear all locations';
-
-  @override
-  String routeOptLocationsCount(int count) {
-    return 'Locations ($count)';
-  }
-
-  @override
-  String get routeOptAddLocation => 'Add Location';
-
-  @override
-  String get routeOptEmptyTitle => 'No locations added yet';
-
-  @override
-  String get routeOptEmptyMessage => 'Add locations to optimize your route';
-
-  @override
-  String get routeOptAddFirstLocation => 'Add Your First Location';
-
-  @override
-  String get routeOptOptimizing => 'Optimizing...';
-
-  @override
-  String get routeOptOptimize => 'Optimize Route';
-
-  @override
-  String get routeOptClearAllTitle => 'Clear All Locations';
-
-  @override
-  String get routeOptClearAllBody =>
-      'Are you sure you want to clear all locations? This action cannot be undone.';
-
-  @override
-  String get routeOptClearAllConfirm => 'Clear All';
-
-  @override
-  String get routeOptEditLocationTooltip => 'Edit location';
-
-  @override
-  String get routeOptDeleteLocationTooltip => 'Delete location';
-
-  @override
-  String get optParamsTitle => 'Optimization Parameters';
-
-  @override
-  String get optParamsStartDate => 'Start Date';
-
-  @override
-  String get optParamsSelectDate => 'Select date';
-
-  @override
-  String get optParamsStartTime => 'Start Time';
-
-  @override
-  String get optParamsSelectTime => 'Select time';
-
-  @override
-  String get optParamsReturnToStart => 'Return to Starting Point';
-
-  @override
-  String get optParamsClearDate => 'Clear Date';
-
-  @override
-  String get optParamsClearTime => 'Clear Time';
 
   @override
   String get flightSearchTitle => 'Find Flights';
