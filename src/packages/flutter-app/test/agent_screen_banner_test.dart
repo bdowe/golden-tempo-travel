@@ -8,6 +8,7 @@ import 'package:travel_route_planner/providers/auth_provider.dart';
 import 'package:travel_route_planner/providers/notifications_provider.dart';
 import 'package:travel_route_planner/providers/plan_provider.dart';
 import 'package:travel_route_planner/screens/agent_screen.dart';
+import 'package:travel_route_planner/screens/auth_screen.dart';
 import 'package:travel_route_planner/services/api_client.dart';
 import 'package:travel_route_planner/services/plan_service.dart';
 
@@ -15,7 +16,8 @@ import 'support/l10n_test_app.dart';
 
 /// The itinerary banner's CTA rules: a saved trip gets exactly one action
 /// ("View trip" — the trip screen carries the itinerary, bookings, and map);
-/// an anonymous completion keeps the route-planner fallback, its only action.
+/// an anonymous completion gets the sign-in nudge (its trip couldn't save —
+/// the nudge onboards the traveler so the NEXT plan persists).
 
 class _SeededPlanNotifier extends PlanNotifier {
   _SeededPlanNotifier(PlanState seeded)
@@ -93,7 +95,7 @@ void main() {
     await _pumpAgentScreen(tester, _completedState(tripId: 'trip-1'));
 
     expect(find.text('View trip'), findsOneWidget);
-    expect(find.text('Load into Planner'), findsNothing);
+    expect(find.text('Sign in to save your trips'), findsNothing);
     // Structural, label-independent guard: exactly ONE action button inside
     // the banner — a second CTA sneaking back under any other label fails
     // here even though the label assertions above can't see it.
@@ -101,12 +103,17 @@ void main() {
     expect(_bannerButtons(), findsOneWidget);
   });
 
-  testWidgets('anonymous completion keeps the route-planner fallback',
+  testWidgets('anonymous completion shows the sign-in nudge',
       (WidgetTester tester) async {
     await _pumpAgentScreen(tester, _completedState());
 
-    expect(find.text('Load into Planner'), findsOneWidget);
+    expect(find.text('Sign in to save your trips'), findsOneWidget);
     expect(find.text('View trip'), findsNothing);
     expect(_bannerButtons(), findsOneWidget);
+
+    // The nudge pushes the auth screen; back would return to the chat.
+    await tester.tap(find.text('Sign in to save your trips'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthScreen), findsOneWidget);
   });
 }

@@ -1,16 +1,10 @@
-# Travel Route Planner - Flutter App
+# Golden Tempo Travel - Flutter App
 
-A beautiful Flutter mobile app that consumes the Travel Route Planner Go API to provide intelligent route optimization for both locations and countries.
-
-## Features
-
-### 🗺️ **Route Optimizer**
-- **Smart Location Routing**: Add multiple locations with coordinates, addresses, and categories
-- **Operating Hours Integration**: Set operating hours for each location with automatic scheduling
-- **Travel Time Optimization**: Minimize travel distances using Nearest Neighbor + 2-Opt algorithms
-- **Visit Duration Planning**: Customize visit times or use intelligent category-based defaults
-- **Time-Aware Planning**: Schedule routes with start times and dates
-- **Beautiful Results**: Visual timeline showing optimized route with arrival/departure times
+The Flutter web/mobile front end for Golden Tempo Travel: an AI travel
+planner that turns a conversation into a day-by-day itinerary with routes,
+places, bookings, and a live trip view. Route optimization (Nearest
+Neighbor + 2-Opt) is baked into itinerary creation server-side rather than
+exposed as a separate tool.
 
 ## Screenshots
 
@@ -66,18 +60,13 @@ lib/
 ├── main.dart                    # App entry point
 ├── models/                      # Data models (matching Go API structs)
 │   ├── location.dart           # Location and operating hours models
-│   └── route_request.dart      # Route optimization request/response
+│   └── route_request.dart      # Travel-times request/response models
 ├── services/
 │   └── api_client.dart         # HTTP client for API communication
-├── providers/                  # Riverpod state providers
-│   └── route_provider.dart     # Route optimization state
-├── screens/                    # Main app screens
-│   ├── home_screen.dart        # Navigation hub
-│   └── route_optimizer_screen.dart
+├── providers/                  # Riverpod state providers (one per feature)
+├── screens/                    # Main app screens (home, plan chat, trips,
+│   └── ...                     #   trip detail, flight search, guides, …)
 └── widgets/                    # Reusable UI components
-    ├── location_input_dialog.dart
-    ├── optimization_params_widget.dart
-    └── route_results_widget.dart
 ```
 
 ### Key Features
@@ -91,12 +80,13 @@ lib/
 
 The app integrates with the following Go API endpoints:
 
-### Route Optimization
+### Route Optimization (travel times)
 ```
 POST /api/v1/optimize-route
 ```
+Powers the trip detail's between-stop travel times (preserve-order mode).
 **Request**: List of locations with coordinates, categories, operating hours
-**Response**: Optimized route with timing details and distance metrics
+**Response**: Route timing details and distance metrics
 
 ### Health Check
 ```
@@ -125,14 +115,6 @@ flutter analyze
 ```
 
 ## Example Usage
-
-### Route Optimization Example
-1. Add locations (restaurants, museums, shops, etc.)
-2. Set categories for intelligent visit time estimation
-3. Configure operating hours if needed
-4. Set start time and date
-5. Choose whether to return to starting point
-6. Tap "Optimize Route" to get optimized itinerary
 
 ### Country Planning Example  
 1. Add countries with capitals and coordinates

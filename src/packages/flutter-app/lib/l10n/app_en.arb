@@ -1524,7 +1524,7 @@
   "agentScreenTitle": "Plan your trip",
   "agentScreenStartOver": "Start over",
   "agentScreenEmptyTitle": "Tell me about your dream trip",
-  "agentScreenEmptyMessage": "I'll search for places and build an itinerary you can load into the route planner.",
+  "agentScreenEmptyMessage": "I'll search for places and build a day-by-day itinerary for your trip.",
   "agentScreenSuggestionParis": "2 days in Paris",
   "agentScreenSuggestionRome": "Museums in Rome",
   "agentScreenSuggestionTokyo": "Weekend in Tokyo",
@@ -1537,7 +1537,7 @@
     }
   },
   "agentScreenViewTrip": "View trip",
-  "agentScreenLoadIntoPlanner": "Load into Planner",
+  "agentScreenSignInToSave": "Sign in to save your trips",
   "resultChipViewInTrip": "View in trip",
   "refineTargetDay": "Day {day}",
   "@refineTargetDay": {
@@ -1642,35 +1642,6 @@
       }
     }
   },
-  "routeOptTitle": "Route Optimizer",
-  "routeOptClearAllTooltip": "Clear all locations",
-  "routeOptLocationsCount": "Locations ({count})",
-  "@routeOptLocationsCount": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "routeOptAddLocation": "Add Location",
-  "routeOptEmptyTitle": "No locations added yet",
-  "routeOptEmptyMessage": "Add locations to optimize your route",
-  "routeOptAddFirstLocation": "Add Your First Location",
-  "routeOptOptimizing": "Optimizing...",
-  "routeOptOptimize": "Optimize Route",
-  "routeOptClearAllTitle": "Clear All Locations",
-  "routeOptClearAllBody": "Are you sure you want to clear all locations? This action cannot be undone.",
-  "routeOptClearAllConfirm": "Clear All",
-  "routeOptEditLocationTooltip": "Edit location",
-  "routeOptDeleteLocationTooltip": "Delete location",
-  "optParamsTitle": "Optimization Parameters",
-  "optParamsStartDate": "Start Date",
-  "optParamsSelectDate": "Select date",
-  "optParamsStartTime": "Start Time",
-  "optParamsSelectTime": "Select time",
-  "optParamsReturnToStart": "Return to Starting Point",
-  "optParamsClearDate": "Clear Date",
-  "optParamsClearTime": "Clear Time",
   "flightSearchTitle": "Find Flights",
   "flightSearchFrom": "From",
   "flightSearchTo": "To",

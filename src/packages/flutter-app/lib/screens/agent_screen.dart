@@ -7,9 +7,10 @@ import '../widgets/account_menu.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/chat_panel.dart';
 import '../widgets/empty_state.dart';
+import '../providers/auth_provider.dart';
 import '../providers/plan_provider.dart';
-import '../providers/route_provider.dart';
-import 'route_optimizer_screen.dart';
+import '../widgets/page_container.dart';
+import 'auth_screen.dart';
 import 'trip_detail_screen.dart';
 
 class AgentScreen extends ConsumerStatefulWidget {
@@ -42,18 +43,13 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     }
   }
 
-  void _loadIntoPlanner() {
-    final notifier = ref.read(planProvider.notifier);
-    final locations = notifier.completedAsLocations;
-    final routeNotifier = ref.read(routeProvider.notifier);
-    routeNotifier.clearLocations();
-    for (final loc in locations) {
-      routeNotifier.addLocation(loc);
-    }
-    // Push (not replace) so the chat stays beneath the planner in this tab's
-    // stack — back returns to the conversation.
+  /// Anonymous completions can't save; nudge sign-in so the NEXT plan does.
+  /// Push (not replace) so the chat stays beneath in this tab's stack — the
+  /// transcript survives sign-in because the plan notifier keeps its
+  /// singleton ApiClient (the token mutates in place).
+  void _openSignIn() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RouteOptimizerScreen()),
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
     );
   }
 
@@ -83,21 +79,33 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
           const AccountMenu(),
         ],
       ),
-      body: ChatPanel(
-        state: planProvider,
-        notifier: planProvider.notifier,
-        emptyState: _EmptyState(),
-        onViewTrip: _openTrip,
-        footerBuilder: (context, state) => state.completedLocations == null
-            ? const SizedBox.shrink()
-            : _ItineraryBanner(
-                summary: state.completedSummary,
-                locationCount: state.completedLocations!.length,
-                onLoad: _loadIntoPlanner,
-                onViewTrip: state.savedTripId == null
-                    ? null
-                    : () => _openTrip(state.savedTripId!),
-              ),
+      // Centered chat column on wide layouts: 760 = the 720 bubble cap plus
+      // the list's horizontal padding. PageContainer's Center loosens only
+      // minimum constraints, so the panel keeps its bounded height; the
+      // 400px refine dock hosts the same ChatPanel and is unaffected.
+      body: PageContainer(
+        maxWidth: 760,
+        child: ChatPanel(
+          state: planProvider,
+          notifier: planProvider.notifier,
+          emptyState: _EmptyState(),
+          onViewTrip: _openTrip,
+          footerBuilder: (context, state) => state.completedLocations == null
+              ? const SizedBox.shrink()
+              : _ItineraryBanner(
+                  summary: state.completedSummary,
+                  locationCount: state.completedLocations!.length,
+                  onViewTrip: state.savedTripId == null
+                      ? null
+                      : () => _openTrip(state.savedTripId!),
+                  // Sign-in nudge only for signed-out sessions; a signed-in
+                  // unsaved completion (rare) shows the banner text alone.
+                  onSignIn: ref.watch(authProvider
+                          .select((s) => s.isSignedIn))
+                      ? null
+                      : _openSignIn,
+                ),
+        ),
       ),
     );
   }
@@ -141,14 +149,17 @@ class _SuggestionChip extends ConsumerWidget {
 class _ItineraryBanner extends StatelessWidget {
   final String? summary;
   final int locationCount;
-  final VoidCallback onLoad;
   final VoidCallback? onViewTrip;
+
+  /// Sign-in nudge for anonymous completions (the trip couldn't save); the
+  /// copy promises the NEXT plan saves — no retro-save exists.
+  final VoidCallback? onSignIn;
 
   const _ItineraryBanner({
     this.summary,
     required this.locationCount,
-    required this.onLoad,
     this.onViewTrip,
+    this.onSignIn,
   });
 
   @override
@@ -191,11 +202,12 @@ class _ItineraryBanner extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: AppSpacing.md),
-          // When the trip was saved, opening it is the one action — the full
-          // itinerary, bookings, and map all live there. Anonymous sessions
-          // have no saved trip, so the route planner is their only action.
-          if (onViewTrip != null)
+          // When the trip was saved, opening it is the one action — the
+          // full itinerary, bookings, and map all live there. Anonymous
+          // sessions couldn't save, so nudge sign-in for the next plan;
+          // signed-in-but-unsaved (rare) needs no button at all.
+          if (onViewTrip != null) ...[
+            const SizedBox(height: AppSpacing.md),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -206,19 +218,21 @@ class _ItineraryBanner extends StatelessWidget {
                   backgroundColor: AppColors.brandLight,
                 ),
               ),
-            )
-          else
+            ),
+          ] else if (onSignIn != null) ...[
+            const SizedBox(height: AppSpacing.md),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: onLoad,
-                icon: const Icon(Icons.map),
-                label: Text(context.l10n.agentScreenLoadIntoPlanner),
+                onPressed: onSignIn,
+                icon: const Icon(Icons.login),
+                label: Text(context.l10n.agentScreenSignInToSave),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.brandLight,
                 ),
               ),
             ),
+          ],
         ],
       ),
     );
