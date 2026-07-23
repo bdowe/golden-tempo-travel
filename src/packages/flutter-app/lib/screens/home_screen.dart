@@ -8,6 +8,8 @@ import '../providers/live_trip_provider.dart';
 import '../providers/local_provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/recent_trip_provider.dart';
+import '../providers/resumable_chats_provider.dart';
+import '../providers/trips_provider.dart';
 import '../navigation/app_nav.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
@@ -53,6 +55,14 @@ class HomeScreen extends ConsumerWidget {
     // Populated app-wide: AppShell's IndexedStack keeps TripsListScreen
     // mounted, and its loadTrips() feeds tripsProvider — no fetch from here.
     final liveTrip = ref.watch(liveTripProvider);
+    // Returning users (anything to come back to) get the compact plan strip
+    // instead of the 440px photo hero, so their trips sit above the fold.
+    // While providers are still loading this reads false and the full hero
+    // shows briefly — same async-appearance behavior as LiveTripCard.
+    final returning = liveTrip != null ||
+        recentTrip != null ||
+        ref.watch(tripsProvider).trips.isNotEmpty ||
+        (ref.watch(resumableChatsProvider).valueOrNull?.isNotEmpty ?? false);
 
     // The chat is a persistent tab, so "Let's go" / a suggestion switches to it
     // (and seeds the message) rather than pushing a one-off screen.
@@ -107,10 +117,15 @@ class HomeScreen extends ConsumerWidget {
 
                 const SizedBox(height: 16),
 
-                // AI Travel Agent hero card
-                _AgentHeroCard(onStart: startPlanning),
+                // AI Travel Agent entry: the full photo hero sells the
+                // product to a brand-new account; returning users get a slim
+                // strip with the same CTA so their trips stay above the fold.
+                if (returning)
+                  _PlanStrip(onStart: startPlanning)
+                else
+                  _AgentHeroCard(onStart: startPlanning),
 
-                const SizedBox(height: 28),
+                SizedBox(height: returning ? AppSpacing.lg : 28),
 
                 // The trip happening today (specs/happening-now), then the
                 // most recently viewed trip — the latter hidden when it *is*
@@ -155,6 +170,83 @@ class HomeScreen extends ConsumerWidget {
                 const _LocalGuidesRow(),
 
                 const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact sibling of [_AgentHeroCard] for returning users: one gradient
+/// row — icon, headline, CTA — in the same card language as
+/// [_RecentTripCard]/[LiveTripCard]. No photo, no suggestion chips; the Plan
+/// tab has free input.
+class _PlanStrip extends StatelessWidget {
+  final void Function({String? initialMessage}) onStart;
+
+  const _PlanStrip({required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.mdAll,
+        gradient: AppColors.brandGradient,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandDark.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onStart(),
+          borderRadius: AppRadius.mdAll,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm + 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.flight_takeoff,
+                      color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Text(
+                    l10n.homeHeroTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                FilledButton(
+                  onPressed: () => onStart(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.brandDark,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Text(
+                    l10n.homeHeroCta,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
               ],
             ),
           ),
