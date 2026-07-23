@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/airport.dart';
 import '../widgets/airport_field.dart';
+import '../widgets/page_container.dart';
+import '../widgets/section_header.dart';
 import '../widgets/choice_chip_row.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../l10n/l10n.dart';
@@ -14,7 +16,16 @@ import '../utils/snack.dart';
 const _budgets = ['budget', 'mid', 'luxury'];
 const _paces = ['relaxed', 'balanced', 'packed'];
 const _suggestedInterests = [
-  'museums', 'food', 'nightlife', 'nature', 'history', 'art', 'shopping', 'outdoors', 'beaches', 'architecture',
+  'museums',
+  'food',
+  'nightlife',
+  'nature',
+  'history',
+  'art',
+  'shopping',
+  'outdoors',
+  'beaches',
+  'architecture',
 ];
 
 String _budgetLabel(AppLocalizations l10n, String value) => switch (value) {
@@ -112,8 +123,8 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           profileNotes: _notesController.text.trim(),
         );
     if (!mounted) return;
-    showSnack(context,
-        ok ? context.l10n.prefsSaved : context.l10n.prefsSaveFailed);
+    showSnack(
+        context, ok ? context.l10n.prefsSaved : context.l10n.prefsSaveFailed);
   }
 
   @override
@@ -134,101 +145,117 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text(l10n.prefsBudget, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ChoiceChipRow(
-                  options: _budgets,
-                  selected: _budget,
-                  onSelected: (v) => setState(() => _budget = v),
-                  labelBuilder: (v) => _budgetLabel(l10n, v),
-                ),
-                const SizedBox(height: 24),
-                Text(l10n.prefsPace, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ChoiceChipRow(
-                  options: _paces,
-                  selected: _pace,
-                  onSelected: (v) => setState(() => _pace = v),
-                  labelBuilder: (v) => _paceLabel(l10n, v),
-                ),
-                const SizedBox(height: 24),
-                Text(l10n.prefsInterests, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: chipLabels.map((label) {
-                    final selected = _interests.contains(label);
-                    return FilterChip(
-                      label: Text(_interestLabel(l10n, label)),
-                      selected: selected,
-                      onSelected: (sel) => setState(() {
-                        if (sel) {
-                          _interests.add(label);
-                        } else {
-                          _interests.remove(label);
-                        }
-                      }),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _interestController,
-                        decoration:
-                            InputDecoration(hintText: l10n.prefsAddInterest),
-                        onSubmitted: (_) => _addInterest(),
+                // Centered 700px column on wide layouts (declutter series);
+                // the ListView stays full-width so wheel/scrollbar work in
+                // the gutters.
+                PageContainer(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SectionHeader(title: l10n.prefsBudget),
+                      const SizedBox(height: 8),
+                      ChoiceChipRow(
+                        options: _budgets,
+                        selected: _budget,
+                        onSelected: (v) => setState(() => _budget = v),
+                        labelBuilder: (v) => _budgetLabel(l10n, v),
                       ),
-                    ),
-                    IconButton(icon: const Icon(Icons.add), onPressed: _addInterest),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(l10n.prefsHomeAirport, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.prefsHomeAirportHelp,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 24),
+                      SectionHeader(title: l10n.prefsPace),
+                      const SizedBox(height: 8),
+                      ChoiceChipRow(
+                        options: _paces,
+                        selected: _pace,
+                        onSelected: (v) => setState(() => _pace = v),
+                        labelBuilder: (v) => _paceLabel(l10n, v),
+                      ),
+                      const SizedBox(height: 24),
+                      SectionHeader(title: l10n.prefsInterests),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: chipLabels.map((label) {
+                          final selected = _interests.contains(label);
+                          return FilterChip(
+                            label: Text(_interestLabel(l10n, label)),
+                            selected: selected,
+                            onSelected: (sel) => setState(() {
+                              if (sel) {
+                                _interests.add(label);
+                              } else {
+                                _interests.remove(label);
+                              }
+                            }),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _interestController,
+                              decoration: InputDecoration(
+                                  hintText: l10n.prefsAddInterest),
+                              onSubmitted: (_) => _addInterest(),
+                            ),
+                          ),
+                          IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: _addInterest),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SectionHeader(title: l10n.prefsHomeAirport),
+                      const SizedBox(height: 4),
+                      Text(
+                        l10n.prefsHomeAirportHelp,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      AirportField(
+                        label: l10n.prefsHomeAirport,
+                        icon: Icons.home,
+                        selected: _homeAirport,
+                        onSelected: (a) => setState(() => _homeAirport = a),
+                      ),
+                      const SizedBox(height: 24),
+                      SectionHeader(title: l10n.prefsProfileNotes),
+                      const SizedBox(height: 4),
+                      Text(
+                        l10n.prefsProfileNotesHelp,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _notesController,
+                        maxLines: 6,
+                        maxLength: 2000,
+                        decoration: InputDecoration(
+                          hintText: l10n.prefsProfileNotesHint,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      FilledButton(
+                        onPressed: state.saving ? null : _save,
+                        style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16)),
+                        child: state.saving
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : Text(l10n.commonSave),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                AirportField(
-                  label: l10n.prefsHomeAirport,
-                  icon: Icons.home,
-                  selected: _homeAirport,
-                  onSelected: (a) => setState(() => _homeAirport = a),
-                ),
-                const SizedBox(height: 24),
-                Text(l10n.prefsProfileNotes,
-                    style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.prefsProfileNotesHelp,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _notesController,
-                  maxLines: 6,
-                  maxLength: 2000,
-                  decoration: InputDecoration(
-                    hintText: l10n.prefsProfileNotesHint,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: state.saving ? null : _save,
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                  child: state.saving
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(l10n.commonSave),
                 ),
               ],
             ),
