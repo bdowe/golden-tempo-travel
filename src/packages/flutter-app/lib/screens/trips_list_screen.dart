@@ -10,6 +10,8 @@ import '../widgets/empty_state.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/live_trip_card.dart';
 import '../widgets/offline_banner.dart';
+import '../widgets/page_container.dart';
+import '../widgets/section_header.dart';
 import '../widgets/status_pill.dart';
 import '../models/chat_session.dart';
 import '../models/trip.dart';
@@ -105,49 +107,60 @@ class _TripsListScreenState extends ConsumerState<TripsListScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            // The trip happening today, promoted to the very top as a
-            // one-tap shortcut (specs/happening-now). It also stays in
-            // "My Trips" below — this is a spotlight, not a filter.
-            if (liveTrip != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: LiveTripCard(
-                  trip: liveTrip,
-                  onTap: () => _openTrip(context, liveTrip.id),
-                ),
+            // Centered 700px column on wide layouts, Home's exact pattern:
+            // the ListView stays full-width (wheel/scrollbar work in the
+            // gutters) while the content is capped. Non-lazy is fine at
+            // trips-list sizes, same trade Home makes.
+            PageContainer(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // The trip happening today, promoted to the very top as a
+                  // one-tap shortcut (specs/happening-now). It also stays in
+                  // "My Trips" below — this is a spotlight, not a filter.
+                  if (liveTrip != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                      child: LiveTripCard(
+                        trip: liveTrip,
+                        onTap: () => _openTrip(context, liveTrip.id),
+                      ),
+                    ),
+                  // In-progress AI conversations that haven't produced a
+                  // trip yet (specs/continue-where-you-left-off) — the
+                  // discussion phase, above the trips they may become.
+                  if (resumable.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.xs, 0, 0, AppSpacing.sm),
+                      child: SectionHeader(title: l10n.continueChatsTitle),
+                    ),
+                    for (final c in resumable) ContinueChatCard(chat: c),
+                    if (state.trips.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
+                        child: SectionHeader(title: l10n.tripsListTitle),
+                      ),
+                  ],
+                  for (final t in state.trips)
+                    _TripCard(trip: t, isAdmin: isAdmin),
+                  // Trips others invited this user to co-plan. Kept as a
+                  // separate section: "mine" vs "shared with me" is the
+                  // mental model, and the card shows the owner instead of
+                  // admin version chrome.
+                  if (shared.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
+                      child:
+                          SectionHeader(title: l10n.tripsListSharedWithYou),
+                    ),
+                    for (final t in shared) _TripCard(trip: t, isAdmin: false),
+                  ],
+                ],
               ),
-            // In-progress AI conversations that haven't produced a trip yet
-            // (specs/continue-where-you-left-off) — the discussion phase,
-            // above the trips they may become.
-            if (resumable.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xs, 0, 0, AppSpacing.sm),
-                child: Text(l10n.continueChatsTitle,
-                    style: theme.textTheme.titleMedium),
-              ),
-              for (final c in resumable) ContinueChatCard(chat: c),
-              if (state.trips.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
-                  child: Text(l10n.tripsListTitle,
-                      style: theme.textTheme.titleMedium),
-                ),
-            ],
-            for (final t in state.trips) _TripCard(trip: t, isAdmin: isAdmin),
-            // Trips others invited this user to co-plan. Kept as a separate
-            // section: "mine" vs "shared with me" is the mental model, and
-            // the card shows the owner instead of admin version chrome.
-            if (shared.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xs, AppSpacing.lg, 0, AppSpacing.sm),
-                child: Text(l10n.tripsListSharedWithYou,
-                    style: theme.textTheme.titleMedium),
-              ),
-              for (final t in shared) _TripCard(trip: t, isAdmin: false),
-            ],
+            ),
           ],
         ),
       );
