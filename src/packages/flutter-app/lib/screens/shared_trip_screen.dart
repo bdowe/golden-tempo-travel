@@ -14,6 +14,8 @@ import '../theme/spacing.dart';
 import '../utils/trip_days.dart';
 import '../utils/trip_format.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/page_container.dart';
+import '../widgets/section_header.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/map_day_chips.dart';
 import '../widgets/trip_map.dart';
@@ -232,6 +234,13 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
           padding: const EdgeInsets.fromLTRB(
               AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 96),
           children: [
+            // Centered 700px column on wide layouts (declutter series):
+            // the ListView stays full-width (wheel/scrollbar work in the
+            // gutters) while the content is capped, same as the trips list.
+            PageContainer(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
             Text(trip.title, style: theme.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.xs),
             Text(
@@ -335,7 +344,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
               ],
             if ((trip.accommodations ?? const []).isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
-              Text(l10n.sharedStays, style: theme.textTheme.titleMedium),
+              SectionHeader(title: l10n.sharedStays),
               for (final a in trip.accommodations!)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -344,6 +353,9 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                   subtitle: a.address != null ? Text(a.address!) : null,
                 ),
             ],
+                ],
+              ),
+            ),
           ],
         ),
         Positioned(
@@ -353,8 +365,11 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
           child: Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             color: theme.scaffoldBackgroundColor,
+            // Background stays full-bleed over the scroll edge; the buttons
+            // cap to the same 700px column as the content above.
             child: SafeArea(
-              child: widget.shared.isEditorLink
+              child: PageContainer(
+                child: widget.shared.isEditorLink
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -405,6 +420,7 @@ class _SharedTripBodyState extends ConsumerState<_SharedTripBody> {
                         ),
                       ],
                     ),
+              ),
             ),
           ),
         ),
