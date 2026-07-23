@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/flights_provider.dart';
 import '../providers/preferences_provider.dart';
 import '../widgets/airport_field.dart';
+import '../widgets/page_container.dart';
 import '../widgets/create_alert_sheet.dart';
 import '../widgets/flight_offer_card.dart';
 import '../widgets/gradient_app_bar.dart';
@@ -136,9 +137,10 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
 
     // Resolve origin and destination concurrently so a slow/failed lookup on one
     // side doesn't delay or blank the other. Each result is applied on its own.
-    final originFuture = (w.prefillOrigin != null && w.prefillOrigin!.isNotEmpty)
-        ? _resolve(w.prefillOrigin!, coord: w.prefillOriginCoord)
-        : _homeAirportSeed();
+    final originFuture =
+        (w.prefillOrigin != null && w.prefillOrigin!.isNotEmpty)
+            ? _resolve(w.prefillOrigin!, coord: w.prefillOriginCoord)
+            : _homeAirportSeed();
     final destFuture =
         (w.prefillDestination != null && w.prefillDestination!.isNotEmpty)
             ? _resolve(w.prefillDestination!, coord: w.prefillDestinationCoord)
@@ -175,10 +177,12 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
   /// it retries once with a cleaned query, then — if [coord] is given — falls
   /// back to the nearest airport by coordinate (e.g. a village -> its island
   /// airport). Mirrors the backend's resolveIATA.
-  Future<Airport?> _resolve(String query, {({double lat, double lng})? coord}) async {
+  Future<Airport?> _resolve(String query,
+      {({double lat, double lng})? coord}) async {
     final q = query.trim();
     final isCode = q.length == 3 && RegExp(r'^[A-Za-z]{3}$').hasMatch(q);
-    if (isCode) return Airport(iataCode: q.toUpperCase(), name: q.toUpperCase());
+    if (isCode)
+      return Airport(iataCode: q.toUpperCase(), name: q.toUpperCase());
 
     final cleaned = _cleanLabel(q);
     final attempts = <String>[q, if (cleaned != q) cleaned];
@@ -328,182 +332,185 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
       appBar: GradientAppBar(title: Text(l10n.flightSearchTitle)),
       body: Column(
         children: [
-          // Search form
+          // Search form: the surface color stays full-bleed; the fields
+          // cap to the shared 700px column (declutter series).
           Container(
             color: theme.colorScheme.surface,
             padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                AirportField(
-                  label: l10n.flightSearchFrom,
-                  icon: Icons.flight_takeoff,
-                  selected: _origin,
-                  onSelected: (a) => setState(() => _origin = a),
-                ),
-                const SizedBox(height: 12),
-                AirportField(
-                  label: l10n.flightSearchTo,
-                  icon: Icons.flight_land,
-                  selected: _destination,
-                  onSelected: (a) => setState(() => _destination = a),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickDate,
-                        icon: const Icon(Icons.calendar_today, size: 18),
-                        label: Text(_departDate == null
-                            ? l10n.flightSearchDepartDate
-                            : _fmtDate(_departDate!)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+            child: PageContainer(
+              child: Column(
+                children: [
+                  AirportField(
+                    label: l10n.flightSearchFrom,
+                    icon: Icons.flight_takeoff,
+                    selected: _origin,
+                    onSelected: (a) => setState(() => _origin = a),
+                  ),
+                  const SizedBox(height: 12),
+                  AirportField(
+                    label: l10n.flightSearchTo,
+                    icon: Icons.flight_land,
+                    selected: _destination,
+                    onSelected: (a) => setState(() => _destination = a),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickDate,
+                          icon: const Icon(Icons.calendar_today, size: 18),
+                          label: Text(_departDate == null
+                              ? l10n.flightSearchDepartDate
+                              : _fmtDate(_departDate!)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickReturnDate,
-                        icon: const Icon(Icons.calendar_today, size: 18),
-                        label: Text(_returnDate == null
-                            ? l10n.flightSearchReturnOptional
-                            : _fmtDate(_returnDate!)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickReturnDate,
+                          icon: const Icon(Icons.calendar_today, size: 18),
+                          label: Text(_returnDate == null
+                              ? l10n.flightSearchReturnOptional
+                              : _fmtDate(_returnDate!)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
                         ),
                       ),
-                    ),
-                    if (_returnDate != null)
-                      IconButton(
-                        tooltip: l10n.flightSearchClearReturnTooltip,
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => setState(() => _returnDate = null),
+                      if (_returnDate != null)
+                        IconButton(
+                          tooltip: l10n.flightSearchClearReturnTooltip,
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _returnDate = null),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _PassengerStepper(
+                        icon: Icons.person_outline,
+                        count: _adults,
+                        min: 1,
+                        onChanged: (v) => setState(() => _adults = v),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _PassengerStepper(
-                      icon: Icons.person_outline,
-                      count: _adults,
-                      min: 1,
-                      onChanged: (v) => setState(() => _adults = v),
+                      const SizedBox(width: 8),
+                      _PassengerStepper(
+                        icon: Icons.child_care_outlined,
+                        count: _childAges.length,
+                        min: 0,
+                        onChanged: (v) => setState(() {
+                          while (_childAges.length < v) {
+                            _childAges.add(_defaultChildAge);
+                          }
+                          while (_childAges.length > v) {
+                            _childAges.removeLast();
+                          }
+                        }),
+                      ),
+                    ],
+                  ),
+                  if (_childAges.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(l10n.flightSearchChildAges,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant)),
+                          for (var i = 0; i < _childAges.length; i++)
+                            DropdownButton<int>(
+                              value: _childAges[i],
+                              isDense: true,
+                              items: [
+                                for (var age = 0; age <= 17; age++)
+                                  DropdownMenuItem(
+                                    value: age,
+                                    child: Text('$age'),
+                                  ),
+                              ],
+                              onChanged: (age) {
+                                if (age != null) {
+                                  setState(() => _childAges[i] = age);
+                                }
+                              },
+                            ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    _PassengerStepper(
-                      icon: Icons.child_care_outlined,
-                      count: _childAges.length,
-                      min: 0,
-                      onChanged: (v) => setState(() {
-                        while (_childAges.length < v) {
-                          _childAges.add(_defaultChildAge);
-                        }
-                        while (_childAges.length > v) {
-                          _childAges.removeLast();
-                        }
-                      }),
-                    ),
                   ],
-                ),
-                if (_childAges.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
                       children: [
-                        Text(l10n.flightSearchChildAges,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
-                        for (var i = 0; i < _childAges.length; i++)
-                          DropdownButton<int>(
-                            value: _childAges[i],
-                            isDense: true,
-                            items: [
-                              for (var age = 0; age <= 17; age++)
-                                DropdownMenuItem(
-                                  value: age,
-                                  child: Text('$age'),
-                                ),
-                            ],
-                            onChanged: (age) {
-                              if (age != null) {
-                                setState(() => _childAges[i] = age);
-                              }
-                            },
+                        for (final value in _cabinClasses)
+                          ChoiceChip(
+                            label: Text(_cabinLabel(l10n, value)),
+                            selected: _cabinClass == value,
+                            onSelected: (_) =>
+                                setState(() => _cabinClass = value),
                           ),
                       ],
                     ),
                   ),
-                ],
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final value in _cabinClasses)
-                        ChoiceChip(
-                          label: Text(_cabinLabel(l10n, value)),
-                          selected: _cabinClass == value,
-                          onSelected: (_) =>
-                              setState(() => _cabinClass = value),
-                        ),
-                    ],
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: _baggageValues
+                        .map((value) => ButtonSegment(
+                              value: value,
+                              label: Text(_baggageLabel(l10n, value)),
+                            ))
+                        .toList(),
+                    selected: {_baggage},
+                    onSelectionChanged: (s) =>
+                        setState(() => _baggage = s.first),
                   ),
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<String>(
-                  segments: _baggageValues
-                      .map((value) => ButtonSegment(
-                            value: value,
-                            label: Text(_baggageLabel(l10n, value)),
-                          ))
-                      .toList(),
-                  selected: {_baggage},
-                  onSelectionChanged: (s) => setState(() => _baggage = s.first),
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<String>(
-                  segments: _presets
-                      .map((value) => ButtonSegment(
-                            value: value,
-                            label: Text(_presetLabel(l10n, value)),
-                          ))
-                      .toList(),
-                  selected: {_optimizeFor},
-                  onSelectionChanged: (s) =>
-                      setState(() => _optimizeFor = s.first),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed:
-                        _canSearch && !state.loading ? _search : null,
-                    icon: state.loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.search),
-                    label: Text(state.loading
-                        ? l10n.flightSearchSearching
-                        : l10n.flightSearchSubmit),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: _presets
+                        .map((value) => ButtonSegment(
+                              value: value,
+                              label: Text(_presetLabel(l10n, value)),
+                            ))
+                        .toList(),
+                    selected: {_optimizeFor},
+                    onSelectionChanged: (s) =>
+                        setState(() => _optimizeFor = s.first),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _canSearch && !state.loading ? _search : null,
+                      icon: state.loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.search),
+                      label: Text(state.loading
+                          ? l10n.flightSearchSearching
+                          : l10n.flightSearchSubmit),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -517,47 +524,48 @@ class _FlightSearchScreenState extends ConsumerState<FlightSearchScreen> {
               state.offers.isNotEmpty &&
               _watched != null &&
               ref.watch(authProvider.select((s) => s.isSignedIn)))
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TextButton.icon(
-                  icon: const Icon(Icons.notifications_none, size: 18),
-                  label: Text(l10n.flightSearchWatchRoute),
-                  onPressed: () {
-                    final w = _watched!;
-                    // Seed the baseline from the cheapest EFFECTIVE price —
-                    // the checker tracks fare + bag fee on baggage-aware
-                    // watches, so a bare-fare baseline would read as a drop.
-                    // Unknown-fee offers can't seed a comparable baseline.
-                    final priced = state.offers
-                        .where((o) => !o.bagFeeUnknown)
-                        .toList();
-                    final cheapest = priced.isEmpty
-                        ? null
-                        : priced.reduce((a, b) =>
-                            a.displayPrice <= b.displayPrice ? a : b);
-                    final seedPrice = w.hasChildren ? null : cheapest;
-                    CreateAlertSheet.show(
-                      context,
-                      CreateAlertSheet(
-                        origin: w.origin,
-                        destination: w.destination,
-                        departDate: w.departDate,
-                        returnDate: w.returnDate,
-                        adults: w.adults,
-                        cabinClass: w.cabinClass,
-                        baggage: w.baggage,
-                        currentPrice: seedPrice?.displayPrice,
-                        currency: seedPrice?.currency,
-                      ),
-                    );
-                  },
+            PageContainer(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.notifications_none, size: 18),
+                    label: Text(l10n.flightSearchWatchRoute),
+                    onPressed: () {
+                      final w = _watched!;
+                      // Seed the baseline from the cheapest EFFECTIVE price —
+                      // the checker tracks fare + bag fee on baggage-aware
+                      // watches, so a bare-fare baseline would read as a drop.
+                      // Unknown-fee offers can't seed a comparable baseline.
+                      final priced =
+                          state.offers.where((o) => !o.bagFeeUnknown).toList();
+                      final cheapest = priced.isEmpty
+                          ? null
+                          : priced.reduce((a, b) =>
+                              a.displayPrice <= b.displayPrice ? a : b);
+                      final seedPrice = w.hasChildren ? null : cheapest;
+                      CreateAlertSheet.show(
+                        context,
+                        CreateAlertSheet(
+                          origin: w.origin,
+                          destination: w.destination,
+                          departDate: w.departDate,
+                          returnDate: w.returnDate,
+                          adults: w.adults,
+                          cabinClass: w.cabinClass,
+                          baggage: w.baggage,
+                          currentPrice: seedPrice?.displayPrice,
+                          currency: seedPrice?.currency,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
-          // Results
-          Expanded(child: _Results(state: state)),
+          // Results (whole-scrollable cap, alerts/guides pattern)
+          Expanded(child: PageContainer(child: _Results(state: state))),
         ],
       ),
     );
@@ -616,8 +624,7 @@ class _Results extends StatelessWidget {
       );
     }
 
-    final savingsLabel =
-        savingsLabelFor(l10n, state.offers, state.bestOfferId);
+    final savingsLabel = savingsLabelFor(l10n, state.offers, state.bestOfferId);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: state.offers.length,
@@ -650,7 +657,8 @@ class _Hint extends StatelessWidget {
           children: [
             Icon(icon, size: 56, color: color),
             const SizedBox(height: 12),
-            Text(text, textAlign: TextAlign.center,
+            Text(text,
+                textAlign: TextAlign.center,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
@@ -693,8 +701,7 @@ class _PassengerStepper extends StatelessWidget {
             onPressed: count > min ? () => onChanged(count - 1) : null,
             visualDensity: VisualDensity.compact,
           ),
-          Text('$count',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('$count', style: const TextStyle(fontWeight: FontWeight.bold)),
           IconButton(
             icon: const Icon(Icons.add, size: 18),
             onPressed: count < 8 ? () => onChanged(count + 1) : null,
@@ -705,4 +712,3 @@ class _PassengerStepper extends StatelessWidget {
     );
   }
 }
-
